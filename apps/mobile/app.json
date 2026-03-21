@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Whats On",
+    "slug": "whatson",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "scheme": "whatson",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0F0F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.whatson.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["plex", "plexapp", "nflx", "hulu", "aiv"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0F0F"
+      },
+      "package": "com.whatson.app"
+    },
+    "plugins": [
+      "expo-router",
+      ["@react-native-tvos/config-tv", {
+        "isTV": true,
+        "androidTVRequired": false
+      }]
+    ],
+    "install": {
+      "exclude": ["react-native"]
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
