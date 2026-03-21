@@ -7,7 +7,10 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "service:install": "tsx src/service.ts install",
+    "service:uninstall": "tsx src/service.ts uninstall",
+    "service:status": "tsx src/service.ts status"
   },
   "dependencies": {
     "@whatson/shared": "*",

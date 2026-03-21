@@ -1,0 +1,20 @@
+services:
+  whatson-api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: whatson-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist tracked items and watched state
+      - whatson-data:/app/packages/api/data
+    env_file:
+      - packages/api/.env
+    environment:
+      - PORT=3001
+      - DATA_DIR=/app/packages/api/data
+
+volumes:
+  whatson-data:
