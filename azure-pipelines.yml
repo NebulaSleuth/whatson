@@ -1,7 +1,8 @@
 trigger: none  # Manual trigger only
 
+# Default pool — change 'Default' to your self-hosted agent pool name
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'Default'
 
 variables:
   NODE_VERSION: '20.x'
