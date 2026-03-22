@@ -31,7 +31,8 @@
       "expo-router",
       ["@react-native-tvos/config-tv", {
         "isTV": true,
-        "androidTVRequired": false
+        "androidTVRequired": false,
+        "androidTVBanner": "./assets/tv-banner.png"
       }]
     ],
     "install": {
