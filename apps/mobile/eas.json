@@ -1,0 +1,57 @@
+{
+  "cli": {
+    "version": ">= 15.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "android-phone": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "WHATSON_TV": "0"
+      }
+    },
+    "android-tv": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "WHATSON_TV": "1"
+      }
+    },
+    "android-phone-aab": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "WHATSON_TV": "0"
+      }
+    },
+    "android-tv-aab": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "WHATSON_TV": "1"
+      }
+    },
+    "ios": {
+      "ios": {
+        "bundleIdentifier": "com.whatson.app"
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
+  }
+}
