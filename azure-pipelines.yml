@@ -122,9 +122,11 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore
-          - script: echo "$(KEYSTORE_BASE64)" | base64 -d > apps/mobile/android-keystore.jks
+          # Decode keystore — secret vars must be mapped via env
+          - script: echo "$KEYSTORE_B64" | base64 -d > apps/mobile/android-keystore.jks
             displayName: 'Decode keystore'
+            env:
+              KEYSTORE_B64: $(KEYSTORE_BASE64)
 
           # Prebuild for phone
           - script: |
@@ -132,16 +134,17 @@ stages:
               WHATSON_TV=0 npx expo prebuild --platform android --no-install
             displayName: 'Expo prebuild (phone)'
 
-          # Configure signing
+          # Configure signing — secret vars mapped via env
           - script: |
               cd apps/mobile/android
-              cat >> gradle.properties << 'GRADLEEOF'
-              WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
-              WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
-              WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
-              WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
-              GRADLEEOF
+              echo "WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks" >> gradle.properties
+              echo "WHATSON_UPLOAD_KEY_ALIAS=$KS_ALIAS" >> gradle.properties
+              echo "WHATSON_UPLOAD_STORE_PASSWORD=$KS_PASSWORD" >> gradle.properties
+              echo "WHATSON_UPLOAD_KEY_PASSWORD=$KS_PASSWORD" >> gradle.properties
             displayName: 'Configure signing'
+            env:
+              KS_ALIAS: $(KEYSTORE_ALIAS)
+              KS_PASSWORD: $(KEYSTORE_PASSWORD)
 
           # Patch build.gradle for signing
           - script: |
@@ -218,9 +221,11 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore
-          - script: echo "$(KEYSTORE_BASE64)" | base64 -d > apps/mobile/android-keystore.jks
+          # Decode keystore — secret vars must be mapped via env
+          - script: echo "$KEYSTORE_B64" | base64 -d > apps/mobile/android-keystore.jks
             displayName: 'Decode keystore'
+            env:
+              KEYSTORE_B64: $(KEYSTORE_BASE64)
 
           # Prebuild for TV
           - script: |
@@ -228,16 +233,17 @@ stages:
               WHATSON_TV=1 npx expo prebuild --platform android --no-install
             displayName: 'Expo prebuild (TV)'
 
-          # Configure signing
+          # Configure signing — secret vars mapped via env
           - script: |
               cd apps/mobile/android
-              cat >> gradle.properties << 'GRADLEEOF'
-              WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
-              WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
-              WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
-              WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
-              GRADLEEOF
+              echo "WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks" >> gradle.properties
+              echo "WHATSON_UPLOAD_KEY_ALIAS=$KS_ALIAS" >> gradle.properties
+              echo "WHATSON_UPLOAD_STORE_PASSWORD=$KS_PASSWORD" >> gradle.properties
+              echo "WHATSON_UPLOAD_KEY_PASSWORD=$KS_PASSWORD" >> gradle.properties
             displayName: 'Configure signing'
+            env:
+              KS_ALIAS: $(KEYSTORE_ALIAS)
+              KS_PASSWORD: $(KEYSTORE_PASSWORD)
 
           # Patch build.gradle for signing
           - script: |
