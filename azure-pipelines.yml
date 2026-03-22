@@ -89,19 +89,25 @@ stages:
               versionSpec: '$(NODE_VERSION)'
             displayName: 'Install Node.js'
 
-          # Install Java 17
+          # Find or install Java 17
           - script: |
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq openjdk-17-jdk
-              JAVA_DIR=$(find /usr/lib/jvm -maxdepth 1 -name "java-17-openjdk-*" -type d | head -1)
-              if [ -z "$JAVA_DIR" ]; then
+              # Check if Java is already installed
+              if command -v java &> /dev/null; then
+                echo "Java already installed:"
+                java -version
                 JAVA_DIR=$(dirname $(dirname $(readlink -f $(which java))))
+              else
+                echo "Java not found. Attempting install..."
+                sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || {
+                  echo "##vso[task.logissue type=error]Java 17 not installed and sudo failed. Install manually: sudo apt-get install openjdk-17-jdk"
+                  exit 1
+                }
+                JAVA_DIR=$(find /usr/lib/jvm -maxdepth 1 -name "java-17-openjdk-*" -type d | head -1)
               fi
-              echo "Found Java at: $JAVA_DIR"
+              echo "JAVA_HOME=$JAVA_DIR"
               echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_DIR"
               echo "##vso[task.prependpath]$JAVA_DIR/bin"
-              java -version
-            displayName: 'Install Java 17'
+            displayName: 'Find or install Java 17'
 
           # Install Android SDK if not present
           - script: |
@@ -200,19 +206,25 @@ stages:
               versionSpec: '$(NODE_VERSION)'
             displayName: 'Install Node.js'
 
-          # Install Java 17
+          # Find or install Java 17
           - script: |
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq openjdk-17-jdk
-              JAVA_DIR=$(find /usr/lib/jvm -maxdepth 1 -name "java-17-openjdk-*" -type d | head -1)
-              if [ -z "$JAVA_DIR" ]; then
+              # Check if Java is already installed
+              if command -v java &> /dev/null; then
+                echo "Java already installed:"
+                java -version
                 JAVA_DIR=$(dirname $(dirname $(readlink -f $(which java))))
+              else
+                echo "Java not found. Attempting install..."
+                sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk || {
+                  echo "##vso[task.logissue type=error]Java 17 not installed and sudo failed. Install manually: sudo apt-get install openjdk-17-jdk"
+                  exit 1
+                }
+                JAVA_DIR=$(find /usr/lib/jvm -maxdepth 1 -name "java-17-openjdk-*" -type d | head -1)
               fi
-              echo "Found Java at: $JAVA_DIR"
+              echo "JAVA_HOME=$JAVA_DIR"
               echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_DIR"
               echo "##vso[task.prependpath]$JAVA_DIR/bin"
-              java -version
-            displayName: 'Install Java 17'
+            displayName: 'Find or install Java 17'
 
           # Install Android SDK if not present
           - script: |
