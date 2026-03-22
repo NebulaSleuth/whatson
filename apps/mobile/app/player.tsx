@@ -17,6 +17,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { isTV } from '@/lib/tv';
+import { suppressRealtimeUpdates } from '@/lib/useRealtimeUpdates';
 
 // Import TV event handler if available
 let useTVEventHandler: any = null;
@@ -163,6 +164,13 @@ function TVControls({
 // ── Main Player Screen ──
 export default function PlayerScreen() {
   const { ratingKey } = useLocalSearchParams<{ ratingKey: string }>();
+
+  // Suppress WebSocket updates while playing — prevents stale data overwriting play position
+  useEffect(() => {
+    suppressRealtimeUpdates(true);
+    return () => { suppressRealtimeUpdates(false); };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
