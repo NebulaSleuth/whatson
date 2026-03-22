@@ -1,12 +1,10 @@
 trigger: none  # Manual trigger only
 
-# Default pool — change 'Default' to your self-hosted agent pool name
 pool:
   name: 'Default'
 
 variables:
   NODE_VERSION: '20.x'
-  JAVA_VERSION: '17'
 
 stages:
   # ── Stage 1: Backend ──
@@ -39,49 +37,13 @@ stages:
               artifactName: 'backend-dist'
             displayName: 'Publish backend dist'
 
-  # ── Stage 2: Backend Standalone (Windows) ──
-  - stage: BackendInstallerWindows
-    displayName: 'Backend Installer (Windows)'
-    dependsOn: Backend
-    jobs:
-      - job: WindowsInstaller
-        displayName: 'Build Windows Standalone + Installer'
-        pool:
-          vmImage: 'windows-latest'
-        steps:
-          - task: NodeTool@0
-            inputs:
-              versionSpec: '$(NODE_VERSION)'
-            displayName: 'Install Node.js'
-
-          - script: npm install --legacy-peer-deps
-            displayName: 'Install dependencies'
-
-          - script: npm run build:shared
-            displayName: 'Build shared types'
-
-          - script: cd packages\api && npm run build:standalone
-            displayName: 'Build standalone executable'
-
-          - script: choco install nsis -y
-            displayName: 'Install NSIS'
-
-          - script: cd packages\api && npm run build:installer
-            displayName: 'Build Windows installer'
-
-          - task: PublishBuildArtifacts@1
-            inputs:
-              pathToPublish: 'packages/api/installers'
-              artifactName: 'windows-installer'
-            displayName: 'Publish Windows installer'
-
-  # ── Stage 3: Backend Standalone (Linux) ──
-  - stage: BackendInstallerLinux
-    displayName: 'Backend Installer (Linux)'
+  # ── Stage 2: Backend Standalone + Installer (Linux) ──
+  - stage: BackendInstaller
+    displayName: 'Backend Installer'
     dependsOn: Backend
     jobs:
       - job: LinuxInstaller
-        displayName: 'Build Linux Standalone + Packages'
+        displayName: 'Build Standalone + Packages'
         steps:
           - task: NodeTool@0
             inputs:
@@ -97,9 +59,12 @@ stages:
           - script: cd packages/api && npm run build:standalone
             displayName: 'Build standalone executable'
 
+          # Install Ruby + fpm for .deb/.rpm packaging
           - script: |
-              sudo gem install fpm
-            displayName: 'Install fpm'
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq ruby ruby-dev build-essential rpm
+              sudo gem install --no-document fpm
+            displayName: 'Install Ruby + fpm'
             continueOnError: true
 
           - script: cd packages/api && npm run build:installer
@@ -111,7 +76,7 @@ stages:
               artifactName: 'linux-installer'
             displayName: 'Publish Linux packages'
 
-  # ── Stage 4: Android Phone AAB ──
+  # ── Stage 3: Android Phone AAB ──
   - stage: AndroidPhone
     displayName: 'Android Phone Build'
     dependsOn: Backend
@@ -124,12 +89,32 @@ stages:
               versionSpec: '$(NODE_VERSION)'
             displayName: 'Install Node.js'
 
-          - task: JavaToolInstaller@0
-            inputs:
-              versionSpec: '$(JAVA_VERSION)'
-              jdkArchitectureOption: 'x64'
-              jdkSourceOption: 'PreInstalled'
-            displayName: 'Set Java version'
+          # Install Java 17
+          - script: |
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq openjdk-17-jdk
+              echo "##vso[task.setvariable variable=JAVA_HOME]/usr/lib/jvm/java-17-openjdk-amd64"
+              echo "##vso[task.prependpath]/usr/lib/jvm/java-17-openjdk-amd64/bin"
+            displayName: 'Install Java 17'
+
+          # Install Android SDK if not present
+          - script: |
+              if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+                echo "Installing Android SDK..."
+                sudo apt-get install -y -qq unzip wget
+                export ANDROID_HOME=$HOME/android-sdk
+                mkdir -p $ANDROID_HOME/cmdline-tools
+                wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+                unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
+                mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null 2>&1
+                echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
+                echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
+              else
+                echo "Android SDK found at $ANDROID_HOME"
+              fi
+            displayName: 'Install Android SDK'
 
           - script: npm install --legacy-peer-deps
             displayName: 'Install dependencies'
@@ -137,7 +122,7 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore from pipeline variable
+          # Decode keystore
           - script: echo "$(KEYSTORE_BASE64)" | base64 -d > apps/mobile/android-keystore.jks
             displayName: 'Decode keystore'
 
@@ -150,12 +135,12 @@ stages:
           # Configure signing
           - script: |
               cd apps/mobile/android
-              cat >> gradle.properties << 'EOF'
+              cat >> gradle.properties << 'GRADLEEOF'
               WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
               WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
               WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
               WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
-              EOF
+              GRADLEEOF
             displayName: 'Configure signing'
 
           # Patch build.gradle for signing
@@ -177,6 +162,7 @@ stages:
           # Build AAB
           - script: |
               cd apps/mobile/android
+              chmod +x gradlew
               ./gradlew app:bundleRelease -x lint -x test --no-daemon
             displayName: 'Build Android Phone AAB'
 
@@ -186,7 +172,7 @@ stages:
               artifactName: 'android-phone-aab'
             displayName: 'Publish Phone AAB'
 
-  # ── Stage 5: Android TV AAB ──
+  # ── Stage 4: Android TV AAB ──
   - stage: AndroidTV
     displayName: 'Android TV Build'
     dependsOn: Backend
@@ -199,12 +185,32 @@ stages:
               versionSpec: '$(NODE_VERSION)'
             displayName: 'Install Node.js'
 
-          - task: JavaToolInstaller@0
-            inputs:
-              versionSpec: '$(JAVA_VERSION)'
-              jdkArchitectureOption: 'x64'
-              jdkSourceOption: 'PreInstalled'
-            displayName: 'Set Java version'
+          # Install Java 17
+          - script: |
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq openjdk-17-jdk
+              echo "##vso[task.setvariable variable=JAVA_HOME]/usr/lib/jvm/java-17-openjdk-amd64"
+              echo "##vso[task.prependpath]/usr/lib/jvm/java-17-openjdk-amd64/bin"
+            displayName: 'Install Java 17'
+
+          # Install Android SDK if not present
+          - script: |
+              if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+                echo "Installing Android SDK..."
+                sudo apt-get install -y -qq unzip wget
+                export ANDROID_HOME=$HOME/android-sdk
+                mkdir -p $ANDROID_HOME/cmdline-tools
+                wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+                unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
+                mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null 2>&1
+                echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
+                echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
+              else
+                echo "Android SDK found at $ANDROID_HOME"
+              fi
+            displayName: 'Install Android SDK'
 
           - script: npm install --legacy-peer-deps
             displayName: 'Install dependencies'
@@ -225,12 +231,12 @@ stages:
           # Configure signing
           - script: |
               cd apps/mobile/android
-              cat >> gradle.properties << 'EOF'
+              cat >> gradle.properties << 'GRADLEEOF'
               WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
               WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
               WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
               WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
-              EOF
+              GRADLEEOF
             displayName: 'Configure signing'
 
           # Patch build.gradle for signing
@@ -252,6 +258,7 @@ stages:
           # Build AAB
           - script: |
               cd apps/mobile/android
+              chmod +x gradlew
               ./gradlew app:bundleRelease -x lint -x test --no-daemon
             displayName: 'Build Android TV AAB'
 
