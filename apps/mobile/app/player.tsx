@@ -195,6 +195,7 @@ export default function PlayerScreen() {
   const currentPositionRef = useRef(0);
   const showControlsRef = useRef(true);
   const progressBarFocusedRef = useRef(false);
+  const resetControlsTimerRef = useRef<() => void>(() => {});
 
   // expo-video player
   const player = useVideoPlayer(streamUrl || '', (p) => {
@@ -251,6 +252,8 @@ export default function PlayerScreen() {
       currentPositionRef.current = newMs;
       setDisplayPosition(newMs);
       showSeekIndicator(deltaSeconds > 0 ? 'forward' : 'rewind', Math.abs(deltaSeconds));
+      // Reset controls timer on any seek interaction
+      resetControlsTimerRef.current();
     } catch {}
   }, [player, showSeekIndicator]);
 
@@ -287,6 +290,9 @@ export default function PlayerScreen() {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     controlsTimeout.current = setTimeout(() => setShowControls(false), 5000);
   }, []);
+
+  // Keep ref in sync so doSeek and TV event handler can call it
+  resetControlsTimerRef.current = resetControlsTimer;
 
   const handleScreenPress = useCallback(() => {
     if (showControls) {
