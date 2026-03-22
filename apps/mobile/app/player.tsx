@@ -252,8 +252,10 @@ export default function PlayerScreen() {
       currentPositionRef.current = newMs;
       setDisplayPosition(newMs);
       showSeekIndicator(deltaSeconds > 0 ? 'forward' : 'rewind', Math.abs(deltaSeconds));
-      // Reset controls timer on any seek interaction
-      resetControlsTimerRef.current();
+      // Only reset controls timer if controls are already showing
+      if (showControlsRef.current) {
+        resetControlsTimerRef.current();
+      }
     } catch {}
   }, [player, showSeekIndicator]);
 
