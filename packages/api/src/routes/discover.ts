@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as discover from '../services/discover.js';
 import * as tracked from '../services/tracked.js';
+import { notifyDataChanged } from '../ws.js';
 import type { ApiResponse, TrackedItem, TmdbSearchResult } from '@whatson/shared';
 
 export const discoverRouter = Router();
@@ -71,6 +72,7 @@ discoverRouter.post('/tracked', async (req, res) => {
       provider,
     });
 
+    notifyDataChanged('tracked-add', 'home', 'tv', 'tracked');
     const response: ApiResponse<TrackedItem> = { success: true, data: item };
     res.json(response);
   } catch (error) {
@@ -83,6 +85,7 @@ discoverRouter.delete('/tracked/:tmdbId', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.tmdbId);
     const removed = tracked.remove(tmdbId);
+    notifyDataChanged('tracked-remove', 'home', 'tv', 'tracked');
     res.json({ success: true, data: { removed } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import { useRealtimeUpdates } from '@/lib/useRealtimeUpdates';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
@@ -59,6 +60,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     });
     return () => subscription.remove();
   }, []);
+
+  // Connect to WebSocket for real-time updates
+  useRealtimeUpdates();
 
   return <>{children}</>;
 }

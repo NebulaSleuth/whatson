@@ -7,7 +7,6 @@ export const homeRouter = Router();
 
 homeRouter.get('/home', async (req, res) => {
   try {
-    // ?refresh=true busts the backend cache
     if (req.query.refresh === 'true') {
       invalidateAll();
     }

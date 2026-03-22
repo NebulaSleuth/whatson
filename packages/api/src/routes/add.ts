@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { config } from '../config.js';
-import { invalidateAll } from '../cache.js';
+import { notifyDataChanged } from '../ws.js';
 
 export const addRouter = Router();
 
@@ -121,7 +121,7 @@ addRouter.post('/sonarr/add', async (req, res) => {
       timeout: ARR_TIMEOUT,
     });
 
-    invalidateAll();
+    notifyDataChanged('add', 'home', 'tv', 'movies', 'tracked');
     console.log(`[Sonarr] Added series: "${seriesData.title}" (id: ${result.id})`);
     res.json({ success: true, data: { id: result.id, title: result.title } });
   } catch (error: any) {
@@ -221,7 +221,7 @@ addRouter.post('/radarr/add', async (req, res) => {
       timeout: ARR_TIMEOUT,
     });
 
-    invalidateAll();
+    notifyDataChanged('add', 'home', 'tv', 'movies', 'tracked');
     console.log(`[Radarr] Added movie: "${movieData.title}" (id: ${result.id})`);
     res.json({ success: true, data: { id: result.id, title: result.title } });
   } catch (error: any) {

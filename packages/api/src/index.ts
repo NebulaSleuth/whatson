@@ -28,6 +28,7 @@ if (!envLoaded) {
   dotenv.config(); // Default behavior — tries cwd
   console.warn('[Config] No .env file found in any searched location');
 }
+import { createServer } from 'http';
 import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
@@ -43,6 +44,7 @@ import { debugRouter } from './routes/debug.js';
 import { discoverRouter } from './routes/discover.js';
 import { addRouter } from './routes/add.js';
 import { playbackRouter } from './routes/playback.js';
+import { initWebSocket } from './ws.js';
 
 const app = express();
 
@@ -63,8 +65,11 @@ app.use('/api', discoverRouter);
 app.use('/api', addRouter);
 app.use('/api', playbackRouter);
 
-// Start listening immediately, discover services in the background
-app.listen(config.port, () => {
+// Create HTTP server and attach WebSocket
+const server = createServer(app);
+initWebSocket(server);
+
+server.listen(config.port, () => {
   console.log(`[Whats On API] Ready on port ${config.port}`);
   console.log(`[Whats On API] .env loaded from: ${process.cwd()}`);
   console.log(

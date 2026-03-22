@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
 import { ShelfList } from '@/components/ShelfList';
@@ -11,50 +11,13 @@ import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
 import { colors, spacing, typography } from '@/constants/theme';
 
-function RefreshButton({ isRefetching, onRefresh }: { isRefetching: boolean; onRefresh: () => void }) {
-  const [focused, setFocused] = React.useState(false);
-
-  return (
-    <View style={styles.refreshRow}>
-      {isRefetching ? (
-        <ActivityIndicator size="small" color={colors.primary} />
-      ) : (
-        <Pressable
-          onPress={onRefresh}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          focusable={true}
-          style={[
-            styles.refreshButton,
-            isTV && focused && styles.refreshButtonFocused,
-          ]}
-        >
-          <Text style={[
-            styles.refreshText,
-            isTV && focused && styles.refreshTextFocused,
-          ]}>
-            Refresh
-          </Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 export default function HomeScreen() {
-  const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['home'],
     queryFn: () => api.getHome(),
   });
-
-  const handleRefresh = useCallback(async () => {
-    // Force backend cache bust, then refetch
-    await api.getHome(true); // bust backend cache
-    refetch(); // refetch with React Query (triggers isRefetching)
-  }, [refetch]);
 
   const handleItemPress = useCallback((item: ContentItem) => {
     setSelectedItem(item);
@@ -77,7 +40,7 @@ export default function HomeScreen() {
           isTV ? undefined : (
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={handleRefresh}
+              onRefresh={() => refetch()}
               tintColor={colors.primary}
             />
           )
@@ -96,10 +59,6 @@ export default function HomeScreen() {
             message={(error as Error).message}
             onRetry={() => refetch()}
           />
-        )}
-
-        {!isLoading && !error && (
-          <RefreshButton isRefetching={isRefetching} onRefresh={handleRefresh} />
         )}
 
         {!isLoading && !error && data?.sections && (
@@ -147,32 +106,6 @@ const styles = StyleSheet.create({
     fontSize: isTV ? 24 : 28,
     fontWeight: '800',
     color: colors.primary,
-  },
-  refreshRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  refreshButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: 6,
-    backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.cardBorder,
-  },
-  refreshButtonFocused: {
-    borderColor: colors.focus,
-    backgroundColor: colors.surfaceHover,
-  },
-  refreshText: {
-    fontSize: isTV ? 16 : 13,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  refreshTextFocused: {
-    color: colors.focus,
   },
   headerSubtitle: {
     ...typography.body,

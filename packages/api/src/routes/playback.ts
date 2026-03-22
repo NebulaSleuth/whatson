@@ -2,6 +2,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import { config } from '../config.js';
 import { getServerUrl, getMachineIdentifier } from '../services/plex.js';
+import { notifyDataChanged } from '../ws.js';
 import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
 
 export const playbackRouter = Router();
@@ -171,6 +172,9 @@ playbackRouter.post('/playback/stop', async (req, res) => {
         timeout: 5000,
       }).catch(() => {});
     }
+
+    // Notify clients — play position has changed
+    notifyDataChanged('playback-stop', 'home', 'tv', 'movies');
 
     res.json({ success: true });
   } catch {

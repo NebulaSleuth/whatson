@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import * as plex from '../services/plex.js';
 import * as tracked from '../services/tracked.js';
-import { invalidateAll } from '../cache.js';
-import type { ApiResponse } from '@whatson/shared';
+import { notifyDataChanged } from '../ws.js';
 
 export const scrobbleRouter = Router();
 
@@ -26,7 +25,7 @@ scrobbleRouter.post('/scrobble', async (req, res) => {
       console.log(`[Scrobble] Mark as watched: ${source}:${sourceId}`);
     }
 
-    invalidateAll();
+    notifyDataChanged('scrobble', 'home', 'tv', 'movies');
     res.json({ success: true, data: { marked: true } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -49,7 +48,7 @@ scrobbleRouter.post('/unscrobble', async (req, res) => {
       tracked.markUnwatched(episodeKey);
     }
 
-    invalidateAll();
+    notifyDataChanged('scrobble', 'home', 'tv', 'movies', 'tracked');
     res.json({ success: true, data: { unmarked: true } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -74,7 +73,7 @@ scrobbleRouter.post('/scrobble/all', async (req, res) => {
       tracked.markShowWatched(parseInt(sourceId));
     }
 
-    invalidateAll();
+    notifyDataChanged('scrobble', 'home', 'tv', 'movies', 'tracked');
     res.json({ success: true, data: { marked: true } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -90,7 +89,7 @@ scrobbleRouter.post('/unscrobble/all', async (req, res) => {
       tracked.markUnwatched(String(sourceId));
     }
 
-    invalidateAll();
+    notifyDataChanged('scrobble', 'home', 'tv', 'movies', 'tracked');
     res.json({ success: true, data: { unmarked: true } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
