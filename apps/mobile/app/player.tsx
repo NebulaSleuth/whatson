@@ -9,6 +9,7 @@ import {
   Modal,
   FlatList,
   TouchableWithoutFeedback,
+  findNodeHandle,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -54,47 +55,83 @@ const formatTime = (ms: number) => {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 };
 
+// ── Focusable Scrub Bar ──
+function ScrubBar({
+  position, duration, focused, onScrub, onPlayPause,
+  onFocus, onBlur,
+}: {
+  position: number; duration: number; focused: boolean;
+  onScrub: (deltaSeconds: number) => void; onPlayPause: () => void;
+  onFocus: () => void; onBlur: () => void;
+}) {
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const pressableRef = useRef<any>(null);
+  const [selfNodeId, setSelfNodeId] = useState<number | undefined>(undefined);
+
+  const handleRef = useCallback((ref: any) => {
+    pressableRef.current = ref;
+    if (ref) {
+      const nodeId = findNodeHandle(ref);
+      if (nodeId) setSelfNodeId(nodeId);
+    }
+  }, []);
+
+
+  return (
+    <Pressable
+      ref={handleRef}
+      style={[tvStyles.progressContainer, focused && tvStyles.progressFocused]}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      focusable={true}
+      onPress={onPlayPause}
+      {...(selfNodeId ? { nextFocusLeft: selfNodeId, nextFocusRight: selfNodeId } : {})}
+    >
+      <View style={tvStyles.progressTrack}>
+        <View style={[tvStyles.progressFill, { width: `${progress}%` }]} />
+        {focused && (
+          <View style={[tvStyles.progressThumb, { left: `${progress}%` }]} />
+        )}
+      </View>
+      <View style={tvStyles.timeRow}>
+        <Text style={tvStyles.time}>{formatTime(position)}</Text>
+        {focused && (
+          <Text style={tvStyles.scrubHint}>← → to scrub</Text>
+        )}
+        <Text style={tvStyles.time}>{formatTime(duration)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 // ── TV Controls Overlay ──
 function TVControls({
   visible, playing, position, duration, title,
   onPlayPause, onSeekBack, onSeekForward, onQuality, onBack, onScrub,
+  onProgressFocusChange,
 }: {
   visible: boolean; playing: boolean; position: number; duration: number; title: string;
   onPlayPause: () => void; onSeekBack: () => void; onSeekForward: () => void;
   onQuality: () => void; onBack: () => void; onScrub: (deltaSeconds: number) => void;
+  onProgressFocusChange?: (focused: boolean) => void;
 }) {
   const [focused, setFocused] = useState<string | null>(null);
 
   if (!visible) return null;
 
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
-
   return (
     <View style={tvStyles.overlay}>
       <Text style={tvStyles.title}>{title}</Text>
 
-      {/* Focusable progress bar */}
-      <Pressable
-        style={[tvStyles.progressContainer, focused === 'progress' && tvStyles.progressFocused]}
-        onFocus={() => setFocused('progress')}
-        onBlur={() => setFocused(null)}
-        focusable={true}
-        onPress={onPlayPause}
-      >
-        <View style={tvStyles.progressTrack}>
-          <View style={[tvStyles.progressFill, { width: `${progress}%` }]} />
-          {focused === 'progress' && (
-            <View style={[tvStyles.progressThumb, { left: `${progress}%` }]} />
-          )}
-        </View>
-        <View style={tvStyles.timeRow}>
-          <Text style={tvStyles.time}>{formatTime(position)}</Text>
-          {focused === 'progress' && (
-            <Text style={tvStyles.scrubHint}>← → to scrub</Text>
-          )}
-          <Text style={tvStyles.time}>{formatTime(duration)}</Text>
-        </View>
-      </Pressable>
+      <ScrubBar
+        position={position}
+        duration={duration}
+        focused={focused === 'progress'}
+        onScrub={onScrub}
+        onPlayPause={onPlayPause}
+        onFocus={() => { setFocused('progress'); onProgressFocusChange?.(true); }}
+        onBlur={() => { setFocused(null); onProgressFocusChange?.(false); }}
+      />
 
       <View style={tvStyles.controls}>
         <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
@@ -135,10 +172,12 @@ export default function PlayerScreen() {
   const [focusedBitrate, setFocusedBitrate] = useState<number | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [progressBarFocused, setProgressBarFocused] = useState(false);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentPositionRef = useRef(0);
   const showControlsRef = useRef(true); // Ref mirror for TV event handler
+  const progressBarFocusedRef = useRef(false);
 
   // expo-video player
   const player = useVideoPlayer(streamUrl || '', (p) => {
@@ -165,23 +204,40 @@ export default function PlayerScreen() {
     return () => clearInterval(interval);
   }, [player, playbackInfo]);
 
-  // Keep ref in sync with state for TV event handler
+  // Keep refs in sync with state for TV event handler
   useEffect(() => {
     showControlsRef.current = showControls;
   }, [showControls]);
 
-  // TV D-pad event handler — seek with left/right when controls are hidden
+  useEffect(() => {
+    progressBarFocusedRef.current = progressBarFocused;
+  }, [progressBarFocused]);
+
+  // TV D-pad event handler
   if (isTV && useTVEventHandler) {
     useTVEventHandler((evt: any) => {
-      if (showControlsRef.current || showSettings) return; // Controls visible — let normal focus work
+      if (showSettings) return;
 
-      if (evt.eventType === 'right') {
-        try { player.currentTime = Math.max(0, (player.currentTime || 0) + SEEK_STEP_SECONDS); } catch {}
-      } else if (evt.eventType === 'left') {
-        try { player.currentTime = Math.max(0, (player.currentTime || 0) - SEEK_STEP_SECONDS); } catch {}
-      } else if (evt.eventType === 'select' || evt.eventType === 'playPause') {
-        // Show controls on select
-        resetControlsTimer();
+      // When progress bar is focused, left/right scrubs
+      if (progressBarFocusedRef.current && showControlsRef.current) {
+        if (evt.eventType === 'right') {
+          try { player.currentTime = Math.max(0, (player.currentTime || 0) + SCRUB_STEP_SECONDS); } catch {}
+          return;
+        } else if (evt.eventType === 'left') {
+          try { player.currentTime = Math.max(0, (player.currentTime || 0) - SCRUB_STEP_SECONDS); } catch {}
+          return;
+        }
+      }
+
+      // When controls are hidden, left/right seeks
+      if (!showControlsRef.current) {
+        if (evt.eventType === 'right') {
+          try { player.currentTime = Math.max(0, (player.currentTime || 0) + SEEK_STEP_SECONDS); } catch {}
+        } else if (evt.eventType === 'left') {
+          try { player.currentTime = Math.max(0, (player.currentTime || 0) - SEEK_STEP_SECONDS); } catch {}
+        } else if (evt.eventType === 'select' || evt.eventType === 'playPause') {
+          resetControlsTimer();
+        }
       }
     });
   }
@@ -372,6 +428,7 @@ export default function PlayerScreen() {
             onQuality={() => { setShowSettings(true); if (!isTV) setShowControls(true); }}
             onBack={handleBack}
             onScrub={handleScrub}
+            onProgressFocusChange={setProgressBarFocused}
           />
         )}
 
