@@ -99,21 +99,25 @@ stages:
 
           # Install Android SDK if not present
           - script: |
-              if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+              export ANDROID_HOME=${ANDROID_HOME:-$HOME/android-sdk}
+              if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+                echo "Android SDK already installed at $ANDROID_HOME"
+              else
                 echo "Installing Android SDK..."
                 sudo apt-get install -y -qq unzip wget
-                export ANDROID_HOME=$HOME/android-sdk
                 mkdir -p $ANDROID_HOME/cmdline-tools
-                wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+                echo "Downloading command line tools..."
+                wget -q --show-progress https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
                 unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
                 mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
-                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null 2>&1
-                echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
-                echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
-              else
-                echo "Android SDK found at $ANDROID_HOME"
+                echo "Accepting licenses..."
+                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | tail -5
+                echo "Installing platform tools, build tools, and platform..."
+                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools" 2>&1 | grep -E "done|Downloading|Installing"
+                echo "Android SDK installation complete"
               fi
+              echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
+              echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
             displayName: 'Install Android SDK'
 
           - script: npm install --legacy-peer-deps
@@ -198,21 +202,25 @@ stages:
 
           # Install Android SDK if not present
           - script: |
-              if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME" ]; then
+              export ANDROID_HOME=${ANDROID_HOME:-$HOME/android-sdk}
+              if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+                echo "Android SDK already installed at $ANDROID_HOME"
+              else
                 echo "Installing Android SDK..."
                 sudo apt-get install -y -qq unzip wget
-                export ANDROID_HOME=$HOME/android-sdk
                 mkdir -p $ANDROID_HOME/cmdline-tools
-                wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+                echo "Downloading command line tools..."
+                wget -q --show-progress https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
                 unzip -q /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
                 mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
-                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null 2>&1
-                echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
-                echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
-              else
-                echo "Android SDK found at $ANDROID_HOME"
+                echo "Accepting licenses..."
+                yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | tail -5
+                echo "Installing platform tools, build tools, and platform..."
+                $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools" 2>&1 | grep -E "done|Downloading|Installing"
+                echo "Android SDK installation complete"
               fi
+              echo "##vso[task.setvariable variable=ANDROID_HOME]$ANDROID_HOME"
+              echo "##vso[task.prependpath]$ANDROID_HOME/platform-tools"
             displayName: 'Install Android SDK'
 
           - script: npm install --legacy-peer-deps
