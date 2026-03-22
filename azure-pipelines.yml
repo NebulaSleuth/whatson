@@ -3,7 +3,7 @@ trigger: none  # Manual trigger only
 pool:
   name: 'Default'
   demands:
-    - Agent.Name -equals Umeko-Linux-PC
+    - Agent.Name -equals Alien
 
 variables:
   NODE_VERSION: '20.x'
