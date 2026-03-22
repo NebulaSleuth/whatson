@@ -279,7 +279,7 @@ export default function PlayerScreen() {
           doSeek(SEEK_STEP_SECONDS);
         } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
           doSeek(-SEEK_STEP_SECONDS);
-        } else if (evt.eventType === 'down' || evt.eventType === 'up' || evt.eventType === 'select') {
+        } else if (evt.eventType === 'down' || evt.eventType === 'up') {
           resetControlsTimerRef.current();
         }
       }
@@ -434,13 +434,9 @@ export default function PlayerScreen() {
     );
   }
 
-  // On TV, don't use TouchableWithoutFeedback — it causes double-fire with useTVEventHandler
-  const Wrapper = isTV ? View : TouchableWithoutFeedback;
-  const wrapperProps = isTV ? { style: styles.container } : { onPress: handleScreenPress };
-
   return (
-    <Wrapper {...wrapperProps}>
-      <View style={isTV ? undefined : styles.container}>
+    <TouchableWithoutFeedback onPress={handleScreenPress}>
+      <View style={styles.container}>
         <View style={styles.videoContainer} pointerEvents="none">
           <VideoView
             player={player}
@@ -508,7 +504,7 @@ export default function PlayerScreen() {
           </Pressable>
         </Modal>
       </View>
-    </Wrapper>
+    </TouchableWithoutFeedback>
   );
 }
 
