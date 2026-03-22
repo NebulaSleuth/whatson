@@ -6,37 +6,18 @@ import {
   Pressable,
   ActivityIndicator,
   BackHandler,
-  Dimensions,
   Modal,
   FlatList,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLocalSearchParams, router } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { isTV } from '@/lib/tv';
 
-let ExpoVideoView: any = null;
-let useVideoPlayerHook: any = null;
-let ExpoAVVideo: any = null;
-let ResizeModeEnum: any = null;
-
-try {
-  const expoVideo = require('expo-video');
-  ExpoVideoView = expoVideo.VideoView;
-  useVideoPlayerHook = expoVideo.useVideoPlayer;
-} catch {}
-
-if (!ExpoVideoView) {
-  try {
-    const expoAV = require('expo-av');
-    ExpoAVVideo = expoAV.Video;
-    ResizeModeEnum = expoAV.ResizeMode;
-  } catch {}
-}
-
-const isNativePlayer = !!ExpoVideoView;
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// Don't use fixed dimensions — use flex to fill available space on rotation
 
 const BITRATE_OPTIONS = [
   { label: 'Original (Direct)', value: 0 },
@@ -56,46 +37,6 @@ interface PlaybackInfo {
   duration: number;
   viewOffset: number;
   serverUrl: string;
-}
-
-// ── expo-video Player ──
-function NativeVideoPlayer({
-  streamUrl, viewOffset, onPositionChange,
-}: { streamUrl: string; viewOffset: number; onPositionChange: (ms: number) => void }) {
-  const playerRef = useRef<any>(null);
-  const player = useVideoPlayerHook(streamUrl, (p: any) => { playerRef.current = p; });
-
-  useEffect(() => {
-    if (viewOffset > 0) {
-      setTimeout(() => { try { player.currentTime = viewOffset / 1000; } catch {} }, 1000);
-    }
-    player.play();
-    const interval = setInterval(() => {
-      if (playerRef.current) onPositionChange(Math.floor((playerRef.current.currentTime || 0) * 1000));
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [player, viewOffset, onPositionChange]);
-
-  return (
-    <ExpoVideoView player={player} style={styles.video} allowsFullscreen={true}
-      allowsPictureInPicture={!isTV} nativeControls={!isTV} />
-  );
-}
-
-// ── expo-av Player ──
-function AVVideoPlayer({
-  streamUrl, viewOffset, onPositionChange, videoRef,
-}: { streamUrl: string; viewOffset: number; onPositionChange: (ms: number) => void; videoRef: React.RefObject<any> }) {
-  const onStatus = useCallback((status: any) => {
-    if (status.isLoaded) onPositionChange(status.positionMillis || 0);
-  }, [onPositionChange]);
-
-  return (
-    <ExpoAVVideo ref={videoRef} source={{ uri: streamUrl }} style={styles.video}
-      resizeMode={ResizeModeEnum?.CONTAIN || 'contain'} shouldPlay={true}
-      useNativeControls={!isTV} positionMillis={viewOffset}
-      onPlaybackStatusUpdate={onStatus} />
-  );
 }
 
 // ── TV Controls Overlay ──
@@ -138,24 +79,24 @@ function TVControls({
       <View style={tvStyles.controls}>
         <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
           onPress={onBack} onFocus={() => setFocused('back')} onBlur={() => setFocused(null)} focusable={true}>
-          <Text style={tvStyles.btnText}>Exit</Text>
+          <MaterialIcons name="stop-circle" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'rew' && tvStyles.btnFocused]}
           onPress={onSeekBack} onFocus={() => setFocused('rew')} onBlur={() => setFocused(null)} focusable={true}>
-          <Text style={tvStyles.btnText}>-30s</Text>
+          <MaterialIcons name="replay-30" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, tvStyles.btnPlay, focused === 'play' && tvStyles.btnFocused]}
           onPress={onPlayPause} onFocus={() => setFocused('play')} onBlur={() => setFocused(null)}
           focusable={true} hasTVPreferredFocus={true}>
-          <Text style={tvStyles.btnPlayText}>{playing ? 'Pause' : 'Play'}</Text>
+          <MaterialIcons name={playing ? 'pause-circle-filled' : 'play-circle-filled'} size={38} color="#000" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'fwd' && tvStyles.btnFocused]}
           onPress={onSeekForward} onFocus={() => setFocused('fwd')} onBlur={() => setFocused(null)} focusable={true}>
-          <Text style={tvStyles.btnText}>+30s</Text>
+          <MaterialIcons name="forward-30" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'quality' && tvStyles.btnFocused]}
           onPress={onQuality} onFocus={() => setFocused('quality')} onBlur={() => setFocused(null)} focusable={true}>
-          <Text style={tvStyles.btnText}>Quality</Text>
+          <MaterialIcons name="high-quality" size={32} color="#fff" />
         </Pressable>
       </View>
     </View>
@@ -165,11 +106,10 @@ function TVControls({
 // ── Main Player Screen ──
 export default function PlayerScreen() {
   const { ratingKey } = useLocalSearchParams<{ ratingKey: string }>();
-  const videoRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
   const [selectedBitrate, setSelectedBitrate] = useState(20000);
   const [focusedBitrate, setFocusedBitrate] = useState<number | null>(null);
@@ -179,26 +119,42 @@ export default function PlayerScreen() {
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentPositionRef = useRef(0);
 
+  // expo-video player — setup callback runs each time source changes
+  const player = useVideoPlayer(streamUrl || '', (p) => {
+    p.play();
+    setIsPlaying(true);
+  });
+
+  // Track position from player
+  useEffect(() => {
+    if (!player) return;
+    const interval = setInterval(() => {
+      try {
+        currentPositionRef.current = Math.floor((player.currentTime || 0) * 1000);
+      } catch {}
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [player]);
+
   const handlePositionChange = useCallback((ms: number) => {
     currentPositionRef.current = ms;
   }, []);
 
-  // Auto-hide controls on TV
+  // Auto-hide controls
   const resetControlsTimer = useCallback(() => {
-    if (!isTV) return;
     setShowControls(true);
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     controlsTimeout.current = setTimeout(() => setShowControls(false), 5000);
   }, []);
 
-  // Show controls on any interaction
   const handleScreenPress = useCallback(() => {
-    if (isTV) {
-      resetControlsTimer();
+    if (showControls) {
+      setShowControls(false);
+      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     } else {
-      setShowControls((v) => !v);
+      resetControlsTimer();
     }
-  }, [resetControlsTimer]);
+  }, [showControls, resetControlsTimer]);
 
   // Load playback
   useEffect(() => {
@@ -209,6 +165,8 @@ export default function PlayerScreen() {
       try {
         setLoading(true);
         setError(null);
+
+        // Pass viewOffset to the API so the transcode starts from the resume point
         const info = await api.getPlaybackInfo(ratingKey);
         if (cancelled) return;
 
@@ -216,9 +174,21 @@ export default function PlayerScreen() {
           sessionId: info.sessionId, title: info.title, duration: info.duration,
           viewOffset: info.viewOffset, serverUrl: info.serverUrl,
         });
-        setStreamUrl(info.streamUrl);
+
+        // If there's a resume position, request the stream with the offset
+        // The Plex transcode API handles seeking server-side
+        let url = info.streamUrl;
+        if (info.viewOffset > 0) {
+          const offsetSec = Math.floor(info.viewOffset / 1000);
+          url = url.replace(/offset=\d+/, `offset=${offsetSec}`);
+          currentPositionRef.current = info.viewOffset;
+        }
+
+        setStreamUrl(url);
         setLoading(false);
         resetControlsTimer();
+
+        // Player auto-plays via the setup callback in useVideoPlayer
 
         progressInterval.current = setInterval(async () => {
           await api.reportProgress(ratingKey, currentPositionRef.current, info.duration, 'playing', info.sessionId).catch(() => {});
@@ -235,40 +205,46 @@ export default function PlayerScreen() {
   // Back
   const handleBack = useCallback(async () => {
     if (showSettings) { setShowSettings(false); return; }
+    player.pause();
     if (playbackInfo) {
       await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId).catch(() => {});
       await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
     }
     if (progressInterval.current) clearInterval(progressInterval.current);
     router.back();
-  }, [ratingKey, playbackInfo, showSettings]);
+  }, [ratingKey, playbackInfo, showSettings, player]);
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });
     return () => handler.remove();
   }, [handleBack]);
 
-  // TV play/pause
-  const handlePlayPause = useCallback(async () => {
+  // Play/Pause
+  const handlePlayPause = useCallback(() => {
     resetControlsTimer();
-    if (videoRef.current) {
+    try {
       if (isPlaying) {
-        await videoRef.current.pauseAsync?.();
+        player.pause();
+        setIsPlaying(false);
       } else {
-        await videoRef.current.playAsync?.();
+        player.play();
+        setIsPlaying(true);
       }
-      setIsPlaying(!isPlaying);
+    } catch (e) {
+      console.error('[Player] Play/pause error:', e);
     }
-  }, [isPlaying, resetControlsTimer]);
+  }, [isPlaying, resetControlsTimer, player]);
 
-  // TV seek
-  const handleSeek = useCallback(async (deltaMs: number) => {
+  // Seek
+  const handleSeek = useCallback((deltaSeconds: number) => {
     resetControlsTimer();
-    if (videoRef.current) {
-      const newPos = Math.max(0, currentPositionRef.current + deltaMs);
-      await videoRef.current.setPositionAsync?.(newPos);
+    try {
+      const newTime = Math.max(0, (player.currentTime || 0) + deltaSeconds);
+      player.currentTime = newTime;
+    } catch (e) {
+      console.error('[Player] Seek error:', e);
     }
-  }, [resetControlsTimer]);
+  }, [resetControlsTimer, player]);
 
   // Bitrate change
   const handleBitrateChange = useCallback(async (bitrate: number) => {
@@ -276,6 +252,9 @@ export default function PlayerScreen() {
     setSelectedBitrate(bitrate);
     setShowSettings(false);
     resetControlsTimer();
+
+    const currentTime = player.currentTime || 0;
+    player.pause();
 
     await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
     const newInfo = await api.getPlaybackInfo(ratingKey, currentPositionRef.current);
@@ -287,7 +266,16 @@ export default function PlayerScreen() {
 
     setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
     setStreamUrl(newUrl);
-  }, [playbackInfo, ratingKey, resetControlsTimer]);
+
+    // Player will auto-reload with new source via useVideoPlayer
+    setTimeout(() => {
+      try {
+        player.currentTime = currentTime;
+        player.play();
+        setIsPlaying(true);
+      } catch {}
+    }, 1000);
+  }, [playbackInfo, ratingKey, resetControlsTimer, player]);
 
   if (error) {
     return (
@@ -304,24 +292,17 @@ export default function PlayerScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <TouchableWithoutFeedback onPress={handleScreenPress}>
-        <View style={styles.videoContainer}>
-          {streamUrl && (
-            isNativePlayer ? (
-              <NativeVideoPlayer key={streamUrl} streamUrl={streamUrl}
-                viewOffset={playbackInfo?.viewOffset || 0} onPositionChange={handlePositionChange} />
-            ) : ExpoAVVideo ? (
-              <AVVideoPlayer key={streamUrl} streamUrl={streamUrl} videoRef={videoRef}
-                viewOffset={playbackInfo?.viewOffset || 0} onPositionChange={handlePositionChange} />
-            ) : (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>No video player available</Text>
-              </View>
-            )
-          )}
+    <TouchableWithoutFeedback onPress={handleScreenPress}>
+      <View style={styles.container}>
+        <View style={styles.videoContainer} pointerEvents="none">
+          <VideoView
+            player={player}
+            style={styles.video}
+            allowsFullscreen={false}
+            allowsPictureInPicture={!isTV}
+            nativeControls={false}
+          />
         </View>
-      </TouchableWithoutFeedback>
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -330,8 +311,8 @@ export default function PlayerScreen() {
         </View>
       )}
 
-      {/* TV: custom controls overlay */}
-      {isTV && !loading && (
+      {/* Controls overlay — both TV and mobile */}
+      {!loading && (
         <TVControls
           visible={showControls}
           playing={isPlaying}
@@ -339,18 +320,11 @@ export default function PlayerScreen() {
           duration={playbackInfo?.duration || 0}
           title={playbackInfo?.title || ''}
           onPlayPause={handlePlayPause}
-          onSeekBack={() => handleSeek(-30000)}
-          onSeekForward={() => handleSeek(30000)}
-          onQuality={() => { setShowSettings(true); resetControlsTimer(); }}
+          onSeekBack={() => handleSeek(-30)}
+          onSeekForward={() => handleSeek(30)}
+          onQuality={() => { setShowSettings(true); if (!isTV) setShowControls(true); }}
           onBack={handleBack}
         />
-      )}
-
-      {/* Mobile: quality button (visible when controls shown) */}
-      {!isTV && !loading && showControls && (
-        <Pressable style={styles.settingsButton} onPress={() => setShowSettings(true)}>
-          <Text style={styles.settingsButtonText}>Quality</Text>
-        </Pressable>
       )}
 
       {/* Bitrate picker */}
@@ -379,36 +353,36 @@ export default function PlayerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
 const tvStyles = StyleSheet.create({
   overlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.7)', padding: spacing.xl, paddingBottom: spacing.xxl,
+    backgroundColor: 'rgba(0,0,0,0.7)', padding: spacing.lg, paddingBottom: spacing.xl,
   },
-  title: { color: '#fff', fontSize: 20, fontWeight: '600', marginBottom: spacing.lg },
-  progressContainer: { marginBottom: spacing.lg },
-  progressTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
-  progressFill: { height: 4, backgroundColor: colors.primary, borderRadius: 2 },
+  title: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: spacing.md },
+  progressContainer: { marginBottom: spacing.md },
+  progressTrack: { height: 3, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2 },
+  progressFill: { height: 3, backgroundColor: colors.primary, borderRadius: 2 },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },
-  time: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
-  controls: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg },
+  time: { color: 'rgba(255,255,255,0.6)', fontSize: 11 },
+  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.lg },
   btn: {
-    paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: 6,
+    padding: spacing.sm, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
   },
-  btnFocused: { borderColor: colors.focus, backgroundColor: 'rgba(255,255,255,0.2)' },
-  btnPlay: { backgroundColor: colors.primary, paddingHorizontal: spacing.xxl },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  btnPlayText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  btnFocused: { borderColor: colors.focus, backgroundColor: 'rgba(255,255,255,0.25)' },
+  btnPlay: { backgroundColor: colors.primary, padding: spacing.md, borderRadius: 26 },
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  videoContainer: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
-  video: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
+  container: { flex: 1, backgroundColor: '#000' },
+  videoContainer: { flex: 1 },
+  video: { flex: 1 },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.8)' },
   loadingText: { color: colors.text, fontSize: 16, marginTop: spacing.lg },
   errorContainer: { padding: spacing.xl, alignItems: 'center' },
@@ -416,10 +390,9 @@ const styles = StyleSheet.create({
   errorText: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: spacing.xl },
   backButton: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: 8 },
   backButtonText: { color: '#000', fontSize: 16, fontWeight: '600' },
-  settingsButton: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  settingsButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  settingsButton: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', padding: spacing.sm, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   settingsOverlay: { flex: 1, justifyContent: 'center', alignItems: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)', paddingRight: isTV ? 60 : 20 },
-  settingsPanel: { backgroundColor: colors.surface, borderRadius: 12, padding: spacing.lg, width: isTV ? 350 : 280, maxHeight: '80%' },
+  settingsPanel: { backgroundColor: '#1A1A1A', borderRadius: 12, padding: spacing.lg, width: isTV ? 350 : 280, maxHeight: '80%' },
   settingsTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: spacing.lg },
   bitrateOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderRadius: 6, marginBottom: spacing.xs, borderWidth: 1, borderColor: 'transparent' },
   bitrateSelected: { backgroundColor: 'rgba(229, 160, 13, 0.15)' },

@@ -1,14 +1,14 @@
-// Detect whether expo-video native module is available (native build)
-// or if we need to fall back to expo-av (Expo Go)
+// Check if expo-video native module is available (native build only)
+// In Expo Go, this will be false — hide the "Play Here" button
 
-let hasExpoVideo = false;
+let _hasExpoVideo = false;
 
 try {
-  const mod = require('expo-video');
-  // Check if the native module constructor works
-  if (mod?.useVideoPlayer) {
-    hasExpoVideo = true;
-  }
-} catch {}
+  // This will throw in Expo Go where the native module isn't loaded
+  require('expo-video');
+  _hasExpoVideo = true;
+} catch {
+  _hasExpoVideo = false;
+}
 
-export const useNativePlayer = hasExpoVideo;
+export const hasVideoPlayer = _hasExpoVideo;

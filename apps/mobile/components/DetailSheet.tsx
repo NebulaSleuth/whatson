@@ -19,6 +19,7 @@ import { ProgressBar } from './ProgressBar';
 import { colors, spacing, typography } from '@/constants/theme';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
+import { hasVideoPlayer } from '@/lib/videoPlayer';
 import { router } from 'expo-router';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -236,7 +237,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.tvActions}>
-                  {isPlexItem ? (
+                  {isPlexItem && hasVideoPlayer ? (
                     <FocusButton
                       title="Play Here"
                       style={styles.playButton}
@@ -348,7 +349,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.actions}>
-                  {isPlexItem ? (
+                  {isPlexItem && hasVideoPlayer ? (
                     <Pressable style={styles.playButton} onPress={handlePlay}>
                       <Text style={styles.playButtonText}>Play Here</Text>
                     </Pressable>
