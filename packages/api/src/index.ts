@@ -5,24 +5,28 @@ import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import dotenv from 'dotenv';
 
+const programData = process.env.ProgramData || 'C:\\ProgramData';
 const envPaths = [
-  join(dirname(process.execPath), '.env'),   // Next to the .exe
-  join(process.cwd(), '.env'),               // Current working directory
-  join(__dirname, '..', '.env'),             // Relative to dist/
+  join(dirname(process.execPath), '.env'),            // Next to the .exe
+  join(programData, 'WhatsOn', '.env'),               // C:\ProgramData\WhatsOn\.env (Windows service)
+  join(process.cwd(), '.env'),                        // Current working directory
+  join(__dirname, '..', '.env'),                      // Relative to dist/ (dev mode)
 ];
 
 let envLoaded = false;
+console.log('[Config] Searching for .env in:');
 for (const envPath of envPaths) {
-  if (existsSync(envPath)) {
+  const found = existsSync(envPath);
+  console.log(`[Config]   ${found ? '✓' : '✗'} ${envPath}`);
+  if (found && !envLoaded) {
     dotenv.config({ path: envPath });
     console.log(`[Config] Loaded .env from: ${envPath}`);
     envLoaded = true;
-    break;
   }
 }
 if (!envLoaded) {
   dotenv.config(); // Default behavior — tries cwd
-  console.warn('[Config] No .env file found. Checked:', envPaths);
+  console.warn('[Config] No .env file found in any searched location');
 }
 import express from 'express';
 import cors from 'cors';

@@ -74,14 +74,20 @@ function createWindowsInstaller() {
   const nssmFileDirective = hasNssm ? `File "${nssmExe.replace(/\\/g, '\\\\')}"` : '';
   const nssmInstallCmd = hasNssm
     ? `
+  ; Create ProgramData directory for config and logs
+  CreateDirectory "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn"
+
+  ; Copy .env to ProgramData if it doesn't exist there
+  IfFileExists "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\.env" +2
+    CopyFiles "$INSTDIR\\\\.env.example" "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\.env"
+
   ; Install as Windows Service using NSSM
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" install whatson-api "$INSTDIR\\\\${exeName}"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppDirectory "$INSTDIR"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api DisplayName "Whats On API"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Description "Whats On media aggregation backend API"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Start SERVICE_AUTO_START'
-  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStdout "$INSTDIR\\\\whatson-api.log"'
-  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStderr "$INSTDIR\\\\whatson-api.log"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppEnvironmentExtra DATA_DIR=$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn LOG_FILE=$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\whatson-api.log'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" start whatson-api'`
     : `
   ; Fallback: basic sc.exe service (may not work for all executables)

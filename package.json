@@ -16,9 +16,7 @@
     "service:uninstall": "npm run service:uninstall -w packages/api",
     "service:status": "npm run service:status -w packages/api",
     "lint": "npm run lint --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "~5.7.0",
@@ -29,9 +27,7 @@
   },
   "dependencies": {
     "react-native-web": "~0.19.13",
-    "expo": "~54.0.33",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react": "19.1.0"
   },
   "overrides": {
     "react": "19.1.0",
