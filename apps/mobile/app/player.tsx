@@ -392,7 +392,7 @@ export default function PlayerScreen() {
     doSeek(deltaSeconds);
   }, [resetControlsTimer, doSeek]);
 
-  // Bitrate change
+  // Bitrate change — request a new stream from the server with the selected quality
   const handleBitrateChange = useCallback(async (bitrate: number) => {
     if (!playbackInfo || !ratingKey) return;
     setSelectedBitrate(bitrate);
@@ -403,15 +403,19 @@ export default function PlayerScreen() {
     player.pause();
 
     await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
-    const newInfo = await api.getPlaybackInfo(ratingKey, currentPositionRef.current);
+
+    // Request new stream with specific bitrate — server handles transcode params
     const resolution = bitrate <= 2000 ? '720x480' : bitrate <= 4000 ? '1280x720' : '1920x1080';
-    const newUrl = newInfo.streamUrl
-      .replace(/maxVideoBitrate=\d+/, `maxVideoBitrate=${bitrate === 0 ? '200000' : bitrate}`)
-      .replace(/videoResolution=[^&]+/, `videoResolution=${resolution}`)
-      .replace(/directPlay=\d/, `directPlay=${bitrate === 0 ? '1' : '0'}`);
+    const isOriginal = bitrate === 0;
+    const newInfo = await api.getPlaybackInfo(
+      ratingKey,
+      currentPositionRef.current,
+      isOriginal ? undefined : bitrate,
+      isOriginal ? undefined : resolution,
+    );
 
     setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
-    setStreamUrl(newUrl);
+    setStreamUrl(newInfo.streamUrl);
 
     setTimeout(() => {
       try {

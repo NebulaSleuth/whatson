@@ -71,6 +71,17 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
       }));
 
     // Build the HLS transcode URL
+    // Quality params from query string (set by client when changing quality)
+    const maxBitrate = parseInt(req.query.maxBitrate as string) || 20000;
+    const resolution = (req.query.resolution as string) || '1920x1080';
+    const forceTranscode = req.query.forceTranscode === '1';
+
+    // directStream=1 allows remuxing without re-encode (ignores bitrate limits)
+    // directPlay=1 serves the original file (no transcode at all)
+    // To enforce bitrate, set both to 0 to force full transcode
+    const directPlay = forceTranscode ? '0' : '0';
+    const directStream = forceTranscode ? '0' : '1';
+
     const sessionId = `whatson-${Date.now()}`;
     const streamUrl = `${serverUrl}/video/:/transcode/universal/start.m3u8?` +
       new URLSearchParams({
@@ -78,11 +89,11 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
         protocol: 'hls',
         session: sessionId,
         offset: String(offset),
-        directPlay: '0',
-        directStream: '1',
-        videoQuality: '100',
-        videoResolution: '1920x1080',
-        maxVideoBitrate: '20000',
+        directPlay,
+        directStream,
+        videoQuality: forceTranscode ? '75' : '100',
+        videoResolution: resolution,
+        maxVideoBitrate: String(maxBitrate),
         mediaIndex: '0',
         partIndex: '0',
         location: 'lan',

@@ -124,7 +124,7 @@ export const api = {
     }),
 
   // Playback
-  getPlaybackInfo: (ratingKey: string, offset?: number) =>
+  getPlaybackInfo: (ratingKey: string, offset?: number, maxBitrate?: number, resolution?: string) =>
     fetchApi<{
       streamUrl: string;
       directPlayUrl: string | null;
@@ -139,7 +139,17 @@ export const api = {
       subtitles: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       serverUrl: string;
-    }>(`/playback/${ratingKey}${offset ? `?offset=${Math.floor(offset / 1000)}` : ''}`),
+    }>(() => {
+      const params = new URLSearchParams();
+      if (offset) params.set('offset', String(Math.floor(offset / 1000)));
+      if (maxBitrate) {
+        params.set('maxBitrate', String(maxBitrate));
+        params.set('forceTranscode', '1');
+      }
+      if (resolution) params.set('resolution', resolution);
+      const qs = params.toString();
+      return `/playback/${ratingKey}${qs ? `?${qs}` : ''}`;
+    })(),
 
   reportProgress: (ratingKey: string, time: number, duration: number, state: string, sessionId: string) =>
     fetchApi<any>('/playback/progress', {
