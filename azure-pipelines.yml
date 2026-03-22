@@ -171,35 +171,7 @@ stages:
               KS_PASSWORD: $(KEYSTORE_PASSWORD)
 
           # Patch build.gradle for release signing
-          - script: |
-              cd apps/mobile/android/app
-              python3 -c "
-import re
-with open('build.gradle', 'r') as f:
-    content = f.read()
-
-# Add release signing config if not present
-if 'signingConfigs' not in content or 'release {' not in content:
-    signing_block = '''
-    signingConfigs {
-        release {
-            storeFile file(findProperty('WHATSON_UPLOAD_STORE_FILE') ?: '../android-keystore.jks')
-            storePassword findProperty('WHATSON_UPLOAD_STORE_PASSWORD') ?: ''
-            keyAlias findProperty('WHATSON_UPLOAD_KEY_ALIAS') ?: ''
-            keyPassword findProperty('WHATSON_UPLOAD_KEY_PASSWORD') ?: ''
-        }
-    }
-'''
-    # Insert before buildTypes
-    content = content.replace('buildTypes {', signing_block + '    buildTypes {')
-
-# Use release signing for release builds
-content = content.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release')
-
-with open('build.gradle', 'w') as f:
-    f.write(content)
-print('build.gradle patched for release signing')
-"
+          - script: python3 scripts/patch-signing.py apps/mobile/android/app/build.gradle
             displayName: 'Configure release signing in Gradle'
 
           # Build AAB
@@ -304,35 +276,7 @@ print('build.gradle patched for release signing')
               KS_PASSWORD: $(KEYSTORE_PASSWORD)
 
           # Patch build.gradle for release signing
-          - script: |
-              cd apps/mobile/android/app
-              python3 -c "
-import re
-with open('build.gradle', 'r') as f:
-    content = f.read()
-
-# Add release signing config if not present
-if 'signingConfigs' not in content or 'release {' not in content:
-    signing_block = '''
-    signingConfigs {
-        release {
-            storeFile file(findProperty('WHATSON_UPLOAD_STORE_FILE') ?: '../android-keystore.jks')
-            storePassword findProperty('WHATSON_UPLOAD_STORE_PASSWORD') ?: ''
-            keyAlias findProperty('WHATSON_UPLOAD_KEY_ALIAS') ?: ''
-            keyPassword findProperty('WHATSON_UPLOAD_KEY_PASSWORD') ?: ''
-        }
-    }
-'''
-    # Insert before buildTypes
-    content = content.replace('buildTypes {', signing_block + '    buildTypes {')
-
-# Use release signing for release builds
-content = content.replace('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release')
-
-with open('build.gradle', 'w') as f:
-    f.write(content)
-print('build.gradle patched for release signing')
-"
+          - script: python3 scripts/patch-signing.py apps/mobile/android/app/build.gradle
             displayName: 'Configure release signing in Gradle'
 
           # Build AAB
