@@ -26,6 +26,9 @@ Thumbs.db
 *.log
 packages/api/standalone/
 packages/api/installers/
+packages/api/tools/*
+!packages/api/tools/nssm.exe
+packages/api/service.log
 
 # Root-level expo artifacts (from accidental root runs)
 /android/

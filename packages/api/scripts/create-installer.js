@@ -62,7 +62,40 @@ createPortableZip();
 function createWindowsInstaller() {
   console.log('\n🪟 Creating Windows installer...\n');
 
+  // Check for NSSM — needed for proper Windows Service support
+  const nssmExe = join(ROOT, 'tools', 'nssm.exe');
+  const hasNssm = existsSync(nssmExe);
+  if (!hasNssm) {
+    console.log('⚠ NSSM not found at tools/nssm.exe — service install will use sc.exe fallback');
+    console.log('  For proper service support, run: npm run service:install (downloads NSSM)');
+  }
+
   // Create NSIS script
+  const nssmFileDirective = hasNssm ? `File "${nssmExe.replace(/\\/g, '\\\\')}"` : '';
+  const nssmInstallCmd = hasNssm
+    ? `
+  ; Install as Windows Service using NSSM
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" install whatson-api "$INSTDIR\\\\${exeName}"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppDirectory "$INSTDIR"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api DisplayName "Whats On API"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Description "Whats On media aggregation backend API"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Start SERVICE_AUTO_START'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStdout "$INSTDIR\\\\whatson-api.log"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStderr "$INSTDIR\\\\whatson-api.log"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" start whatson-api'`
+    : `
+  ; Fallback: basic sc.exe service (may not work for all executables)
+  nsExec::ExecToLog 'sc create whatson-api binPath= "$INSTDIR\\\\${exeName}" start= auto DisplayName= "Whats On API"'
+  nsExec::ExecToLog 'sc start whatson-api'`;
+
+  const nssmUninstallCmd = hasNssm
+    ? `
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" stop whatson-api'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" remove whatson-api confirm'`
+    : `
+  nsExec::ExecToLog 'sc stop whatson-api'
+  nsExec::ExecToLog 'sc delete whatson-api'`;
+
   const nsisScript = `
 !include "MUI2.nsh"
 
@@ -82,15 +115,12 @@ Section "Install"
   SetOutPath "$INSTDIR"
   File "${EXE.replace(/\\/g, '\\\\')}"
   File "${envExample.replace(/\\/g, '\\\\')}"
+  ${nssmFileDirective}
 
   ; Create .env from example if it doesn't exist
   IfFileExists "$INSTDIR\\\\.env" +2
     CopyFiles "$INSTDIR\\\\.env.example" "$INSTDIR\\\\.env"
-
-  ; Install as Windows Service using sc.exe
-  nsExec::ExecToLog 'sc create whatson-api binPath= "$INSTDIR\\\\${exeName}" start= auto DisplayName= "Whats On API"'
-  nsExec::ExecToLog 'sc description whatson-api "Whats On media aggregation backend API"'
-  nsExec::ExecToLog 'sc start whatson-api'
+  ${nssmInstallCmd}
 
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\\\\uninstall.exe"
@@ -104,11 +134,13 @@ SectionEnd
 
 Section "Uninstall"
   ; Stop and remove service
-  nsExec::ExecToLog 'sc stop whatson-api'
-  nsExec::ExecToLog 'sc delete whatson-api'
+  ${nssmUninstallCmd}
 
   Delete "$INSTDIR\\\\${exeName}"
   Delete "$INSTDIR\\\\.env.example"
+  Delete "$INSTDIR\\\\.env"
+  Delete "$INSTDIR\\\\nssm.exe"
+  Delete "$INSTDIR\\\\whatson-api.log"
   Delete "$INSTDIR\\\\uninstall.exe"
   RMDir "$INSTDIR"
 

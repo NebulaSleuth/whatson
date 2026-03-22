@@ -1,4 +1,29 @@
-import 'dotenv/config';
+import './logger.js'; // Must be first — captures all logs + uncaught errors to file
+
+// Load .env — look next to the executable first, then cwd, then the module directory
+import { existsSync } from 'fs';
+import { join, dirname } from 'path';
+import dotenv from 'dotenv';
+
+const envPaths = [
+  join(dirname(process.execPath), '.env'),   // Next to the .exe
+  join(process.cwd(), '.env'),               // Current working directory
+  join(__dirname, '..', '.env'),             // Relative to dist/
+];
+
+let envLoaded = false;
+for (const envPath of envPaths) {
+  if (existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    console.log(`[Config] Loaded .env from: ${envPath}`);
+    envLoaded = true;
+    break;
+  }
+}
+if (!envLoaded) {
+  dotenv.config(); // Default behavior — tries cwd
+  console.warn('[Config] No .env file found. Checked:', envPaths);
+}
 import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
@@ -37,6 +62,7 @@ app.use('/api', playbackRouter);
 // Start listening immediately, discover services in the background
 app.listen(config.port, () => {
   console.log(`[Whats On API] Ready on port ${config.port}`);
+  console.log(`[Whats On API] .env loaded from: ${process.cwd()}`);
   console.log(
     `[Plex] ${config.plex.token ? (config.plex.url ? `Direct: ${config.plex.url}` : 'Auto-discover via plex.tv') : 'Not configured'}`,
   );
