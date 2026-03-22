@@ -126,8 +126,10 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore — secret vars must be mapped via env
-          - script: echo "$KEYSTORE_B64" | base64 -d > apps/mobile/android-keystore.jks
+          # Decode keystore — strip whitespace/CRLF, then decode
+          - script: |
+              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android-keystore.jks
+              ls -la apps/mobile/android-keystore.jks
             displayName: 'Decode keystore'
             env:
               KEYSTORE_B64: $(KEYSTORE_BASE64)
@@ -229,8 +231,10 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore — secret vars must be mapped via env
-          - script: echo "$KEYSTORE_B64" | base64 -d > apps/mobile/android-keystore.jks
+          # Decode keystore — strip whitespace/CRLF, then decode
+          - script: |
+              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android-keystore.jks
+              ls -la apps/mobile/android-keystore.jks
             displayName: 'Decode keystore'
             env:
               KEYSTORE_B64: $(KEYSTORE_BASE64)
