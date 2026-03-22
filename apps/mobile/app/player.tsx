@@ -56,20 +56,37 @@ const formatTime = (ms: number) => {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 };
 
-// ── Focusable Scrub Bar ──
-function ScrubBar({
-  position, duration, focused, onScrub, onPlayPause,
-  onFocus, onBlur,
+// ── Seek Indicator (shown when seeking with controls hidden) ──
+function SeekIndicator({ direction, seconds }: { direction: 'forward' | 'rewind' | null; seconds: number }) {
+  if (!direction) return null;
+  return (
+    <View style={tvStyles.seekIndicator}>
+      <MaterialIcons
+        name={direction === 'forward' ? 'fast-forward' : 'fast-rewind'}
+        size={48}
+        color="#fff"
+      />
+      <Text style={tvStyles.seekText}>{seconds}s</Text>
+    </View>
+  );
+}
+
+// ── TV Controls Overlay ──
+function TVControls({
+  visible, playing, displayPosition, duration, title,
+  onPlayPause, onSeekBack, onSeekForward, onQuality, onBack,
+  onInteraction, onProgressFocusChange,
 }: {
-  position: number; duration: number; focused: boolean;
-  onScrub: (deltaSeconds: number) => void; onPlayPause: () => void;
-  onFocus: () => void; onBlur: () => void;
+  visible: boolean; playing: boolean; displayPosition: number; duration: number; title: string;
+  onPlayPause: () => void; onSeekBack: () => void; onSeekForward: () => void;
+  onQuality: () => void; onBack: () => void;
+  onInteraction: () => void; onProgressFocusChange?: (focused: boolean) => void;
 }) {
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
+  const [focused, setFocused] = useState<string | null>(null);
   const pressableRef = useRef<any>(null);
   const [selfNodeId, setSelfNodeId] = useState<number | undefined>(undefined);
 
-  const handleRef = useCallback((ref: any) => {
+  const handleProgressRef = useCallback((ref: any) => {
     pressableRef.current = ref;
     if (ref) {
       const nodeId = findNodeHandle(ref);
@@ -77,83 +94,71 @@ function ScrubBar({
     }
   }, []);
 
+  // Any focus change resets the controls timer
+  const handleFocus = useCallback((name: string) => {
+    setFocused(name);
+    onInteraction();
+    if (name === 'progress') onProgressFocusChange?.(true);
+  }, [onInteraction, onProgressFocusChange]);
 
-  return (
-    <Pressable
-      ref={handleRef}
-      style={[tvStyles.progressContainer, focused && tvStyles.progressFocused]}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      focusable={true}
-      onPress={onPlayPause}
-      {...(selfNodeId ? { nextFocusLeft: selfNodeId, nextFocusRight: selfNodeId } : {})}
-    >
-      <View style={tvStyles.progressTrack}>
-        <View style={[tvStyles.progressFill, { width: `${progress}%` }]} />
-        {focused && (
-          <View style={[tvStyles.progressThumb, { left: `${progress}%` }]} />
-        )}
-      </View>
-      <View style={tvStyles.timeRow}>
-        <Text style={tvStyles.time}>{formatTime(position)}</Text>
-        {focused && (
-          <Text style={tvStyles.scrubHint}>← → to scrub</Text>
-        )}
-        <Text style={tvStyles.time}>{formatTime(duration)}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-// ── TV Controls Overlay ──
-function TVControls({
-  visible, playing, position, duration, title,
-  onPlayPause, onSeekBack, onSeekForward, onQuality, onBack, onScrub,
-  onProgressFocusChange,
-}: {
-  visible: boolean; playing: boolean; position: number; duration: number; title: string;
-  onPlayPause: () => void; onSeekBack: () => void; onSeekForward: () => void;
-  onQuality: () => void; onBack: () => void; onScrub: (deltaSeconds: number) => void;
-  onProgressFocusChange?: (focused: boolean) => void;
-}) {
-  const [focused, setFocused] = useState<string | null>(null);
+  const handleBlur = useCallback((name: string) => {
+    setFocused((prev) => prev === name ? null : prev);
+    if (name === 'progress') onProgressFocusChange?.(false);
+  }, [onProgressFocusChange]);
 
   if (!visible) return null;
+
+  const progress = duration > 0 ? (displayPosition / duration) * 100 : 0;
 
   return (
     <View style={tvStyles.overlay}>
       <Text style={tvStyles.title}>{title}</Text>
 
-      <ScrubBar
-        position={position}
-        duration={duration}
-        focused={focused === 'progress'}
-        onScrub={onScrub}
-        onPlayPause={onPlayPause}
-        onFocus={() => { setFocused('progress'); onProgressFocusChange?.(true); }}
-        onBlur={() => { setFocused(null); onProgressFocusChange?.(false); }}
-      />
+      {/* Focusable progress bar — left/right scrubs when focused */}
+      <Pressable
+        ref={handleProgressRef}
+        style={[tvStyles.progressContainer, focused === 'progress' && tvStyles.progressFocused]}
+        onFocus={() => handleFocus('progress')}
+        onBlur={() => handleBlur('progress')}
+        focusable={true}
+        onPress={onPlayPause}
+        {...(selfNodeId ? { nextFocusLeft: selfNodeId, nextFocusRight: selfNodeId } : {})}
+      >
+        <View style={tvStyles.progressTrack}>
+          <View style={[tvStyles.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
+          {focused === 'progress' && (
+            <View style={[tvStyles.progressThumb, { left: `${Math.min(progress, 100)}%` }]} />
+          )}
+        </View>
+        <View style={tvStyles.timeRow}>
+          <Text style={tvStyles.time}>{formatTime(displayPosition)}</Text>
+          {focused === 'progress' && (
+            <Text style={tvStyles.scrubHint}>← → to scrub</Text>
+          )}
+          <Text style={tvStyles.time}>{formatTime(duration)}</Text>
+        </View>
+      </Pressable>
 
       <View style={tvStyles.controls}>
         <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
-          onPress={onBack} onFocus={() => setFocused('back')} onBlur={() => setFocused(null)} focusable={true}>
+          onPress={() => { onInteraction(); onBack(); }} onFocus={() => handleFocus('back')} onBlur={() => handleBlur('back')} focusable={true}>
           <MaterialIcons name="stop-circle" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'rew' && tvStyles.btnFocused]}
-          onPress={onSeekBack} onFocus={() => setFocused('rew')} onBlur={() => setFocused(null)} focusable={true}>
+          onPress={() => { onInteraction(); onSeekBack(); }} onFocus={() => handleFocus('rew')} onBlur={() => handleBlur('rew')} focusable={true}>
           <MaterialIcons name="replay-30" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, tvStyles.btnPlay, focused === 'play' && tvStyles.btnFocused]}
-          onPress={onPlayPause} onFocus={() => setFocused('play')} onBlur={() => setFocused(null)}
+          onPress={() => { onInteraction(); onPlayPause(); }} onFocus={() => handleFocus('play')} onBlur={() => handleBlur('play')}
           focusable={true} hasTVPreferredFocus={true}>
           <MaterialIcons name={playing ? 'pause-circle-filled' : 'play-circle-filled'} size={38} color="#000" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'fwd' && tvStyles.btnFocused]}
-          onPress={onSeekForward} onFocus={() => setFocused('fwd')} onBlur={() => setFocused(null)} focusable={true}>
+          onPress={() => { onInteraction(); onSeekForward(); }} onFocus={() => handleFocus('fwd')} onBlur={() => handleBlur('fwd')} focusable={true}>
           <MaterialIcons name="forward-30" size={32} color="#fff" />
         </Pressable>
         <Pressable style={[tvStyles.btn, focused === 'quality' && tvStyles.btnFocused]}
-          onPress={onQuality} onFocus={() => setFocused('quality')} onBlur={() => setFocused(null)} focusable={true}>
+          onPress={() => { onInteraction(); onQuality(); }} onFocus={() => handleFocus('quality')} onBlur={() => handleBlur('quality')} focusable={true}>
           <MaterialIcons name="high-quality" size={32} color="#fff" />
         </Pressable>
       </View>
@@ -181,10 +186,14 @@ export default function PlayerScreen() {
   const [showControls, setShowControls] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [progressBarFocused, setProgressBarFocused] = useState(false);
+  const [displayPosition, setDisplayPosition] = useState(0); // For UI updates
+  const [seekDirection, setSeekDirection] = useState<'forward' | 'rewind' | null>(null);
+  const [seekAmount, setSeekAmount] = useState(0);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentPositionRef = useRef(0);
-  const showControlsRef = useRef(true); // Ref mirror for TV event handler
+  const showControlsRef = useRef(true);
   const progressBarFocusedRef = useRef(false);
 
   // expo-video player
@@ -200,6 +209,7 @@ export default function PlayerScreen() {
       try {
         const currentMs = Math.floor((player.currentTime || 0) * 1000);
         currentPositionRef.current = currentMs;
+        setDisplayPosition(currentMs);
 
         // Auto-close when video ends (within 2 seconds of duration)
         if (playbackInfo && playbackInfo.duration > 0 && currentMs > 0) {
@@ -221,6 +231,29 @@ export default function PlayerScreen() {
     progressBarFocusedRef.current = progressBarFocused;
   }, [progressBarFocused]);
 
+  // Show seek indicator briefly
+  const showSeekIndicator = useCallback((direction: 'forward' | 'rewind', amount: number) => {
+    setSeekDirection(direction);
+    setSeekAmount(amount);
+    if (seekIndicatorTimeout.current) clearTimeout(seekIndicatorTimeout.current);
+    seekIndicatorTimeout.current = setTimeout(() => {
+      setSeekDirection(null);
+      setSeekAmount(0);
+    }, 800);
+  }, []);
+
+  // Seek and update display position immediately
+  const doSeek = useCallback((deltaSeconds: number) => {
+    try {
+      const newTime = Math.max(0, (player.currentTime || 0) + deltaSeconds);
+      player.currentTime = newTime;
+      const newMs = Math.floor(newTime * 1000);
+      currentPositionRef.current = newMs;
+      setDisplayPosition(newMs);
+      showSeekIndicator(deltaSeconds > 0 ? 'forward' : 'rewind', Math.abs(deltaSeconds));
+    } catch {}
+  }, [player, showSeekIndicator]);
+
   // TV D-pad event handler
   if (isTV && useTVEventHandler) {
     useTVEventHandler((evt: any) => {
@@ -228,23 +261,21 @@ export default function PlayerScreen() {
 
       // When progress bar is focused, left/right scrubs
       if (progressBarFocusedRef.current && showControlsRef.current) {
-        if (evt.eventType === 'right') {
-          try { player.currentTime = Math.max(0, (player.currentTime || 0) + SCRUB_STEP_SECONDS); } catch {}
+        if (evt.eventType === 'right' || evt.eventType === 'longRight') {
+          doSeek(SCRUB_STEP_SECONDS);
           return;
-        } else if (evt.eventType === 'left') {
-          try { player.currentTime = Math.max(0, (player.currentTime || 0) - SCRUB_STEP_SECONDS); } catch {}
+        } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
+          doSeek(-SCRUB_STEP_SECONDS);
           return;
         }
       }
 
-      // When controls are hidden, left/right seeks
+      // When controls are hidden, left/right seeks with visual indicator
       if (!showControlsRef.current) {
-        if (evt.eventType === 'right') {
-          try { player.currentTime = Math.max(0, (player.currentTime || 0) + SEEK_STEP_SECONDS); } catch {}
-        } else if (evt.eventType === 'left') {
-          try { player.currentTime = Math.max(0, (player.currentTime || 0) - SEEK_STEP_SECONDS); } catch {}
-        } else if (evt.eventType === 'select' || evt.eventType === 'playPause') {
-          resetControlsTimer();
+        if (evt.eventType === 'right' || evt.eventType === 'longRight') {
+          doSeek(SEEK_STEP_SECONDS);
+        } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
+          doSeek(-SEEK_STEP_SECONDS);
         }
       }
     });
@@ -339,24 +370,11 @@ export default function PlayerScreen() {
     }
   }, [isPlaying, resetControlsTimer, player]);
 
-  // Seek
+  // Seek (from control buttons)
   const handleSeek = useCallback((deltaSeconds: number) => {
     resetControlsTimer();
-    try {
-      const newTime = Math.max(0, (player.currentTime || 0) + deltaSeconds);
-      player.currentTime = newTime;
-    } catch (e) {
-      console.error('[Player] Seek error:', e);
-    }
-  }, [resetControlsTimer, player]);
-
-  // Scrub from progress bar (larger steps)
-  const handleScrub = useCallback((deltaSeconds: number) => {
-    try {
-      const newTime = Math.max(0, (player.currentTime || 0) + deltaSeconds);
-      player.currentTime = newTime;
-    } catch {}
-  }, [player]);
+    doSeek(deltaSeconds);
+  }, [resetControlsTimer, doSeek]);
 
   // Bitrate change
   const handleBitrateChange = useCallback(async (bitrate: number) => {
@@ -427,7 +445,7 @@ export default function PlayerScreen() {
           <TVControls
             visible={showControls}
             playing={isPlaying}
-            position={currentPositionRef.current}
+            displayPosition={displayPosition}
             duration={playbackInfo?.duration || 0}
             title={playbackInfo?.title || ''}
             onPlayPause={handlePlayPause}
@@ -435,9 +453,14 @@ export default function PlayerScreen() {
             onSeekForward={() => handleSeek(30)}
             onQuality={() => { setShowSettings(true); if (!isTV) setShowControls(true); }}
             onBack={handleBack}
-            onScrub={handleScrub}
+            onInteraction={resetControlsTimer}
             onProgressFocusChange={setProgressBarFocused}
           />
+        )}
+
+        {/* Seek indicator overlay — shown when seeking with controls hidden */}
+        {!showControls && seekDirection && (
+          <SeekIndicator direction={seekDirection} seconds={seekAmount} />
         )}
 
         {/* Bitrate picker */}
@@ -472,6 +495,11 @@ export default function PlayerScreen() {
 }
 
 const tvStyles = StyleSheet.create({
+  seekIndicator: {
+    position: 'absolute', top: '40%', left: 0, right: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  seekText: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: spacing.xs },
   overlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: 'rgba(0,0,0,0.7)', padding: spacing.lg, paddingBottom: spacing.xl,
