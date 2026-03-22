@@ -192,8 +192,8 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             </View>
           )}
 
-          {/* On TV: no ScrollView wrapping buttons — use a flat layout so D-pad moves between buttons */}
           {isTV ? (
+            <ScrollView style={styles.tvScrollContent} bounces={false}>
             <View style={styles.tvLayout}>
               {/* Left side: artwork */}
               <View style={styles.tvPoster}>
@@ -296,6 +296,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 </View>
               </View>
             </View>
+            </ScrollView>
           ) : (
             /* Mobile: scrollable bottom sheet */
             <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={styles.scrollContent}>
@@ -434,6 +435,9 @@ const styles = StyleSheet.create({
   },
 
   // ── TV Layout ──
+  tvScrollContent: {
+    flexGrow: 0,
+  },
   tvLayout: {
     flexDirection: 'row',
     padding: spacing.xl,
@@ -545,7 +549,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     ...typography.caption,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
   },
   summary: {
     ...typography.body,

@@ -273,12 +273,14 @@ export default function PlayerScreen() {
         }
       }
 
-      // When controls are hidden, left/right seeks with visual indicator
+      // When controls are hidden
       if (!showControlsRef.current) {
         if (evt.eventType === 'right' || evt.eventType === 'longRight') {
           doSeek(SEEK_STEP_SECONDS);
         } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
           doSeek(-SEEK_STEP_SECONDS);
+        } else if (evt.eventType === 'down' || evt.eventType === 'up') {
+          resetControlsTimerRef.current();
         }
       }
     });
@@ -343,9 +345,15 @@ export default function PlayerScreen() {
     return () => { cancelled = true; if (progressInterval.current) clearInterval(progressInterval.current); };
   }, [ratingKey, resetControlsTimer]);
 
-  // Back / close player
+  // Back — hides controls first, then exits player on second press
   const handleBack = useCallback(async () => {
     if (showSettings) { setShowSettings(false); return; }
+    if (showControls) {
+      setShowControls(false);
+      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+      return;
+    }
+    // Controls already hidden — exit player
     try { player.pause(); } catch {}
     if (playbackInfo) {
       await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId).catch(() => {});
@@ -353,7 +361,7 @@ export default function PlayerScreen() {
     }
     if (progressInterval.current) clearInterval(progressInterval.current);
     router.back();
-  }, [ratingKey, playbackInfo, showSettings, player]);
+  }, [ratingKey, playbackInfo, showSettings, showControls, player]);
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });

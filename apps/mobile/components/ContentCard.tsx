@@ -18,7 +18,10 @@ function formatAvailableDate(isoDate: string): string {
   const dateLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.round((dateLocal.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (diffDays <= 0) return 'Today';
+  if (diffDays <= 0) {
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `Today ${timeStr}`;
+  }
   if (diffDays === 1) return 'Tomorrow';
   if (diffDays <= 7) {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
