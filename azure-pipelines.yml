@@ -59,11 +59,15 @@ stages:
           - script: cd packages/api && npm run build:standalone
             displayName: 'Build standalone executable'
 
-          # Install Ruby + fpm for .deb/.rpm packaging
+          # Install Ruby + fpm for .deb/.rpm packaging (optional)
           - script: |
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq ruby ruby-dev build-essential rpm
-              sudo gem install --no-document fpm
+              if command -v fpm &> /dev/null; then
+                echo "fpm already installed"
+              else
+                sudo apt-get update -qq
+                sudo apt-get install -y -qq ruby ruby-dev build-essential rpm
+                sudo gem install --no-document fpm
+              fi
             displayName: 'Install Ruby + fpm'
             continueOnError: true
 
