@@ -22,8 +22,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# Build
+# Build artifacts
 *.log
+packages/api/standalone/
+packages/api/installers/
 
 # Root-level expo artifacts (from accidental root runs)
 /android/
