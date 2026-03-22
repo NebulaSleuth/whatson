@@ -30,6 +30,11 @@ packages/api/tools/*
 !packages/api/tools/nssm.exe
 packages/api/service.log
 
+# Keystore / signing
+*.keystore
+*.jks
+keystore_base64.txt
+
 # Root-level expo artifacts (from accidental root runs)
 /android/
 /ios/

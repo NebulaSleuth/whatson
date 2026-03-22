@@ -1,0 +1,261 @@
+trigger: none  # Manual trigger only
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  NODE_VERSION: '20.x'
+  JAVA_VERSION: '17'
+
+stages:
+  # ── Stage 1: Backend ──
+  - stage: Backend
+    displayName: 'Build Backend'
+    jobs:
+      - job: BuildBackend
+        displayName: 'Build & Type-check Backend'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+            displayName: 'Install Node.js'
+
+          - script: npm install --legacy-peer-deps
+            displayName: 'Install dependencies'
+
+          - script: npm run build:shared
+            displayName: 'Build shared types'
+
+          - script: npm run build:api
+            displayName: 'Build API (TypeScript)'
+
+          - script: cd packages/api && npm run typecheck
+            displayName: 'Type-check API'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: 'packages/api/dist'
+              artifactName: 'backend-dist'
+            displayName: 'Publish backend dist'
+
+  # ── Stage 2: Backend Standalone (Windows) ──
+  - stage: BackendInstallerWindows
+    displayName: 'Backend Installer (Windows)'
+    dependsOn: Backend
+    jobs:
+      - job: WindowsInstaller
+        displayName: 'Build Windows Standalone + Installer'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+            displayName: 'Install Node.js'
+
+          - script: npm install --legacy-peer-deps
+            displayName: 'Install dependencies'
+
+          - script: npm run build:shared
+            displayName: 'Build shared types'
+
+          - script: cd packages\api && npm run build:standalone
+            displayName: 'Build standalone executable'
+
+          - script: choco install nsis -y
+            displayName: 'Install NSIS'
+
+          - script: cd packages\api && npm run build:installer
+            displayName: 'Build Windows installer'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: 'packages/api/installers'
+              artifactName: 'windows-installer'
+            displayName: 'Publish Windows installer'
+
+  # ── Stage 3: Backend Standalone (Linux) ──
+  - stage: BackendInstallerLinux
+    displayName: 'Backend Installer (Linux)'
+    dependsOn: Backend
+    jobs:
+      - job: LinuxInstaller
+        displayName: 'Build Linux Standalone + Packages'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+            displayName: 'Install Node.js'
+
+          - script: npm install --legacy-peer-deps
+            displayName: 'Install dependencies'
+
+          - script: npm run build:shared
+            displayName: 'Build shared types'
+
+          - script: cd packages/api && npm run build:standalone
+            displayName: 'Build standalone executable'
+
+          - script: |
+              sudo gem install fpm
+            displayName: 'Install fpm'
+            continueOnError: true
+
+          - script: cd packages/api && npm run build:installer
+            displayName: 'Build Linux packages'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: 'packages/api/installers'
+              artifactName: 'linux-installer'
+            displayName: 'Publish Linux packages'
+
+  # ── Stage 4: Android Phone AAB ──
+  - stage: AndroidPhone
+    displayName: 'Android Phone Build'
+    dependsOn: Backend
+    jobs:
+      - job: BuildAndroidPhone
+        displayName: 'Build Android Phone AAB'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+            displayName: 'Install Node.js'
+
+          - task: JavaToolInstaller@0
+            inputs:
+              versionSpec: '$(JAVA_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+            displayName: 'Set Java version'
+
+          - script: npm install --legacy-peer-deps
+            displayName: 'Install dependencies'
+
+          - script: npm run build:shared
+            displayName: 'Build shared types'
+
+          # Decode keystore from pipeline variable
+          - script: echo "$(KEYSTORE_BASE64)" | base64 -d > apps/mobile/android-keystore.jks
+            displayName: 'Decode keystore'
+
+          # Prebuild for phone
+          - script: |
+              cd apps/mobile
+              WHATSON_TV=0 npx expo prebuild --platform android --no-install
+            displayName: 'Expo prebuild (phone)'
+
+          # Configure signing
+          - script: |
+              cd apps/mobile/android
+              cat >> gradle.properties << 'EOF'
+              WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
+              WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
+              WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
+              WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
+              EOF
+            displayName: 'Configure signing'
+
+          # Patch build.gradle for signing
+          - script: |
+              cd apps/mobile/android/app
+              sed -i '/signingConfigs {/,/}/c\
+              signingConfigs {\
+                  release {\
+                      storeFile file(WHATSON_UPLOAD_STORE_FILE)\
+                      storePassword WHATSON_UPLOAD_STORE_PASSWORD\
+                      keyAlias WHATSON_UPLOAD_KEY_ALIAS\
+                      keyPassword WHATSON_UPLOAD_KEY_PASSWORD\
+                  }\
+              }' build.gradle
+              sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/' build.gradle
+            displayName: 'Configure release signing in Gradle'
+            continueOnError: true
+
+          # Build AAB
+          - script: |
+              cd apps/mobile/android
+              ./gradlew app:bundleRelease -x lint -x test --no-daemon
+            displayName: 'Build Android Phone AAB'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: 'apps/mobile/android/app/build/outputs/bundle/release'
+              artifactName: 'android-phone-aab'
+            displayName: 'Publish Phone AAB'
+
+  # ── Stage 5: Android TV AAB ──
+  - stage: AndroidTV
+    displayName: 'Android TV Build'
+    dependsOn: Backend
+    jobs:
+      - job: BuildAndroidTV
+        displayName: 'Build Android TV AAB'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+            displayName: 'Install Node.js'
+
+          - task: JavaToolInstaller@0
+            inputs:
+              versionSpec: '$(JAVA_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+            displayName: 'Set Java version'
+
+          - script: npm install --legacy-peer-deps
+            displayName: 'Install dependencies'
+
+          - script: npm run build:shared
+            displayName: 'Build shared types'
+
+          # Decode keystore
+          - script: echo "$(KEYSTORE_BASE64)" | base64 -d > apps/mobile/android-keystore.jks
+            displayName: 'Decode keystore'
+
+          # Prebuild for TV
+          - script: |
+              cd apps/mobile
+              WHATSON_TV=1 npx expo prebuild --platform android --no-install
+            displayName: 'Expo prebuild (TV)'
+
+          # Configure signing
+          - script: |
+              cd apps/mobile/android
+              cat >> gradle.properties << 'EOF'
+              WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks
+              WHATSON_UPLOAD_KEY_ALIAS=$(KEYSTORE_ALIAS)
+              WHATSON_UPLOAD_STORE_PASSWORD=$(KEYSTORE_PASSWORD)
+              WHATSON_UPLOAD_KEY_PASSWORD=$(KEYSTORE_PASSWORD)
+              EOF
+            displayName: 'Configure signing'
+
+          # Patch build.gradle for signing
+          - script: |
+              cd apps/mobile/android/app
+              sed -i '/signingConfigs {/,/}/c\
+              signingConfigs {\
+                  release {\
+                      storeFile file(WHATSON_UPLOAD_STORE_FILE)\
+                      storePassword WHATSON_UPLOAD_STORE_PASSWORD\
+                      keyAlias WHATSON_UPLOAD_KEY_ALIAS\
+                      keyPassword WHATSON_UPLOAD_KEY_PASSWORD\
+                  }\
+              }' build.gradle
+              sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/' build.gradle
+            displayName: 'Configure release signing in Gradle'
+            continueOnError: true
+
+          # Build AAB
+          - script: |
+              cd apps/mobile/android
+              ./gradlew app:bundleRelease -x lint -x test --no-daemon
+            displayName: 'Build Android TV AAB'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: 'apps/mobile/android/app/build/outputs/bundle/release'
+              artifactName: 'android-tv-aab'
+            displayName: 'Publish TV AAB'
