@@ -15,7 +15,7 @@ import {
 import { Image } from 'expo-image';
 import type { ContentItem } from '@whatson/shared';
 import { SourceBadge } from './SourceBadge';
-import { ProgressBar } from './ProgressBar';
+// Progress bar is inline in this component (not the absolute-positioned ProgressBar)
 import { colors, spacing, typography } from '@/constants/theme';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
@@ -227,13 +227,15 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
                 {item.progress.percentage > 0 ? (
                   <View style={styles.progressSection}>
-                    <ProgressBar percentage={item.progress.percentage} height={4} />
                     <Text style={styles.progressText}>{item.progress.percentage}% watched</Text>
+                    <View style={styles.detailProgressTrack}>
+                      <View style={[styles.detailProgressFill, { width: `${Math.min(item.progress.percentage, 100)}%` }]} />
+                    </View>
                   </View>
                 ) : null}
 
                 {item.summary ? (
-                  <Text style={styles.tvSummary} numberOfLines={4}>{item.summary}</Text>
+                  <Text style={styles.tvSummary} numberOfLines={3} ellipsizeMode="tail">{item.summary}</Text>
                 ) : null}
 
                 <View style={styles.tvActions}>
@@ -332,8 +334,10 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
                 {item.progress.percentage > 0 ? (
                   <View style={styles.progressSection}>
-                    <ProgressBar percentage={item.progress.percentage} height={4} />
                     <Text style={styles.progressText}>{item.progress.percentage}% watched</Text>
+                    <View style={styles.detailProgressTrack}>
+                      <View style={[styles.detailProgressFill, { width: `${Math.min(item.progress.percentage, 100)}%` }]} />
+                    </View>
                   </View>
                 ) : null}
 
@@ -418,9 +422,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: isTV ? 12 : 20,
     borderBottomLeftRadius: isTV ? 12 : 0,
     borderBottomRightRadius: isTV ? 12 : 0,
-    maxHeight: isTV ? SCREEN_HEIGHT * 0.7 : SCREEN_HEIGHT * 0.85,
+    maxHeight: isTV ? SCREEN_HEIGHT * 0.9 : SCREEN_HEIGHT * 0.85,
     minHeight: 300,
-    ...(isTV ? { marginHorizontal: 60 } : {}),
+    ...(isTV ? { marginHorizontal: 40 } : {}),
   },
   handleContainer: {
     alignItems: 'center',
@@ -549,7 +553,18 @@ const styles = StyleSheet.create({
   },
   progressText: {
     ...typography.caption,
-    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  detailProgressTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    width: '100%',
+  },
+  detailProgressFill: {
+    height: 4,
+    backgroundColor: colors.progressBar,
+    borderRadius: 2,
   },
   summary: {
     ...typography.body,
