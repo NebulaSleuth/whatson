@@ -9,8 +9,6 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "cover",
       "backgroundColor": "#0F0F0F"
     },
     "ios": {
@@ -29,6 +27,12 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-splash-screen", {
+        "image": "./assets/splash-icon.png",
+        "imageWidth": 1920,
+        "resizeMode": "cover",
+        "backgroundColor": "#0F0F0F"
+      }],
       ["@react-native-tvos/config-tv", {
         "isTV": true,
         "androidTVRequired": false,
