@@ -3,9 +3,14 @@ import type { Server } from 'http';
 
 let wss: WebSocketServer | null = null;
 const clients = new Set<WebSocket>();
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+// Snapshot of last data hash — used to detect changes
+let lastDataHash = '';
 
 /**
  * Initialize WebSocket server attached to the existing HTTP server.
+ * Starts a background poller that checks for data changes every 60 seconds.
  */
 export function initWebSocket(server: Server): void {
   wss = new WebSocketServer({ server, path: '/ws' });
@@ -14,7 +19,6 @@ export function initWebSocket(server: Server): void {
     clients.add(ws);
     console.log(`[WS] Client connected (${clients.size} total)`);
 
-    // Send initial ping
     ws.send(JSON.stringify({ type: 'connected', timestamp: Date.now() }));
 
     ws.on('close', () => {
@@ -27,7 +31,65 @@ export function initWebSocket(server: Server): void {
     });
   });
 
-  console.log('[WS] WebSocket server ready on /ws');
+  // Start background polling
+  startPoller();
+
+  console.log('[WS] WebSocket server ready on /ws (polling every 60s)');
+}
+
+/**
+ * Background poller — checks Plex/Sonarr/Radarr for changes every 60 seconds.
+ * If data has changed since last poll, invalidates caches and notifies clients.
+ */
+function startPoller(): void {
+  if (pollInterval) return;
+
+  pollInterval = setInterval(async () => {
+    if (clients.size === 0) return; // No clients — skip
+
+    try {
+      const { getHomeData } = require('./services/aggregator.js');
+      const { invalidateAll } = require('./cache.js');
+
+      // Bust the cache to force fresh data
+      invalidateAll();
+
+      // Fetch fresh data
+      const data = await getHomeData();
+
+      // Create a simple hash of the data to detect changes
+      const hash = createDataHash(data);
+
+      if (lastDataHash && hash !== lastDataHash) {
+        console.log('[Poll] Data changed — notifying clients');
+        broadcast({
+          type: 'invalidate',
+          keys: ['home', 'tv', 'movies', 'tracked'],
+          reason: 'poll-detected-change',
+        });
+      }
+
+      lastDataHash = hash;
+    } catch (error) {
+      console.warn('[Poll] Error checking for updates:', (error as Error).message);
+    }
+  }, 60000); // Every 60 seconds
+}
+
+/**
+ * Create a lightweight hash of the home data to detect changes.
+ * Uses item IDs, statuses, and progress to detect meaningful changes.
+ */
+function createDataHash(data: any): string {
+  if (!data?.sections) return '';
+
+  const parts: string[] = [];
+  for (const section of data.sections) {
+    for (const item of section.items || []) {
+      parts.push(`${item.id}:${item.status}:${item.progress?.percentage || 0}:${item.progress?.watched || false}`);
+    }
+  }
+  return parts.join('|');
 }
 
 /**
