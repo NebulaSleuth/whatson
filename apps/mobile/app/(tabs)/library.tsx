@@ -1,17 +1,83 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
-import { ContentCard } from '@/components/ContentCard';
 import { DetailSheet } from '@/components/DetailSheet';
 import { ErrorState } from '@/components/ErrorState';
 import { TVPressable } from '@/components/TVFocusable';
-import { api } from '@/lib/api';
+import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
-import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
+import { colors, spacing, typography } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
+
+const LibraryGridCard = React.memo(function LibraryGridCard({
+  item, width, onPress,
+}: {
+  item: ContentItem; width: number; onPress: () => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const posterWidth = width - spacing.sm * 2;
+  const posterHeight = posterWidth * 1.5; // 2:3 ratio
+
+  return (
+    <Pressable
+      style={[gridCardStyles.container, { width }]}
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      focusable={true}
+    >
+      <View style={[
+        gridCardStyles.posterContainer,
+        { width: posterWidth, height: posterHeight },
+        isTV && focused && gridCardStyles.posterFocused,
+      ]}>
+        <Image
+          source={{ uri: resolveArtworkUrl(item.artwork.poster) }}
+          style={gridCardStyles.poster}
+          contentFit="cover"
+          cachePolicy="disk"
+          transition={isTV ? 0 : 200}
+        />
+      </View>
+      <Text style={[gridCardStyles.title, isTV && focused && gridCardStyles.titleFocused]} numberOfLines={1}>
+        {item.showTitle || item.title}
+      </Text>
+    </Pressable>
+  );
+});
+
+const gridCardStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  posterContainer: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  posterFocused: {
+    borderColor: colors.focus,
+  },
+  poster: {
+    width: '100%',
+    height: '100%',
+  },
+  title: {
+    ...typography.caption,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  titleFocused: {
+    color: colors.focus,
+  },
+});
 
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
@@ -33,11 +99,8 @@ export default function LibraryScreen() {
   const itemWidth = Math.floor((screenWidth - gridPadding) / numColumns);
 
   const renderItem = useCallback(({ item }: { item: ContentItem }) => (
-    <View style={{ width: itemWidth, paddingHorizontal: spacing.xs }}>
-      <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()}
-        isFirstInRow={false} isLastInRow={false} />
-    </View>
-  ), [handleItemPress, refetch, itemWidth]);
+    <LibraryGridCard item={item} width={itemWidth} onPress={() => handleItemPress(item)} />
+  ), [handleItemPress, itemWidth]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
