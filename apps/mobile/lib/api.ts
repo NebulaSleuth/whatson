@@ -123,6 +123,9 @@ export const api = {
       body: JSON.stringify({ clientId, ratingKey }),
     }),
 
+  // Library
+  getLibrary: (type: 'movie' | 'show') => fetchApi<ContentItem[]>(`/library/${type}`),
+
   // Playback
   getPlaybackInfo: (ratingKey: string, offset?: number, maxBitrate?: number, resolution?: string) => {
     const params = new URLSearchParams();

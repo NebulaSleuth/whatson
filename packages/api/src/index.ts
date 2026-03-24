@@ -44,6 +44,7 @@ import { debugRouter } from './routes/debug.js';
 import { discoverRouter } from './routes/discover.js';
 import { addRouter } from './routes/add.js';
 import { playbackRouter } from './routes/playback.js';
+import { libraryRouter } from './routes/library.js';
 import { initWebSocket } from './ws.js';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api', debugRouter);
 app.use('/api', discoverRouter);
 app.use('/api', addRouter);
 app.use('/api', playbackRouter);
+app.use('/api', libraryRouter);
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);

@@ -286,6 +286,47 @@ export async function markUnwatched(ratingKey: string): Promise<void> {
   });
 }
 
+/**
+ * Get all items from a Plex library section, sorted alphabetically.
+ * @param type 'movie' or 'show'
+ */
+export async function getLibrary(type: 'movie' | 'show'): Promise<ContentItem[]> {
+  const cacheKey = `plex:library:${type}`;
+  const cached = getCached<ContentItem[]>(cacheKey);
+  if (cached) return cached;
+
+  const http = await getClient();
+
+  // First get library sections to find the right one
+  const { data: sectionsData } = await http.get('/library/sections');
+  const sections = sectionsData.MediaContainer?.Directory || [];
+
+  // Find sections by type: 'movie' or 'show'
+  const matchingSections = sections.filter((s: any) => s.type === type);
+
+  const allItems: ContentItem[] = [];
+
+  for (const section of matchingSections) {
+    const { data } = await http.get(`/library/sections/${section.key}/all`, {
+      params: { 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 500 },
+    });
+    const items = data.MediaContainer?.Metadata || [];
+    for (const item of items) {
+      allItems.push(plexToContentItem(item, 'ready'));
+    }
+  }
+
+  // Sort alphabetically
+  allItems.sort((a, b) => {
+    const titleA = (a.showTitle || a.title).toLowerCase();
+    const titleB = (b.showTitle || b.title).toLowerCase();
+    return titleA.localeCompare(titleB);
+  });
+
+  setCached(cacheKey, allItems, 600); // Cache for 10 minutes
+  return allItems;
+}
+
 export async function search(query: string): Promise<ContentItem[]> {
   const http = await getClient();
   const { data } = await http.get('/search', { params: { query } });

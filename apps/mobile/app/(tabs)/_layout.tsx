@@ -10,6 +10,7 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
     Home: focused ? '◉' : '○',
     'TV Shows': focused ? '▣' : '□',
     Movies: focused ? '▶' : '▷',
+    Library: focused ? '▤' : '▤',
     Search: focused ? '⦿' : '◎',
     Settings: focused ? '⚙' : '⚙',
   };
@@ -102,6 +103,13 @@ export default function TabLayout() {
         options={{
           title: 'Movies',
           tabBarIcon: ({ focused }) => <TabIcon name="Movies" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="library"
+        options={{
+          title: 'Library',
+          tabBarIcon: ({ focused }) => <TabIcon name="Library" focused={focused} />,
         }}
       />
       <Tabs.Screen
