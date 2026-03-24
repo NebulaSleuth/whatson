@@ -122,13 +122,9 @@ export default function LibraryScreen() {
       const row = Math.floor(index / NUM_COLUMNS);
       if (row !== currentRowRef.current) {
         currentRowRef.current = row;
-        // Snap to show 2 full rows starting from the row above the focused one
         const topRow = Math.max(0, row - 1);
         const scrollY = topRow * TV_ROW_H;
-        // Use a short delay to override Android TV's native scroll
-        setTimeout(() => {
-          listRef.current?.scrollToOffset({ offset: scrollY, animated: false });
-        }, 50);
+        listRef.current.scrollToOffset({ offset: scrollY, animated: false });
       }
     }
   }, []);
@@ -187,6 +183,7 @@ export default function LibraryScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
+          scrollEnabled={!isTV}
           removeClippedSubviews={false}
           windowSize={isTV ? 11 : 5}
           maxToRenderPerBatch={isTV ? 35 : 12}
