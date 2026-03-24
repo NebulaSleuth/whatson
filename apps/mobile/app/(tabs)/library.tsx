@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
@@ -14,9 +14,9 @@ import { colors, spacing, typography } from '@/constants/theme';
 type LibraryType = 'show' | 'movie';
 
 const LibraryGridCard = React.memo(function LibraryGridCard({
-  item, width, onPress, onCardFocus,
+  item, width, onPress,
 }: {
-  item: ContentItem; width: number; onPress: () => void; onCardFocus?: () => void;
+  item: ContentItem; width: number; onPress: () => void;
 }) {
   const [focused, setFocused] = useState(false);
   const posterWidth = width - spacing.sm * 2;
@@ -26,7 +26,7 @@ const LibraryGridCard = React.memo(function LibraryGridCard({
     <Pressable
       style={[gridCardStyles.container, { width }]}
       onPress={onPress}
-      onFocus={() => { setFocused(true); onCardFocus?.(); }}
+      onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable={true}
     >
@@ -82,7 +82,6 @@ const gridCardStyles = StyleSheet.create({
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
-  const listRef = useRef<FlatList>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['library', type],
@@ -100,29 +99,15 @@ export default function LibraryScreen() {
   const itemWidth = Math.floor((screenWidth - gridPadding) / numColumns);
 
   // Scroll to keep focused card fully visible
-  const itemCountRef = useRef(0);
-  itemCountRef.current = items.length;
+  // No manual scroll — let Android TV's native focus-scroll handle it
 
-  const handleCardFocus = useCallback((index: number) => {
-    if (!isTV || !listRef.current || itemCountRef.current === 0) return;
-    if (index < 0 || index >= itemCountRef.current) return;
-    try {
-      listRef.current.scrollToIndex({
-        index,
-        animated: true,
-        viewPosition: 0.4,
-      });
-    } catch {}
-  }, []);
-
-  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
+  const renderItem = useCallback(({ item }: { item: ContentItem }) => (
     <LibraryGridCard
       item={item}
       width={itemWidth}
       onPress={() => handleItemPress(item)}
-      onCardFocus={() => handleCardFocus(index)}
     />
-  ), [handleItemPress, itemWidth, handleCardFocus]);
+  ), [handleItemPress, itemWidth]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -161,7 +146,6 @@ export default function LibraryScreen() {
         <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
       ) : (
         <FlatList
-          ref={listRef}
           key={`library-${type}-${numColumns}`}
           data={items}
           numColumns={numColumns}
@@ -169,10 +153,9 @@ export default function LibraryScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
           removeClippedSubviews={false}
-          maxToRenderPerBatch={isTV ? 21 : 12}
-          windowSize={isTV ? 7 : 5}
-          initialNumToRender={isTV ? 28 : 15}
-          onScrollToIndexFailed={() => {}}
+          maxToRenderPerBatch={isTV ? 35 : 12}
+          windowSize={isTV ? 11 : 5}
+          initialNumToRender={isTV ? 35 : 15}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
