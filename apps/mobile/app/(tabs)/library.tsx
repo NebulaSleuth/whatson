@@ -15,31 +15,17 @@ type LibraryType = 'show' | 'movie';
 
 const NUM_COLUMNS = isTV ? 7 : 3;
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 const GRID_PADDING = spacing.md * 2;
 const ITEM_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS);
 
-// On TV: size cards so exactly 2 rows fit in the available grid area
-// Available height = screen - tab bar (56) - header (~40) - toggle row (~50) - grid top margin
-const TV_HEADER_SPACE = 56 + 40 + 50 + spacing.lg;
-const TV_GRID_HEIGHT = SCREEN_HEIGHT - TV_HEADER_SPACE;
-const TV_ROW_HEIGHT = Math.floor(TV_GRID_HEIGHT / 2);
-const TV_TITLE_SPACE = 24 + spacing.xs + spacing.md; // title + marginTop + marginBottom
-const TV_BORDER = 6; // 3px border * 2
-const TV_POSTER_HEIGHT = TV_ROW_HEIGHT - TV_TITLE_SPACE - TV_BORDER;
-const TV_POSTER_WIDTH = Math.floor(TV_POSTER_HEIGHT / 1.5);
-
-const POSTER_WIDTH = isTV ? Math.min(TV_POSTER_WIDTH, ITEM_WIDTH - spacing.xs * 2) : ITEM_WIDTH - spacing.xs * 2;
-const POSTER_HEIGHT = isTV ? TV_POSTER_HEIGHT : Math.floor(POSTER_WIDTH * 1.5);
-
 const LibraryCard = React.memo(function LibraryCard({
-  item, width, focused, onPress, onFocus,
+  item, width, posterHeight, focused, onPress, onFocus,
 }: {
-  item: ContentItem; width: number; focused: boolean;
+  item: ContentItem; width: number; posterHeight?: number; focused: boolean;
   onPress: () => void; onFocus: () => void;
 }) {
   const pw = width - spacing.xs * 2;
-  const ph = Math.floor(pw * 1.5);
+  const ph = posterHeight || Math.floor(pw * 1.5);
 
   return (
     <Pressable
@@ -94,10 +80,14 @@ const cardStyles = StyleSheet.create({
   },
 });
 
+// Card margin/title/border overhead per row
+const CARD_OVERHEAD = spacing.xs + 20 + 6 + spacing.md; // marginTop title + title height + border + marginBottom
+
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [gridHeight, setGridHeight] = useState(0);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['library', type],
@@ -105,6 +95,11 @@ export default function LibraryScreen() {
   });
 
   const items = data || [];
+
+  // Calculate poster height to fit exactly 2 rows on TV
+  const tvPosterHeight = isTV && gridHeight > 0
+    ? Math.floor((gridHeight / 2) - CARD_OVERHEAD)
+    : undefined;
 
   const handleItemPress = useCallback((item: ContentItem) => {
     setSelectedItem(item);
@@ -114,6 +109,7 @@ export default function LibraryScreen() {
     <LibraryCard
       item={item}
       width={ITEM_WIDTH}
+      posterHeight={tvPosterHeight}
       focused={focusedId === item.id}
       onPress={() => handleItemPress(item)}
       onFocus={() => setFocusedId(item.id)}
@@ -155,8 +151,11 @@ export default function LibraryScreen() {
       ) : error ? (
         <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
       ) : (
+        <View style={{ flex: 1 }} onLayout={(e) => {
+          if (isTV && gridHeight === 0) setGridHeight(e.nativeEvent.layout.height);
+        }}>
         <FlatList
-          key={`library-${type}-${NUM_COLUMNS}`}
+          key={`library-${type}-${NUM_COLUMNS}-${tvPosterHeight || 0}`}
           data={items}
           numColumns={NUM_COLUMNS}
           keyExtractor={(item) => item.id}
@@ -174,6 +173,7 @@ export default function LibraryScreen() {
             </View>
           }
         />
+        </View>
       )}
 
       {selectedItem && (
