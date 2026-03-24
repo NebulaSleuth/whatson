@@ -63,6 +63,7 @@ export default function TabLayout() {
               borderBottomColor: colors.cardBorder,
               borderBottomWidth: 1,
               height: 56,
+              paddingRight: 100,
             }
           : {
               backgroundColor: colors.surface,
