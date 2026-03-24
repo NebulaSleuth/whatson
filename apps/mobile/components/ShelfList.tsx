@@ -31,13 +31,19 @@ export function ShelfList({ sections, onItemPress, onRefresh }: ShelfListProps) 
         const aboveSection = index > 0 ? sections[index - 1] : null;
         const belowSection = index < sections.length - 1 ? sections[index + 1] : null;
 
+        // For the first shelf, trap upward focus to its own first card
+        // This prevents Android TV from jumping to a random tab based on proximity
+        const aboveId = isTV
+          ? (aboveSection ? firstCardIds[aboveSection.id] : firstCardIds[section.id])
+          : undefined;
+
         return (
           <ContentShelf
             key={section.id}
             section={section}
             onItemPress={onItemPress}
             onRefresh={onRefresh}
-            aboveFirstCardId={isTV && aboveSection ? firstCardIds[aboveSection.id] : undefined}
+            aboveFirstCardId={aboveId}
             belowFirstCardId={isTV && belowSection ? firstCardIds[belowSection.id] : undefined}
             onFirstCardRef={isTV ? (nodeId) => handleFirstCardRef(section.id, nodeId) : undefined}
           />
