@@ -1,21 +1,64 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, findNodeHandle } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import type { ContentItem } from '@whatson/shared';
-import { ContentCard } from '@/components/ContentCard';
 import { DetailSheet } from '@/components/DetailSheet';
 import { ErrorState } from '@/components/ErrorState';
+import { SourceBadge } from '@/components/SourceBadge';
+import { ProgressBar } from '@/components/ProgressBar';
 import { TVPressable } from '@/components/TVFocusable';
-import { api } from '@/lib/api';
+import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
 
+const NUM_COLUMNS = isTV ? 7 : 3;
+
+// Simple card for the library grid — no complex focus props
+const LibraryCard = React.memo(function LibraryCard({
+  item, focused, onPress, onFocus,
+}: {
+  item: ContentItem; focused: boolean;
+  onPress: () => void; onFocus: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.card, isTV && focused && styles.cardFocused]}
+      onPress={onPress}
+      onFocus={onFocus}
+      focusable={true}
+    >
+      <View style={[styles.posterContainer, isTV && focused && styles.posterFocused]}>
+        <Image
+          source={{ uri: resolveArtworkUrl(item.artwork.poster) }}
+          style={styles.poster}
+          contentFit="cover"
+          cachePolicy="disk"
+          transition={isTV ? 0 : 200}
+        />
+        <ProgressBar percentage={item.progress.percentage} />
+        <View style={styles.badgeContainer}>
+          <SourceBadge source={item.source} />
+        </View>
+      </View>
+      <Text style={[styles.cardTitle, isTV && focused && styles.cardTitleFocused]} numberOfLines={1}>
+        {item.showTitle || item.title}
+      </Text>
+      {item.year > 0 && (
+        <Text style={styles.cardYear}>{item.year}</Text>
+      )}
+    </Pressable>
+  );
+});
+
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const listRef = useRef<FlatList>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['library', type],
@@ -26,15 +69,29 @@ export default function LibraryScreen() {
     setSelectedItem(item);
   }, []);
 
-  const items = data || [];
-  const numColumns = isTV ? 7 : 3;
-  const itemHeight = cardDimensions.poster.height + 60 + spacing.lg;
+  const handleFocus = useCallback((index: number) => {
+    setFocusedIndex(index);
+    // Scroll to keep focused item visible
+    if (isTV && listRef.current) {
+      const row = Math.floor(index / NUM_COLUMNS);
+      listRef.current.scrollToIndex({
+        index: row * NUM_COLUMNS,
+        animated: true,
+        viewPosition: 0.3,
+      });
+    }
+  }, []);
 
-  const renderItem = useCallback(({ item }: { item: ContentItem }) => (
-    <View style={styles.gridItem}>
-      <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()} />
-    </View>
-  ), [handleItemPress, refetch]);
+  const items = data || [];
+
+  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
+    <LibraryCard
+      item={item}
+      focused={focusedIndex === index}
+      onPress={() => handleItemPress(item)}
+      onFocus={() => handleFocus(index)}
+    />
+  ), [focusedIndex, handleItemPress, handleFocus]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -45,11 +102,10 @@ export default function LibraryScreen() {
         </Text>
       </View>
 
-      {/* Type Toggle */}
       <View style={styles.toggleRow}>
         <TVPressable
           style={[styles.toggleChip, type === 'show' && styles.toggleChipActive]}
-          onPress={() => setType('show')}
+          onPress={() => { setType('show'); setFocusedIndex(-1); }}
         >
           <Text style={[styles.toggleText, type === 'show' && styles.toggleTextActive]}>
             TV Shows
@@ -57,7 +113,7 @@ export default function LibraryScreen() {
         </TVPressable>
         <TVPressable
           style={[styles.toggleChip, type === 'movie' && styles.toggleChipActive]}
-          onPress={() => setType('movie')}
+          onPress={() => { setType('movie'); setFocusedIndex(-1); }}
         >
           <Text style={[styles.toggleText, type === 'movie' && styles.toggleTextActive]}>
             Movies
@@ -73,16 +129,18 @@ export default function LibraryScreen() {
         <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
       ) : (
         <FlatList
-          key={`library-${type}-${numColumns}`}
+          ref={listRef}
+          key={`library-${type}-${NUM_COLUMNS}`}
           data={items}
-          numColumns={numColumns}
+          numColumns={NUM_COLUMNS}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
           removeClippedSubviews={false}
-          maxToRenderPerBatch={isTV ? 21 : 12}
-          windowSize={isTV ? 7 : 5}
-          initialNumToRender={isTV ? 28 : 15}
+          maxToRenderPerBatch={isTV ? 28 : 12}
+          windowSize={isTV ? 9 : 5}
+          initialNumToRender={isTV ? 35 : 15}
+          onScrollToIndexFailed={() => {}}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
@@ -150,11 +208,51 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   grid: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  gridItem: {
-    width: isTV ? (cardDimensions.poster.width + 6 + spacing.md) : (cardDimensions.poster.width + spacing.md),
+  card: {
+    width: isTV
+      ? `${Math.floor(100 / NUM_COLUMNS)}%` as any
+      : `${Math.floor(100 / NUM_COLUMNS)}%` as any,
+    paddingHorizontal: spacing.xs,
     marginBottom: spacing.lg,
+  },
+  cardFocused: {
+    zIndex: 10,
+  },
+  posterContainer: {
+    width: '100%',
+    aspectRatio: 2 / 3,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  posterFocused: {
+    borderColor: colors.focus,
+    borderRadius: 10,
+  },
+  poster: {
+    width: '100%',
+    height: '100%',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: spacing.xs,
+  },
+  cardTitle: {
+    ...typography.caption,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  cardTitleFocused: {
+    color: colors.focus,
+  },
+  cardYear: {
+    ...typography.caption,
+    fontSize: isTV ? 11 : 10,
   },
   loadingContainer: {
     flex: 1,
