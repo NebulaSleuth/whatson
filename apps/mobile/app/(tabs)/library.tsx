@@ -15,10 +15,22 @@ type LibraryType = 'show' | 'movie';
 
 const NUM_COLUMNS = isTV ? 7 : 3;
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const GRID_PADDING = spacing.md * 2;
 const ITEM_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS);
-const POSTER_WIDTH = ITEM_WIDTH - spacing.xs * 2;
-const POSTER_HEIGHT = Math.floor(POSTER_WIDTH * 1.5);
+
+// On TV: size cards so exactly 2 rows fit in the available grid area
+// Available height = screen - tab bar (56) - header (~40) - toggle row (~50) - grid top margin
+const TV_HEADER_SPACE = 56 + 40 + 50 + spacing.lg;
+const TV_GRID_HEIGHT = SCREEN_HEIGHT - TV_HEADER_SPACE;
+const TV_ROW_HEIGHT = Math.floor(TV_GRID_HEIGHT / 2);
+const TV_TITLE_SPACE = 24 + spacing.xs + spacing.md; // title + marginTop + marginBottom
+const TV_BORDER = 6; // 3px border * 2
+const TV_POSTER_HEIGHT = TV_ROW_HEIGHT - TV_TITLE_SPACE - TV_BORDER;
+const TV_POSTER_WIDTH = Math.floor(TV_POSTER_HEIGHT / 1.5);
+
+const POSTER_WIDTH = isTV ? Math.min(TV_POSTER_WIDTH, ITEM_WIDTH - spacing.xs * 2) : ITEM_WIDTH - spacing.xs * 2;
+const POSTER_HEIGHT = isTV ? TV_POSTER_HEIGHT : Math.floor(POSTER_WIDTH * 1.5);
 
 const LibraryCard = React.memo(function LibraryCard({
   item, width, focused, onPress, onFocus,
