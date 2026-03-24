@@ -1,8 +1,9 @@
 import React, { useCallback } from 'react';
 import { Tabs } from 'expo-router';
-import { Text, Pressable, StyleSheet } from 'react-native';
-import { colors } from '@/constants/theme';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { colors, spacing } from '@/constants/theme';
 import { isTV } from '@/lib/tv';
+import { Clock } from '@/components/Clock';
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
@@ -52,6 +53,7 @@ function TVTabButton(props: any) {
 
 export default function TabLayout() {
   return (
+    <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -116,8 +118,21 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <View style={layoutStyles.clockOverlay} pointerEvents="none">
+      <Clock />
+    </View>
+    </View>
   );
 }
+
+const layoutStyles = StyleSheet.create({
+  clockOverlay: {
+    position: 'absolute',
+    top: isTV ? 16 : 50,
+    right: spacing.lg,
+    zIndex: 100,
+  },
+});
 
 const tvStyles = StyleSheet.create({
   tabButton: {
