@@ -144,13 +144,9 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore — strip whitespace/CRLF, then decode
-          - script: |
-              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android-keystore.jks
-              ls -la apps/mobile/android-keystore.jks
-            displayName: 'Decode keystore'
-            env:
-              KEYSTORE_B64: $(KEYSTORE_BASE64)
+          # Decode keystore (placed after prebuild creates the android/ directory)
+          - script: echo "Keystore will be decoded after prebuild"
+            displayName: 'Keystore placeholder'
 
           # Prebuild for phone
           - script: |
@@ -158,10 +154,18 @@ stages:
               WHATSON_TV=0 npx expo prebuild --platform android --no-install
             displayName: 'Expo prebuild (phone)'
 
+          # Decode keystore into android/ directory
+          - script: |
+              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android/android-keystore.jks
+              ls -la apps/mobile/android/android-keystore.jks
+            displayName: 'Decode keystore'
+            env:
+              KEYSTORE_B64: $(KEYSTORE_BASE64)
+
           # Configure signing — secret vars mapped via env
           - script: |
               cd apps/mobile/android
-              echo "WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks" >> gradle.properties
+              echo "WHATSON_UPLOAD_STORE_FILE=$(pwd)/android-keystore.jks" >> gradle.properties
               echo "WHATSON_UPLOAD_KEY_ALIAS=$KS_ALIAS" >> gradle.properties
               echo "WHATSON_UPLOAD_STORE_PASSWORD=$KS_PASSWORD" >> gradle.properties
               echo "WHATSON_UPLOAD_KEY_PASSWORD=$KS_PASSWORD" >> gradle.properties
@@ -249,13 +253,9 @@ stages:
           - script: npm run build:shared
             displayName: 'Build shared types'
 
-          # Decode keystore — strip whitespace/CRLF, then decode
-          - script: |
-              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android-keystore.jks
-              ls -la apps/mobile/android-keystore.jks
-            displayName: 'Decode keystore'
-            env:
-              KEYSTORE_B64: $(KEYSTORE_BASE64)
+          # Decode keystore (placed after prebuild creates the android/ directory)
+          - script: echo "Keystore will be decoded after prebuild"
+            displayName: 'Keystore placeholder'
 
           # Prebuild for TV
           - script: |
@@ -263,10 +263,18 @@ stages:
               WHATSON_TV=1 npx expo prebuild --platform android --no-install
             displayName: 'Expo prebuild (TV)'
 
+          # Decode keystore into android/ directory
+          - script: |
+              echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > apps/mobile/android/android-keystore.jks
+              ls -la apps/mobile/android/android-keystore.jks
+            displayName: 'Decode keystore'
+            env:
+              KEYSTORE_B64: $(KEYSTORE_BASE64)
+
           # Configure signing — secret vars mapped via env
           - script: |
               cd apps/mobile/android
-              echo "WHATSON_UPLOAD_STORE_FILE=../android-keystore.jks" >> gradle.properties
+              echo "WHATSON_UPLOAD_STORE_FILE=$(pwd)/android-keystore.jks" >> gradle.properties
               echo "WHATSON_UPLOAD_KEY_ALIAS=$KS_ALIAS" >> gradle.properties
               echo "WHATSON_UPLOAD_STORE_PASSWORD=$KS_PASSWORD" >> gradle.properties
               echo "WHATSON_UPLOAD_KEY_PASSWORD=$KS_PASSWORD" >> gradle.properties
