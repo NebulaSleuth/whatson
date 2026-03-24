@@ -32,7 +32,8 @@ export default function LibraryScreen() {
 
   const renderItem = useCallback(({ item }: { item: ContentItem }) => (
     <View style={styles.gridItem}>
-      <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()} />
+      <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()}
+        isFirstInRow={false} isLastInRow={false} />
     </View>
   ), [handleItemPress, refetch]);
 
@@ -79,6 +80,7 @@ export default function LibraryScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
+          columnWrapperStyle={styles.row}
           removeClippedSubviews={false}
           maxToRenderPerBatch={isTV ? 21 : 12}
           windowSize={isTV ? 7 : 5}
@@ -150,11 +152,16 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   grid: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  row: {
+    justifyContent: 'flex-start',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
   },
   gridItem: {
-    width: isTV ? (cardDimensions.poster.width + 6 + spacing.md) : (cardDimensions.poster.width + spacing.md),
-    marginBottom: spacing.lg,
+    flex: 1,
+    maxWidth: `${Math.floor(100 / (isTV ? 7 : 3))}%` as any,
   },
   loadingContainer: {
     flex: 1,
