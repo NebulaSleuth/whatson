@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
@@ -28,14 +28,16 @@ export default function LibraryScreen() {
 
   const items = data || [];
   const numColumns = isTV ? 7 : 3;
-  const itemHeight = cardDimensions.poster.height + 60 + spacing.lg;
+  const screenWidth = Dimensions.get('window').width;
+  const gridPadding = spacing.md * 2;
+  const itemWidth = Math.floor((screenWidth - gridPadding) / numColumns);
 
   const renderItem = useCallback(({ item }: { item: ContentItem }) => (
-    <View style={styles.gridItem}>
+    <View style={{ width: itemWidth, paddingHorizontal: spacing.xs }}>
       <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()}
         isFirstInRow={false} isLastInRow={false} />
     </View>
-  ), [handleItemPress, refetch]);
+  ), [handleItemPress, refetch, itemWidth]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -80,7 +82,6 @@ export default function LibraryScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
-          columnWrapperStyle={styles.row}
           removeClippedSubviews={false}
           maxToRenderPerBatch={isTV ? 21 : 12}
           windowSize={isTV ? 7 : 5}
@@ -153,15 +154,6 @@ const styles = StyleSheet.create({
   },
   grid: {
     paddingHorizontal: spacing.md,
-  },
-  row: {
-    justifyContent: 'flex-start',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  gridItem: {
-    flex: 1,
-    maxWidth: `${Math.floor(100 / (isTV ? 7 : 3))}%` as any,
   },
   loadingContainer: {
     flex: 1,
