@@ -101,16 +101,16 @@ export default function LibraryScreen() {
 
   // Scroll to keep focused card fully visible
   const handleCardFocus = useCallback((index: number) => {
-    if (isTV && listRef.current) {
-      // scrollToIndex with viewPosition 0.5 centers the row
-      const rowIndex = Math.floor(index / numColumns) * numColumns;
+    if (isTV && listRef.current && items.length > 0) {
+      // Clamp to valid index range
+      const safeIndex = Math.min(index, items.length - 1);
       listRef.current.scrollToIndex({
-        index: rowIndex,
+        index: safeIndex,
         animated: true,
         viewPosition: 0.4,
       });
     }
-  }, [numColumns]);
+  }, [items.length]);
 
   const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
     <LibraryGridCard
