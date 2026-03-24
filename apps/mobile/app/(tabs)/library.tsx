@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
@@ -100,6 +100,8 @@ export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const listRef = useRef<FlatList>(null);
+  const currentRowRef = useRef(0);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['library', type],
@@ -112,16 +114,35 @@ export default function LibraryScreen() {
     setSelectedItem(item);
   }, []);
 
-  const renderItem = useCallback(({ item }: { item: ContentItem }) => (
+  // On TV: when a card gets focus, snap scroll to show full rows
+  const handleCardFocus = useCallback((item: ContentItem, index: number) => {
+    setFocusedId(item.id);
+
+    if (isTV && listRef.current) {
+      const row = Math.floor(index / NUM_COLUMNS);
+      if (row !== currentRowRef.current) {
+        currentRowRef.current = row;
+        // Snap to show 2 full rows starting from the row above the focused one
+        const topRow = Math.max(0, row - 1);
+        const scrollY = topRow * TV_ROW_H;
+        // Use a short delay to override Android TV's native scroll
+        setTimeout(() => {
+          listRef.current?.scrollToOffset({ offset: scrollY, animated: false });
+        }, 50);
+      }
+    }
+  }, []);
+
+  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
     <LibraryCard
       item={item}
       width={ITEM_WIDTH}
       posterHeight={isTV ? TV_POSTER_H : undefined}
       focused={focusedId === item.id}
       onPress={() => handleItemPress(item)}
-      onFocus={() => setFocusedId(item.id)}
+      onFocus={() => handleCardFocus(item, index)}
     />
-  ), [handleItemPress, focusedId]);
+  ), [handleItemPress, focusedId, handleCardFocus]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -159,6 +180,7 @@ export default function LibraryScreen() {
         <ErrorState message={(error as Error).message} onRetry={() => refetch()} />
       ) : (
         <FlatList
+          ref={listRef}
           key={`library-${type}-${NUM_COLUMNS}`}
           data={items}
           numColumns={NUM_COLUMNS}
