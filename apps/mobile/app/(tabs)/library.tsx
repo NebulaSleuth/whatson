@@ -53,7 +53,8 @@ const LibraryGridCard = React.memo(function LibraryGridCard({
 const gridCardStyles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.xs,
-    marginBottom: spacing.md,
+    paddingVertical: isTV ? spacing.sm : 0,
+    marginBottom: isTV ? spacing.md : spacing.md,
   },
   posterContainer: {
     borderRadius: 8,
@@ -224,6 +225,7 @@ const styles = StyleSheet.create({
   },
   grid: {
     paddingHorizontal: spacing.md,
+    paddingBottom: isTV ? 200 : 40,
   },
   loadingContainer: {
     flex: 1,
