@@ -100,17 +100,20 @@ export default function LibraryScreen() {
   const itemWidth = Math.floor((screenWidth - gridPadding) / numColumns);
 
   // Scroll to keep focused card fully visible
+  const itemCountRef = useRef(0);
+  itemCountRef.current = items.length;
+
   const handleCardFocus = useCallback((index: number) => {
-    if (isTV && listRef.current && items.length > 0) {
-      // Clamp to valid index range
-      const safeIndex = Math.min(index, items.length - 1);
+    if (!isTV || !listRef.current || itemCountRef.current === 0) return;
+    if (index < 0 || index >= itemCountRef.current) return;
+    try {
       listRef.current.scrollToIndex({
-        index: safeIndex,
+        index,
         animated: true,
         viewPosition: 0.4,
       });
-    }
-  }, [items.length]);
+    } catch {}
+  }, []);
 
   const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
     <LibraryGridCard
