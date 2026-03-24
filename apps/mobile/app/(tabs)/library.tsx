@@ -79,15 +79,10 @@ export default function LibraryScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.grid}
-          removeClippedSubviews={!isTV}
+          removeClippedSubviews={false}
           maxToRenderPerBatch={isTV ? 21 : 12}
-          windowSize={isTV ? 5 : 3}
-          initialNumToRender={isTV ? 21 : 12}
-          getItemLayout={(_data, index) => ({
-            length: itemHeight,
-            offset: itemHeight * Math.floor(index / numColumns),
-            index,
-          })}
+          windowSize={isTV ? 7 : 5}
+          initialNumToRender={isTV ? 28 : 15}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
