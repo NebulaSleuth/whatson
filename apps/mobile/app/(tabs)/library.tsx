@@ -49,14 +49,11 @@ export default function LibraryScreen() {
   // Keep ref in sync
   useEffect(() => { focusedIndexRef.current = focusedIndex; }, [focusedIndex]);
 
-  // Scroll to keep focused row visible
+  // Scroll to keep focused row visible — snap to row, no animation
   const scrollToRow = useCallback((row: number) => {
     if (!scrollRef.current) return;
-    // Calculate scroll position to center the row
-    const rowTop = row * ROW_HEIGHT;
-    const viewportCenter = SCREEN_HEIGHT * 0.4;
-    const scrollY = Math.max(0, rowTop - viewportCenter);
-    scrollRef.current.scrollTo({ y: scrollY, animated: true });
+    const scrollY = Math.max(0, row * ROW_HEIGHT);
+    scrollRef.current.scrollTo({ y: scrollY, animated: false });
   }, []);
 
   // Handle D-pad navigation manually on TV
