@@ -28,6 +28,13 @@ export default function LibraryScreen() {
 
   const items = data || [];
   const numColumns = isTV ? 7 : 3;
+  const itemHeight = cardDimensions.poster.height + 60 + spacing.lg;
+
+  const renderItem = useCallback(({ item }: { item: ContentItem }) => (
+    <View style={styles.gridItem}>
+      <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()} />
+    </View>
+  ), [handleItemPress, refetch]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -70,13 +77,17 @@ export default function LibraryScreen() {
           data={items}
           numColumns={numColumns}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.gridItem}>
-              <ContentCard item={item} onPress={handleItemPress} onMarkWatched={() => refetch()} />
-            </View>
-          )}
+          renderItem={renderItem}
           contentContainerStyle={styles.grid}
-          removeClippedSubviews={false}
+          removeClippedSubviews={!isTV}
+          maxToRenderPerBatch={isTV ? 21 : 12}
+          windowSize={isTV ? 5 : 3}
+          initialNumToRender={isTV ? 21 : 12}
+          getItemLayout={(_data, index) => ({
+            length: itemHeight,
+            offset: itemHeight * Math.floor(index / numColumns),
+            index,
+          })}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
