@@ -9,6 +9,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { TVPressable } from '@/components/TVFocusable';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
+import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
@@ -102,6 +103,13 @@ export default function LibraryScreen() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
   const currentRowRef = useRef(0);
+
+  useTVBackHandler(useCallback(() => {
+    setFocusedId(null);
+    currentRowRef.current = 0;
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    return true;
+  }, []));
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['library', type],

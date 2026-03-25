@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,6 +15,7 @@ import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
 import { setStoredApiUrl, setAppConfigured } from '@/lib/storage';
+import { useTVBackHandler } from '@/lib/useBackHandler';
 
 interface ServiceStatus {
   connected: boolean;
@@ -30,7 +32,13 @@ interface ServerConfigData {
 
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
+  const apiInputRef = useRef<TextInput>(null);
   const { apiUrl, setApiUrl, setConfigured } = useAppStore();
+
+  useTVBackHandler(useCallback(() => {
+    apiInputRef.current?.focus();
+    return true;
+  }, []));
   const [localApiUrl, setLocalApiUrl] = useState(apiUrl);
   const [serverConfig, setServerConfig] = useState<ServerConfigData | null>(null);
   const [services, setServices] = useState<Record<string, ServiceStatus>>({
@@ -110,6 +118,7 @@ export default function SettingsScreen() {
             URL of your Whats On backend server.
           </Text>
           <TVTextInput
+            inputRef={apiInputRef}
             style={styles.input}
             value={localApiUrl}
             onChangeText={setLocalApiUrl}

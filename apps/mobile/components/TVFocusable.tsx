@@ -41,10 +41,12 @@ export function TVPressable({
 export function TVTextInput({
   style,
   onSubmitEditing,
+  inputRef: externalRef,
   ...props
-}: React.ComponentProps<typeof TextInput>) {
+}: React.ComponentProps<typeof TextInput> & { inputRef?: React.RefObject<TextInput> }) {
   const [focused, setFocused] = useState(false);
-  const inputRef = React.useRef<TextInput>(null);
+  const internalRef = React.useRef<TextInput>(null);
+  const inputRef = externalRef || internalRef;
 
   const handleSubmit = React.useCallback((e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
     if (!isTV) {

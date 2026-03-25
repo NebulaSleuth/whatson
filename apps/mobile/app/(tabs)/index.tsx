@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,11 +7,18 @@ import { ShelfList } from '@/components/ShelfList';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { isTV } from '@/lib/tv';
+import { useTVBackHandler } from '@/lib/useBackHandler';
 import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
 import { colors, spacing, typography } from '@/constants/theme';
 
 export default function HomeScreen() {
+  const scrollRef = useRef<ScrollView>(null);
+
+  useTVBackHandler(useCallback(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    return true;
+  }, []));
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
@@ -35,6 +42,7 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={styles.scrollView}
         refreshControl={
           isTV ? undefined : (

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,14 @@ import {
   Alert,
   Modal,
   Image as RNImage,
+  TextInput,
 } from 'react-native';
 // expo-image not used on discover cards due to Android TV rendering issues
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { isTV } from '@/lib/tv';
+import { useTVBackHandler } from '@/lib/useBackHandler';
 import { getSonarrPrefs, setSonarrPrefs, getRadarrPrefs, setRadarrPrefs } from '@/lib/storage';
 import type { ContentItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
@@ -29,8 +31,14 @@ type FilterType = 'all' | 'tv' | 'movie';
 
 export default function SearchScreen() {
   const queryClient = useQueryClient();
+  const searchInputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SearchMode>('library');
+
+  useTVBackHandler(useCallback(() => {
+    searchInputRef.current?.focus();
+    return true;
+  }, []));
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [trackingItem, setTrackingItem] = useState<any | null>(null);
@@ -127,6 +135,7 @@ export default function SearchScreen() {
       {/* Search Input */}
       <View style={styles.searchContainer}>
         <TVTextInput
+          inputRef={searchInputRef}
           style={styles.searchInput}
           placeholder={mode === 'library' ? 'Search your library...' : 'Search to discover & track...'}
           placeholderTextColor={colors.textMuted}
