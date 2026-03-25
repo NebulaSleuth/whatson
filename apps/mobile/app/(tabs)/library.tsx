@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions, UIManager, Platform, findNodeHandle } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,10 +33,10 @@ const NUM_COLUMNS = isTV ? Math.max(1, Math.floor((SCREEN_WIDTH - GRID_PADDING) 
 const ITEM_WIDTH = isTV ? Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS) : Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS);
 
 const LibraryCard = React.memo(function LibraryCard({
-  item, width, posterHeight, focused, onPress, onFocus,
+  item, width, posterHeight, focused, onPress, onFocus, cardRef,
 }: {
   item: ContentItem; width: number; posterHeight?: number; focused: boolean;
-  onPress: () => void; onFocus: () => void;
+  onPress: () => void; onFocus: () => void; cardRef?: React.Ref<any>;
 }) {
   // If posterHeight is set, derive width from it to maintain 2:3 ratio
   // Otherwise derive height from width
@@ -46,6 +46,7 @@ const LibraryCard = React.memo(function LibraryCard({
 
   return (
     <Pressable
+      ref={cardRef}
       style={[cardStyles.container, { width }]}
       onPress={onPress}
       onFocus={onFocus}
@@ -103,11 +104,19 @@ export default function LibraryScreen() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
   const currentRowRef = useRef(0);
+  const firstCardRef = useRef<any>(null);
 
   useTVBackHandler(useCallback(() => {
     setFocusedId(null);
     currentRowRef.current = 0;
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    // Focus the first card
+    if (firstCardRef.current && Platform.OS === 'android') {
+      try {
+        const nodeId = findNodeHandle(firstCardRef.current);
+        if (nodeId) UIManager.updateView(nodeId, 'RCTView', { hasTVPreferredFocus: true });
+      } catch {}
+    }
     return true;
   }, []));
 
@@ -145,6 +154,7 @@ export default function LibraryScreen() {
       focused={focusedId === item.id}
       onPress={() => handleItemPress(item)}
       onFocus={() => handleCardFocus(item, index)}
+      cardRef={index === 0 ? firstCardRef : undefined}
     />
   ), [handleItemPress, focusedId, handleCardFocus]);
 

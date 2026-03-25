@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem, ContentSection, TrackedItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
-import { ShelfList } from '@/components/ShelfList';
+import { ShelfList, type ShelfListHandle } from '@/components/ShelfList';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { ErrorState } from '@/components/ErrorState';
@@ -40,8 +40,10 @@ function trackedShowToContentItem(t: TrackedItem): ContentItem {
 
 export default function TVShowsScreen() {
   const scrollRef = useRef<ScrollView>(null);
+  const shelfListRef = useRef<ShelfListHandle>(null);
   useTVBackHandler(useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    shelfListRef.current?.focusFirst();
     return true;
   }, []));
 
@@ -151,6 +153,7 @@ export default function TVShowsScreen() {
               if (sections.length === 0) return null;
               return (
                 <ShelfList
+                  ref={shelfListRef}
                   sections={sections}
                   onItemPress={(item) => {
                     // Tracked items use a different handler

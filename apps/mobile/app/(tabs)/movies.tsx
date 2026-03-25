@@ -3,7 +3,7 @@ import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem, ContentSection } from '@whatson/shared';
-import { ShelfList } from '@/components/ShelfList';
+import { ShelfList, type ShelfListHandle } from '@/components/ShelfList';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { ErrorState } from '@/components/ErrorState';
@@ -14,8 +14,10 @@ import { colors, spacing, typography } from '@/constants/theme';
 
 export default function MoviesScreen() {
   const scrollRef = useRef<ScrollView>(null);
+  const shelfListRef = useRef<ShelfListHandle>(null);
   useTVBackHandler(useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
+    shelfListRef.current?.focusFirst();
     return true;
   }, []));
 
@@ -105,6 +107,7 @@ export default function MoviesScreen() {
               if (sections.length === 0) return null;
               return (
                 <ShelfList
+                  ref={shelfListRef}
                   sections={sections}
                   onItemPress={handleItemPress}
                   onRefresh={refetchAll}

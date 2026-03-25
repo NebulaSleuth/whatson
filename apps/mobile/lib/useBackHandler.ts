@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, UIManager, Platform, findNodeHandle } from 'react-native';
 import { isTV } from './tv';
 
 /**
@@ -17,4 +17,18 @@ export function useTVBackHandler(handler: () => boolean) {
 
     return () => subscription.remove();
   }, [handler]);
+}
+
+/**
+ * Programmatically set focus to a React component on Android TV.
+ * Pass a ref to the component you want to focus.
+ */
+export function requestTVFocus(ref: React.RefObject<any>) {
+  if (!isTV || !ref.current) return;
+  try {
+    const nodeHandle = findNodeHandle(ref.current);
+    if (nodeHandle && Platform.OS === 'android') {
+      UIManager.updateView(nodeHandle, 'RCTView', { hasTVPreferredFocus: true });
+    }
+  } catch {}
 }
