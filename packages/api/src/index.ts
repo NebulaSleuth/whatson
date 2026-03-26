@@ -52,6 +52,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve the admin UI — check multiple locations for the admin/ directory
+import { join as pathJoin, dirname as pathDirname } from 'path';
+import { existsSync as fileExists } from 'fs';
+import { setupRouter } from './routes/setup.js';
+const adminCandidates = [
+  pathJoin(__dirname, '..', 'admin'),                    // Dev mode (dist/../admin)
+  pathJoin(pathDirname(process.execPath), 'admin'),      // Standalone (next to .exe)
+  pathJoin(process.cwd(), 'admin'),                      // CWD fallback
+];
+for (const dir of adminCandidates) {
+  if (fileExists(dir)) {
+    app.use('/setup', express.static(dir));
+    break;
+  }
+}
+// Fallback: serve inline HTML if static files not found
+app.use('/setup', setupRouter);
+
 // Routes
 app.use('/api', healthRouter);
 app.use('/api', homeRouter);
@@ -71,8 +89,21 @@ app.use('/api', libraryRouter);
 const server = createServer(app);
 initWebSocket(server);
 
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[Whats On API] Port ${config.port} is already in use. Retrying in 5 seconds...`);
+    setTimeout(() => {
+      server.close();
+      server.listen(config.port);
+    }, 5000);
+  } else {
+    console.error(`[Whats On API] Server error:`, err);
+  }
+});
+
 server.listen(config.port, () => {
   console.log(`[Whats On API] Ready on port ${config.port}`);
+  console.log(`[Whats On API] Admin UI: http://localhost:${config.port}/setup`);
   console.log(`[Whats On API] .env loaded from: ${process.cwd()}`);
   console.log(
     `[Plex] ${config.plex.token ? (config.plex.url ? `Direct: ${config.plex.url}` : 'Auto-discover via plex.tv') : 'Not configured'}`,

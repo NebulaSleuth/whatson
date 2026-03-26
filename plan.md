@@ -1,8 +1,8 @@
 # "Whats On" — Implementation Plan
 
-> **Last Updated**: 2026-03-19
-> **Current Phase**: Phase 2 — TV Platform Support
-> **Overall Progress**: Phase 1 + 1.5 complete, starting Phase 2
+> **Last Updated**: 2026-03-25
+> **Current Phase**: Phase 2 nearly complete, beginning Phase 3
+> **Overall Progress**: Phases 1, 1.5, 2 substantially complete
 
 ---
 
@@ -12,7 +12,7 @@
 |-------|--------|----------|
 | **Phase 1**: Foundation (Backend + Mobile) | **Complete** | ██████████████ 100% |
 | **Phase 1.5**: Discovery & Tracking | **Complete** | ██████████████ 100% |
-| **Phase 2**: TV Platforms (Android TV + Apple TV) | **In Progress** | ░░░░░░░░░░░░░░ 0% |
+| **Phase 2**: TV Platforms + Video Player + Infrastructure | **Near Complete** | ████████████░░ 90% |
 | **Phase 3**: Windows + Live TV | Not Started | ░░░░░░░░░░░░░░ 0% |
 | **Phase 4**: Enhanced Features | Not Started | ░░░░░░░░░░░░░░ 0% |
 | **Phase 5**: Roku + Polish | Not Started | ░░░░░░░░░░░░░░ 0% |
@@ -42,9 +42,9 @@
 │                     (Node.js + Express)                          │
 │                                                                  │
 │  ┌─────────────┐ ┌─────────────┐ ┌──────────┐ ┌──────────────┐  │
-│  │ Plex        │ │ Sonarr      │ │ Radarr   │ │ EPG          │  │
+│  │ Plex        │ │ Sonarr      │ │ Radarr   │ │ TMDB         │  │
 │  │ Service     │ │ Service     │ │ Service  │ │ Service      │  │
-│  │ (plex.tv    │ │             │ │          │ │ (TVmaze+TMDB)│  │
+│  │ (plex.tv    │ │             │ │          │ │              │  │
 │  │  discovery) │ │             │ │          │ │              │  │
 │  └──────┬──────┘ └──────┬──────┘ └────┬─────┘ └──────┬───────┘  │
 │         │               │             │               │          │
@@ -53,7 +53,15 @@
 │  │  • Normalize content from all sources                      │  │
 │  │  • Merge watch state + availability + schedules            │  │
 │  │  • Cache layer (in-memory via node-cache)                  │  │
-│  │  • WebSocket for real-time updates (Phase 4+)              │  │
+│  │  • WebSocket for real-time updates                         │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                    Infrastructure                          │  │
+│  │  • Cross-platform service installer (NSSM/systemd/launchd)│  │
+│  │  • Standalone executable (Node.js SEA + esbuild)          │  │
+│  │  • File-based logging with platform-aware paths           │  │
+│  │  • Azure DevOps CI/CD pipeline                            │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
@@ -64,14 +72,14 @@
 │  │  • Push notification service (FCM/APNs)                    │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
-              │               │            │              │
-              ▼               ▼            ▼              ▼
-        ┌──────────┐  ┌───────────┐  ┌──────────┐  ┌──────────┐
-        │ Plex     │  │ Sonarr    │  │ Radarr   │  │ TVmaze   │
-        │ Server   │  │ Server    │  │ Server   │  │ API      │
-        │(local or │  │(local or  │  │(local or │  │ (cloud)  │
-        │ remote)  │  │ remote)   │  │ remote)  │  │          │
-        └──────────┘  └───────────┘  └──────────┘  └──────────┘
+              │               │            │
+              ▼               ▼            ▼
+        ┌──────────┐  ┌───────────┐  ┌──────────┐
+        │ Plex     │  │ Sonarr    │  │ Radarr   │
+        │ Server   │  │ Server    │  │ Server   │
+        │(local or │  │(local or  │  │(local or │
+        │ remote)  │  │ remote)   │  │ remote)  │
+        └──────────┘  └───────────┘  └──────────┘
 ```
 
 **Connectivity**: The backend supports both local and remote access:
@@ -157,7 +165,7 @@ interface ServerConfig {
 
 ## Phased Implementation Plan
 
-### Phase 1: Foundation (Backend + Core Mobile App) — IN PROGRESS
+### Phase 1: Foundation (Backend + Core Mobile App) ✅ COMPLETE
 
 **Goal**: Working backend API + basic mobile app showing Plex content on Android and iOS.
 
@@ -188,7 +196,7 @@ interface ServerConfig {
 - [x] Artwork URL generation with token authentication
 - [x] Normalize Plex metadata to unified ContentItem model
 - [x] Error handling and connection health checks (`GET /api/health`)
-- [ ] Plex OAuth PIN authentication flow (currently uses static token)
+- [ ] Web Admin UI for server configuration (replaces need for manual .env editing — see Phase 2.16)
 
 #### 1.3 — Backend: Sonarr Service ✅ COMPLETE
 - [x] API key authentication
@@ -235,18 +243,13 @@ interface ServerConfig {
 - [x] Error state UI with retry button
 - [x] Settings tab with full server config display
 
-#### 1.7 — Setup/Onboarding Flow ⬜ NOT STARTED
-- [ ] First-run configuration screen
-- [ ] Plex OAuth login flow (opens browser → redirects back)
-- [ ] Sonarr URL + API key entry with connection test
-- [ ] Radarr URL + API key entry with connection test
-- [ ] Settings screen to modify connections later
-
-**Phase 1 Deliverable**: Working Android + iOS app showing Plex/Sonarr/Radarr content with mark-as-watched functionality and search.
+#### 1.7 — Setup/Onboarding Flow — MOVED TO PHASE 2.16 (Web Admin UI)
+- Replaced by Web Admin UI served by the backend itself (see Phase 2.16)
+- Plex OAuth PIN flow happens in the browser on the server, not in the mobile/TV app
+- Mobile/TV apps consume the API — they don't need to know about auth tokens
 
 **Remaining for Phase 1**:
-- Onboarding first-run redirect (1.7) — deferred, Settings tab serves this purpose
-- Plex OAuth flow (1.2) — deferred, token-based auth works for now
+- Web Admin UI for server config (moved to Phase 2.16)
 
 ---
 
@@ -299,39 +302,149 @@ interface ServerConfig {
 
 ---
 
-### Phase 2: TV Platform Support (Android TV + Apple TV) ⬜ NOT STARTED
+### Phase 2: TV Platforms + Video Player + Infrastructure ✅ NEAR COMPLETE
 
-**Goal**: Adapt the app for 10-foot UI on Android TV and Apple TV.
+**Goal**: Adapt the app for 10-foot UI on Android TV, add built-in video player, WebSocket realtime updates, backend service management, standalone builds, and CI/CD.
 
-#### 2.1 — TV Navigation System
-- [ ] Implement D-pad focus management using react-native-tvos focus engine
-- [ ] Focus highlight styling (scale 1.1x + border glow)
-- [ ] Focus memory per row (remember horizontal scroll position)
-- [ ] TVFocusGuideView for non-aligned elements
-- [ ] Back button handling (Detail → Row → Home → Exit confirmation)
-- [ ] Remote menu/options button → context menu
+#### 2.1 — TV Navigation System ✅ COMPLETE
+- [x] D-pad focus management using react-native-tvos focus engine
+- [x] Focus highlight styling (gold border `#E5A00D` on focused cards)
+- [x] Focus memory per row (horizontal scroll auto-follows focus)
+- [x] Cross-shelf vertical navigation via `nextFocusUp`/`nextFocusDown` node IDs
+- [x] Edge trapping (first/last card in row wraps `nextFocusLeft`/`nextFocusRight` to self)
+- [x] Back button handling per tab (scrolls to top + focuses first card, prevents app exit)
+- [x] Tab-scoped back handlers via `useIsFocused()` — only active tab processes back press
+- [x] `TVPressable` wrapper component with focus border styling
+- [x] `TVTextInput` component with TV keyboard handling
+- [x] `TVTabButton` — switches tabs on focus (not just press) for D-pad navigation
 
-#### 2.2 — TV Layout Adaptations
-- [ ] Top horizontal navigation bar (replace bottom tabs)
-- [ ] Larger cards with TV-appropriate spacing
-- [ ] Safe area compliance (48px sides, 27px top/bottom for Android TV; 90px/60px for tvOS)
-- [ ] Typography scaling (minimum 24px body text)
-- [ ] Peeking card at row edges
-- [ ] 5-7 cards per row at 1080p
+#### 2.2 — TV Layout Adaptations ✅ COMPLETE
+- [x] Top horizontal tab bar on TV (bottom on phone)
+- [x] Larger cards with TV-appropriate spacing (160x240px on TV vs 140x210px on phone)
+- [x] Safe area compliance (48px horizontal, 27px vertical)
+- [x] Typography scaling (28px title, 18px body on TV)
+- [x] Card peeking at shelf edges
+- [x] Responsive column count on Library grid based on screen width
+- [x] Clock overlay in upper-right corner (updates every second, 12-hour format)
+- [x] Tab bar right-padding to accommodate clock
 
-#### 2.3 — TV-Specific Interactions
-- [ ] Long-press select → context menu (Mark as Watched, View Details)
-- [ ] Card focus expansion: show summary snippet, episode info, duration on focus
-- [ ] Smooth horizontal scroll animation on D-pad Left/Right
-- [ ] Vertical row scroll with partial next-row preview
+#### 2.3 — TV-Specific Interactions ✅ COMPLETE
+- [x] Long-press on card → context menu (Mark as Watched, Mark All as Watched, Remove from Watchlist)
+- [x] Smooth horizontal scroll on card focus
+- [x] Vertical scroll snapping to show full rows (Library grid)
+- [x] `scrollEnabled={false}` on TV FlatLists with manual scroll control
 
-#### 2.4 — Performance Optimization for TV
-- [ ] Image preloading and caching for visible + adjacent cards
-- [ ] FlatList optimization: `windowSize`, `maxToRenderPerBatch`, `removeClippedSubviews`
-- [ ] Lazy loading for off-screen shelves
-- [ ] Test and fix Android TV horizontal focus issues (known react-native-tvos issue)
+#### 2.4 — Performance Optimization for TV ✅ COMPLETE
+- [x] Image disk caching via expo-image (`cachePolicy="disk"`)
+- [x] FlatList tuning: `windowSize`, `maxToRenderPerBatch`, `removeClippedSubviews`
+- [x] Library cards manage own focus state internally (prevents FlatList full re-render on focus change)
+- [x] `React.memo` on card components
 
-**Phase 2 Deliverable**: Full Android TV and Apple TV support with proper 10-foot UI.
+#### 2.5 — Built-in Video Player ✅ COMPLETE
+- [x] HLS streaming via expo-video with quality selection
+- [x] 9 bitrate presets (1.5–20 Mbps + original/direct play)
+- [x] Seamless mid-playback quality switching with position resume
+- [x] TV-optimized controls: D-pad seek (left/right ±10s), progress bar scrubbing (±30s)
+- [x] Control buttons: stop, rewind 30s, play/pause, forward 30s, quality picker
+- [x] Auto-hide controls after 5 seconds of inactivity
+- [x] Seek direction indicator overlay
+- [x] Progress reporting to Plex every 10 seconds
+- [x] Session management (transcode lifecycle)
+- [x] Resume from saved position (viewOffset)
+- [x] Auto-close when video ends
+- [x] Suppress realtime updates during playback (prevents stale data overwriting position)
+- [x] `useTVEventHandler` for D-pad when controls hidden
+- [x] `hasTVPreferredFocus` on play button for initial focus
+
+#### 2.6 — Backend: Playback API ✅ COMPLETE
+- [x] `GET /api/playback/:ratingKey` — stream URL with HLS transcode parameters
+- [x] `POST /api/playback/progress` — report playback position
+- [x] `POST /api/playback/stop` — stop transcode session
+- [x] Direct play vs direct stream vs full transcode modes
+- [x] Subtitle and audio track extraction from Plex metadata
+- [x] Quality parameters: maxBitrate, resolution, forceTranscode
+
+#### 2.7 — Backend: Artwork Proxy ✅ COMPLETE
+- [x] `GET /api/artwork?url=...` — proxy images through backend
+- [x] Server-side caching (24-hour TTL)
+- [x] Handles Plex auth tokens transparently
+- [x] Content-Type detection
+
+#### 2.8 — Backend: Library Endpoint ✅ COMPLETE
+- [x] `GET /api/library/:type` — returns all movies or shows from Plex
+- [x] Proxied artwork URLs
+- [x] Library tab with toggle between TV Shows and Movies
+
+#### 2.9 — WebSocket / Realtime Updates ✅ COMPLETE
+- [x] WebSocket server on `/ws` path
+- [x] Background polling every 60 seconds (when clients connected)
+- [x] Data hash comparison to detect changes
+- [x] Broadcasts invalidation events with React Query keys
+- [x] `notifyDataChanged()` called after mutations (mark watched, add tracked, etc.)
+- [x] Client: auto-reconnect every 5 seconds on disconnect
+- [x] Client: reconnects on app resume (AppState listener)
+- [x] Client: suppression flag during playback with pending queue + flush
+
+#### 2.10 — Cross-Platform Service Installer ✅ COMPLETE
+- [x] **Windows**: NSSM (Non-Sucking Service Manager) — auto-downloads if needed
+  - Auto-start on boot, environment from `.env`, stdout/stderr to log file
+- [x] **Linux**: systemd unit file — restart on failure, journalctl logging
+- [x] **macOS**: launchd plist — RunAtLoad + KeepAlive, logs to ~/Library/Logs
+
+#### 2.11 — File-Based Logging ✅ COMPLETE
+- [x] Platform-aware log paths (Windows: ProgramData, macOS: ~/Library/Logs, Linux: /var/log)
+- [x] Multi-fallback strategy (ProgramData → exe dir → temp dir)
+- [x] Intercepts console.log/warn/error + uncaught exceptions
+- [x] ISO timestamp + log level format
+- [x] `LOG_FILE` env var override
+
+#### 2.12 — Standalone Build (Node.js SEA) ✅ COMPLETE
+- [x] esbuild bundles TypeScript + all dependencies to single CJS file
+- [x] Node.js Single Executable Application (SEA) blob generation
+- [x] Inject into Node binary via postject
+- [x] macOS code signature handling (remove + re-sign ad-hoc)
+- [x] `--skip-sea` flag for bundle-only mode
+- [x] Outputs: `whatson-api.exe` (Windows), `whatson-api` (Linux/macOS)
+- [x] Lazy config via Proxy to handle esbuild bundle ordering (dotenv loads before config)
+
+#### 2.13 — Separate Phone & TV Build Configurations ✅ COMPLETE
+- [x] Dynamic `app.config.ts` with `WHATSON_TV` environment variable
+- [x] Separate packages: `com.whatson.app` (phone) vs `com.whatson.tv` (TV)
+- [x] TV build: `androidTVRequired=true`, TV banner asset (320x180px)
+- [x] Phone build: standard mobile config
+- [x] `WHATSON_TV=1 npx expo run:android` for TV build
+
+#### 2.14 — CI/CD Pipeline (Azure DevOps) ✅ COMPLETE
+- [x] Multi-stage pipeline: backend build → Linux installers → phone AAB → TV AAB
+- [x] Backend standalone executable + Linux packages (.deb, .rpm) via fpm
+- [x] Signed Android AAB for phone (`com.whatson.app`)
+- [x] Signed Android AAB for TV (`com.whatson.tv`)
+- [x] Auto-install Java 17 + Android SDK (platform 36, build-tools 36.0.0)
+- [x] Keystore signing via pipeline secrets
+- [x] Python script for Gradle signing patch (`scripts/patch-signing.py`)
+- [x] Manual trigger (no continuous build)
+
+#### 2.15 — Remaining Items
+- [ ] Apple TV (tvOS) testing and polish — code supports it via react-native-tvos but untested
+- [ ] Card focus expansion on TV: show summary snippet, episode info on focus (planned but not implemented)
+
+#### 2.16 — Web Admin UI ⬜ NOT STARTED
+**Goal**: Browser-based setup and configuration served by the backend itself at `http://server:3001/setup`.
+Users open this from any device with a browser to configure the backend — no manual `.env` editing required.
+
+- [ ] Static HTML/JS admin app served by Express (e.g., `/setup` route)
+- [ ] **Plex OAuth PIN flow**:
+  - Backend requests PIN from `plex.tv/api/v2/pins`
+  - Admin UI opens Plex auth page in browser with PIN code
+  - Backend polls for auth token completion
+  - Token saved to config (`.env` or `data/config.json`)
+- [ ] **Sonarr configuration**: URL + API key entry with "Test Connection" button
+- [ ] **Radarr configuration**: URL + API key entry with "Test Connection" button
+- [ ] **TMDB API key** (optional): entry with validation
+- [ ] **Connection status dashboard**: green/red indicators for each service
+- [ ] **Backend restart** after config changes (or hot-reload config)
+- [ ] First-run detection: if no config exists, redirect API clients to setup URL
+- [ ] Mobile/TV app: show "Configure server at http://x.x.x.x:3001/setup" message when backend has no config
 
 ---
 
@@ -543,10 +656,29 @@ interface ServerConfig {
 | Coming Soon date overlay on cards | 1.5 | All | Core | ✅ Done |
 | Continue Watching deduplication | 1.5 | All | Core | ✅ Done |
 | Android Modal detail sheet fix | 1.5 | Android | Core | ✅ Done |
-| Android TV support | 2 | Android TV | Core | ⬜ Todo |
-| Apple TV support | 2 | tvOS | Core | ⬜ Todo |
-| D-pad/remote navigation | 2 | TV | Core | ⬜ Todo |
-| 10-foot UI adaptations | 2 | TV | Core | ⬜ Todo |
+| Android TV D-pad focus management | 2 | Android TV | Core | ✅ Done |
+| TV top tab bar + TVTabButton (focus-switch) | 2 | TV | Core | ✅ Done |
+| Cross-shelf vertical navigation | 2 | TV | Core | ✅ Done |
+| TV back button handling (per-tab) | 2 | TV | Core | ✅ Done |
+| TV card sizing + safe area + typography | 2 | TV | Core | ✅ Done |
+| Clock overlay | 2 | TV | Core | ✅ Done |
+| Built-in video player (expo-video) | 2 | All | Core | ✅ Done |
+| TV player controls (D-pad seek, quality) | 2 | TV | Core | ✅ Done |
+| HLS transcode + quality selection | 2 | All | Core | ✅ Done |
+| Playback progress reporting to Plex | 2 | All | Core | ✅ Done |
+| Library tab (grid browser) | 2 | All | Core | ✅ Done |
+| WebSocket realtime updates | 2 | All | Core | ✅ Done |
+| Playback suppression of realtime updates | 2 | All | Core | ✅ Done |
+| Cross-platform service installer | 2 | Backend | Core | ✅ Done |
+| File-based logging | 2 | Backend | Core | ✅ Done |
+| Standalone build (Node.js SEA) | 2 | Backend | Core | ✅ Done |
+| Separate phone/TV build configs | 2 | Android | Core | ✅ Done |
+| Azure DevOps CI/CD pipeline | 2 | All | Core | ✅ Done |
+| Linux installers (.deb, .rpm) | 2 | Backend | Core | ✅ Done |
+| Apple TV testing + polish | 2 | tvOS | Core | ⬜ Todo |
+| Card focus expansion (summary on focus) | 2 | TV | Medium | ⬜ Todo |
+| Web Admin UI (Plex OAuth + service config) | 2 | Backend | Medium | ⬜ Todo |
+| Sonarr/Radarr ↔ Plex watch state merge | 1 | All | Medium | ⬜ Todo |
 | Windows desktop app | 3 | Windows | Core | ⬜ Todo |
 | Live TV schedule (TVmaze) | 3 | All | Core | ⬜ Todo |
 | Favorite channels | 3 | All | Core | ⬜ Todo |
@@ -575,15 +707,20 @@ interface ServerConfig {
 | **Monorepo** | npm workspaces | Native, zero-config, sufficient for this project | ✅ Set up |
 | **Backend** | Node.js + Express + TypeScript | Same language as frontend; good API client libs | ✅ Set up |
 | **Cache** | In-memory (node-cache) | Simple, fast, no external dependencies | ✅ Set up |
-| **Mobile/TV App** | React Native + Expo | 5 platforms from 1 codebase (+ Expo Router) | ✅ Set up |
+| **Realtime** | WebSocket (ws) | Background polling + client invalidation | ✅ Set up |
+| **Mobile/TV App** | React Native + Expo (react-native-tvos) | 5 platforms from 1 codebase (+ Expo Router) | ✅ Set up |
+| **Video Player** | expo-video | Native HLS playback with quality control | ✅ Set up |
 | **State/Data** | TanStack Query + Zustand | React Query for API, Zustand for app state | ✅ Set up |
 | **Shared Types** | @whatson/shared package | TypeScript types + constants shared across packages | ✅ Set up |
+| **Standalone** | esbuild + Node.js SEA | Zero-dependency single executable | ✅ Set up |
+| **Service Mgmt** | NSSM / systemd / launchd | Cross-platform daemon management | ✅ Set up |
+| **Logging** | Custom file logger | Platform-aware paths with fallbacks | ✅ Set up |
+| **CI/CD** | Azure DevOps Pipelines | Multi-stage: backend + phone AAB + TV AAB | ✅ Set up |
 | **Windows App** | react-native-windows | Microsoft-maintained, same codebase | ⬜ Phase 3 |
 | **Roku** | BrightScript + SceneGraph + SGDEX | Only option for Roku | ⬜ Phase 5 |
 | **Database** | SQLite → PostgreSQL | For profiles, preferences (Phase 4+) | ⬜ Phase 4 |
 | **Notifications** | Firebase Cloud Messaging + APNs | Industry standard | ⬜ Phase 4 |
 | **Live TV Data** | TVmaze API (free) | Best free broadcast schedule API | ⬜ Phase 3 |
-| **Metadata** | TMDB API (free) | High-quality artwork and metadata | ⬜ Phase 3 |
 | **Watch Tracking** | Trakt.tv API (free) | Cross-platform watch history sync | ⬜ Phase 4 |
 
 ---
@@ -596,32 +733,51 @@ whatson/
 ├── .prettierrc
 ├── package.json                          # npm workspaces root
 ├── tsconfig.base.json                    # Shared TS config
+├── azure-pipelines.yml                   # CI/CD pipeline (4 stages)
 ├── research.md                           # Full research document
 ├── plan.md                               # This file
+├── icon.ico                              # App icon
+├── scripts/
+│   ├── build-standalone.js              # esbuild + Node.js SEA builder
+│   └── patch-signing.py                 # Gradle signing patch for CI
 ├── apps/
 │   └── mobile/
 │       ├── package.json
 │       ├── tsconfig.json
-│       ├── app.json                      # Expo config
+│       ├── app.json                      # Expo config (static)
+│       ├── app.config.ts                 # Dynamic Expo config (phone vs TV)
+│       ├── assets/
+│       │   └── tv-banner.png            # Android TV banner (320x180)
 │       ├── constants/
-│       │   └── theme.ts                  # Dark theme, colors, typography, card sizes
+│       │   └── theme.ts                  # Dark theme, colors, typography, card sizes (phone + TV)
 │       ├── lib/
-│       │   ├── api.ts                    # API client (fetch wrapper)
-│       │   └── store.ts                  # Zustand store
+│       │   ├── api.ts                    # API client (fetch wrapper + artwork URL resolver)
+│       │   ├── store.ts                  # Zustand store
+│       │   ├── tv.ts                     # TV detection (isTV, isTVOS, isAndroidTV)
+│       │   ├── useBackHandler.ts         # TV back button handler (tab-scoped via useIsFocused)
+│       │   └── useRealtimeUpdates.ts     # WebSocket client (auto-reconnect, suppression, queue)
 │       ├── components/
-│       │   ├── ContentCard.tsx           # Poster card with badge, progress, long-press menu
-│       │   ├── ContentShelf.tsx          # Horizontal scrolling row of cards
-│       │   ├── DetailSheet.tsx           # Bottom sheet with full metadata + Mark as Watched
+│       │   ├── ContentCard.tsx           # Poster card with badge, progress, D-pad focus, long-press
+│       │   ├── ContentShelf.tsx          # Horizontal scrolling row with cross-shelf focus
+│       │   ├── ShelfList.tsx             # Multi-shelf container with focusFirst() imperative handle
+│       │   ├── DetailSheet.tsx           # Modal with full metadata + actions
 │       │   ├── ProgressBar.tsx           # Thin progress indicator
-│       │   └── SourceBadge.tsx           # Color-coded source pill (Plex/Sonarr/Radarr/Live)
+│       │   ├── SourceBadge.tsx           # Color-coded source pill
+│       │   ├── SkeletonCard.tsx          # Loading skeleton shimmer
+│       │   ├── ErrorState.tsx            # Error display with retry
+│       │   ├── Clock.tsx                 # Real-time clock overlay (TV)
+│       │   └── TVFocusable.tsx           # TVPressable + TVTextInput wrappers
 │       └── app/
-│           ├── _layout.tsx               # Root layout (QueryClientProvider)
+│           ├── _layout.tsx               # Root layout (QueryClientProvider, realtime updates)
+│           ├── player.tsx                # Built-in video player (expo-video, TV controls)
 │           └── (tabs)/
-│               ├── _layout.tsx           # Tab navigator (Home/TV/Movies/Search)
+│               ├── _layout.tsx           # Tab navigator (TV top bar, clock, TVTabButton)
 │               ├── index.tsx             # Home screen
 │               ├── tv.tsx                # TV Shows screen
 │               ├── movies.tsx            # Movies screen
-│               └── search.tsx            # Search screen with filters
+│               ├── library.tsx           # Library browser (grid, TV 2-row layout)
+│               ├── search.tsx            # Search (Library + Discover modes)
+│               └── settings.tsx          # Settings (server config, connection status)
 ├── packages/
 │   ├── shared/
 │   │   ├── package.json
@@ -629,18 +785,22 @@ whatson/
 │   │   └── src/
 │   │       ├── index.ts
 │   │       ├── types.ts                  # ContentItem, ServerConfig, API types
-│   │       └── constants.ts              # App name, colors, API base URLs
+│   │       └── constants.ts              # App name, streaming providers, API base URLs
 │   └── api/
 │       ├── package.json
 │       ├── tsconfig.json
+│       ├── nssm.exe                      # NSSM binary for Windows service management
 │       ├── .env.example                  # Documented config with local/remote options
 │       └── src/
-│           ├── index.ts                  # Express server entry point
-│           ├── config.ts                 # Environment config loader
+│           ├── index.ts                  # Express server entry (dotenv multi-path, WS init)
+│           ├── config.ts                 # Lazy config via Proxy (for esbuild compatibility)
 │           ├── cache.ts                  # In-memory cache (node-cache)
+│           ├── ws.ts                     # WebSocket server (60s polling, data hash, broadcast)
+│           ├── logger.ts                 # File logger (platform-aware paths, fallbacks)
+│           ├── service.ts                # Cross-platform service installer (NSSM/systemd/launchd)
 │           ├── services/
-│           │   ├── plex.ts               # Plex service (plex.tv discovery + direct URL)
-│           │   ├── sonarr.ts             # Sonarr service (calendar, history, queue)
+│           │   ├── plex.ts               # Plex service (plex.tv discovery, local-first, lock)
+│           │   ├── sonarr.ts             # Sonarr service (calendar, history, queue, toArray)
 │           │   ├── radarr.ts             # Radarr service (movies, history, queue)
 │           │   └── aggregator.ts         # Merges all sources into home/search responses
 │           └── routes/
@@ -648,9 +808,15 @@ whatson/
 │               ├── home.ts               # GET /api/home
 │               ├── tv.ts                 # GET /api/tv/*
 │               ├── movies.ts             # GET /api/movies/*
+│               ├── library.ts            # GET /api/library/:type
 │               ├── search.ts             # GET /api/search
+│               ├── discover.ts           # GET /api/discover/search
+│               ├── artwork.ts            # GET /api/artwork (proxy + cache)
+│               ├── playback.ts           # GET/POST /api/playback/* (stream, progress, stop)
 │               ├── scrobble.ts           # POST /api/scrobble, /api/unscrobble
-│               └── config.ts             # GET /api/config/status, POST /api/config/test
+│               ├── add.ts                # POST /api/add (tracked items)
+│               ├── config.ts             # GET/POST /api/config
+│               └── debug.ts              # GET /api/debug
 ```
 
 ---
@@ -664,19 +830,62 @@ cp .env.example .env     # Edit with your server details
 npm run dev:api           # From repo root, or: npx tsx watch src/index.ts
 ```
 
-**Mobile App:**
+**Mobile App (Phone):**
 ```bash
 npm run dev:mobile        # From repo root, or: cd apps/mobile && npx expo start
+```
+
+**Mobile App (Android TV):**
+```bash
+cd apps/mobile
+WHATSON_TV=1 npx expo run:android
+```
+
+**Standalone Backend:**
+```bash
+node scripts/build-standalone.js    # Outputs whatson-api.exe / whatson-api
+```
+
+**Install as Service:**
+```bash
+node packages/api/src/service.ts install    # Detects OS, installs appropriate service
 ```
 
 Set `EXPO_PUBLIC_API_URL` in the mobile app environment to point to your backend (defaults to `http://localhost:3001/api`).
 
 ---
 
-## Getting Started — Next Steps
+## Not Yet Implemented
 
-1. **Complete Phase 1.7** — Build onboarding/settings flow so users can configure servers from the app
-2. **Add Plex OAuth** — Replace static token with proper OAuth PIN flow for the mobile app
-3. **Cross-source merging** — Match Sonarr/Radarr items with Plex watch state
-4. **Loading/error states** — Add skeleton loaders and proper error UI
-5. Then proceed to **Phase 2** (TV platforms) or **Phase 3** (Windows + Live TV)
+### From Phase 1 (deferred):
+1. **Sonarr/Radarr ↔ Plex watch state merging** — matching by series/episode across sources
+
+### From Phase 2 (remaining):
+2. **Web Admin UI** — browser-based setup at `http://server:3001/setup` with Plex OAuth PIN flow, Sonarr/Radarr config entry, connection testing. Replaces manual `.env` editing and the deferred onboarding/OAuth items from Phase 1.
+3. **Apple TV (tvOS) testing & polish** — code supports it via react-native-tvos but untested on real hardware
+4. **Card focus expansion** — show summary snippet / episode info when card is focused on TV
+
+### Phase 3 (not started):
+5. **Windows desktop app** — react-native-windows build target
+6. **Live TV / EPG integration** — TVmaze schedule, "On Now" / "Tonight" shelves
+7. **Favorite channels** — filter live TV to preferred channels
+
+### Phase 4 (not started):
+8. **Calendar view** — merged Sonarr + Radarr + TVmaze calendar
+9. **Push notifications** — FCM/APNs for new downloads, show returns
+10. **Trakt.tv sync** — bidirectional watch history, recommendations
+11. **Overseerr/Ombi content requests** — request missing content
+12. **Multi-user profiles** — Plex managed users, per-profile state
+13. **Recommendations engine** — "Because you watched X" shelves
+14. **Home screen widgets** — Android/iOS "Up Next" widgets
+15. **Quick actions** — swipe gestures, remote button mappings
+
+### Phase 5 (not started):
+16. **Roku channel** — BrightScript/SceneGraph native app
+17. **Smart collections** — auto-generated "Quick Watch", "Binge-worthy", etc.
+18. **Statistics dashboard** — watch time charts, top content
+19. **Companion mode** — phone as TV remote
+20. **Watch party** — synchronized playback
+21. **Full EPG grid** — traditional cable-style grid view
+22. **Deep linking** — universal links, URL scheme `whatson://content/{id}`
+23. **Performance & polish** — offline cache, accessibility, i18n, animations

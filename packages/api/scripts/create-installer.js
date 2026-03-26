@@ -74,12 +74,19 @@ function createWindowsInstaller() {
   const nssmFileDirective = hasNssm ? `File "${nssmExe.replace(/\\/g, '\\\\')}"` : '';
   const nssmInstallCmd = hasNssm
     ? `
-  ; Create ProgramData directory for config and logs
-  CreateDirectory "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn"
+  ; Stop and remove existing service if upgrading
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" stop whatson-api'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" remove whatson-api confirm'
+
+  ; Read ProgramData path from environment
+  ReadEnvStr $0 ProgramData
+
+  ; Create ProgramData\\WhatsOn directory for config and logs
+  CreateDirectory "$0\\\\WhatsOn"
 
   ; Copy .env to ProgramData if it doesn't exist there
-  IfFileExists "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\.env" +2
-    CopyFiles "$INSTDIR\\\\.env.example" "$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\.env"
+  IfFileExists "$0\\\\WhatsOn\\\\.env" +2
+    CopyFiles "$INSTDIR\\\\.env.example" "$0\\\\WhatsOn\\\\.env"
 
   ; Install as Windows Service using NSSM
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" install whatson-api "$INSTDIR\\\\${exeName}"'
@@ -87,7 +94,10 @@ function createWindowsInstaller() {
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api DisplayName "Whats On API"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Description "Whats On media aggregation backend API"'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api Start SERVICE_AUTO_START'
-  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppEnvironmentExtra DATA_DIR=$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn LOG_FILE=$COMMONFILES\\\\..\\\\..\\\\ProgramData\\\\WhatsOn\\\\whatson-api.log'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStdout "$0\\\\WhatsOn\\\\whatson-api.log"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppStderr "$0\\\\WhatsOn\\\\whatson-api.log"'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppThrottle 10000'
+  nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" set whatson-api AppRestartDelay 5000'
   nsExec::ExecToLog '"$INSTDIR\\\\nssm.exe" start whatson-api'`
     : `
   ; Fallback: basic sc.exe service (may not work for all executables)
@@ -102,12 +112,18 @@ function createWindowsInstaller() {
   nsExec::ExecToLog 'sc stop whatson-api'
   nsExec::ExecToLog 'sc delete whatson-api'`;
 
+  // Copy admin UI into NSIS staging
+  const adminSrc = join(ROOT, 'admin');
+  const adminStaging = join(STANDALONE, 'admin');
+  const hasAdmin = existsSync(adminSrc) || existsSync(adminStaging);
+  const adminDir = existsSync(adminStaging) ? adminStaging : adminSrc;
+
   const nsisScript = `
 !include "MUI2.nsh"
 
 Name "Whats On API"
 OutFile "${join(INSTALLERS, `whatson-api-${VERSION}-setup.exe`).replace(/\\/g, '\\\\')}"
-InstallDir "$PROGRAMFILES\\\\WhatsOn"
+InstallDir "$PROGRAMFILES64\\\\WhatsOn"
 RequestExecutionLevel admin
 
 !insertmacro MUI_PAGE_WELCOME
@@ -122,6 +138,11 @@ Section "Install"
   File "${EXE.replace(/\\/g, '\\\\')}"
   File "${envExample.replace(/\\/g, '\\\\')}"
   ${nssmFileDirective}
+  ${hasAdmin ? `
+  ; Admin UI
+  SetOutPath "$INSTDIR\\\\admin"
+  File "${join(adminDir, 'index.html').replace(/\\/g, '\\\\')}"
+  SetOutPath "$INSTDIR"` : ''}
 
   ; Create .env from example if it doesn't exist
   IfFileExists "$INSTDIR\\\\.env" +2
@@ -148,6 +169,8 @@ Section "Uninstall"
   Delete "$INSTDIR\\\\nssm.exe"
   Delete "$INSTDIR\\\\whatson-api.log"
   Delete "$INSTDIR\\\\uninstall.exe"
+  Delete "$INSTDIR\\\\admin\\\\index.html"
+  RMDir "$INSTDIR\\\\admin"
   RMDir "$INSTDIR"
 
   DeleteRegKey HKLM "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\WhatsOnAPI"
@@ -347,12 +370,24 @@ function createPortableZip() {
   copyFileSync(EXE, join(archiveDir, exeName));
   copyFileSync(envExample, join(archiveDir, '.env.example'));
 
+  // Copy admin UI
+  const portableAdminSrc = existsSync(join(STANDALONE, 'admin')) ? join(STANDALONE, 'admin') : join(ROOT, 'admin');
+  if (existsSync(portableAdminSrc)) {
+    const portableAdminDest = join(archiveDir, 'admin');
+    mkdirSync(portableAdminDest, { recursive: true });
+    const { readdirSync } = require('fs');
+    for (const file of readdirSync(portableAdminSrc)) {
+      copyFileSync(join(portableAdminSrc, file), join(portableAdminDest, file));
+    }
+  }
+
   // Create a README for portable usage
   writeFileSync(join(archiveDir, 'README.txt'), `Whats On API v${VERSION} — Portable Edition
 
 Setup:
 1. Copy .env.example to .env
 2. Edit .env with your Plex/Sonarr/Radarr details
+   Or use the Admin UI: http://localhost:3001/setup
 3. Run ${exeName}
 
 The API will start on port 3001 (or whatever PORT is set in .env).

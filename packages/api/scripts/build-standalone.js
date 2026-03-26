@@ -159,6 +159,21 @@ if (os !== 'win32') {
 try { unlinkSync(SEA_BLOB); } catch {}
 try { unlinkSync(SEA_CONFIG); } catch {}
 
+// ── Step 4: Copy admin UI files ──
+console.log('\n4. Copying admin UI...');
+const adminSrc = join(ROOT, 'admin');
+const adminDest = join(DIST, 'admin');
+if (existsSync(adminSrc)) {
+  mkdirSync(adminDest, { recursive: true });
+  const { readdirSync } = require('fs');
+  for (const file of readdirSync(adminSrc)) {
+    copyFileSync(join(adminSrc, file), join(adminDest, file));
+  }
+  console.log('   ✓ Admin UI copied to standalone/admin/');
+} else {
+  console.log('   ⚠ admin/ directory not found, skipping');
+}
+
 const { statSync } = require('fs');
 const size = (statSync(OUTPUT).size / (1024 * 1024)).toFixed(1);
 
@@ -167,3 +182,4 @@ console.log(`   ${OUTPUT} (${size} MB)`);
 console.log(`\n   To run:`);
 console.log(`   ${os === 'win32' ? '' : './'}${exeName}`);
 console.log(`\n   Make sure .env is in the same directory as the executable.`);
+console.log(`   Admin UI: http://localhost:3001/setup`);

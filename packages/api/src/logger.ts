@@ -21,26 +21,25 @@ const LOG_FILE = process.env.LOG_FILE || getDefaultLogPath();
 // Ensure log directory exists — try multiple approaches
 let logStream: ReturnType<typeof createWriteStream> | null = null;
 
-try {
-  const logDir = dirname(LOG_FILE);
-  if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
-  logStream = createWriteStream(LOG_FILE, { flags: 'a' });
-} catch {
-  // If default path fails (permissions), try next to the executable
+function tryOpenLog(path: string): ReturnType<typeof createWriteStream> | null {
   try {
-    const exeDir = dirname(process.execPath);
-    const fallbackLog = join(exeDir, 'whatson-api.log');
-    logStream = createWriteStream(fallbackLog, { flags: 'a' });
+    const dir = dirname(path);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const stream = createWriteStream(path, { flags: 'a' });
+    // Prevent stream errors from crashing the process (file locked by another instance, etc.)
+    stream.on('error', () => {
+      logStream = null; // Disable file logging on error
+    });
+    return stream;
   } catch {
-    // If that also fails, try temp directory
-    try {
-      const tmpLog = join(require('os').tmpdir(), 'whatson-api.log');
-      logStream = createWriteStream(tmpLog, { flags: 'a' });
-    } catch {
-      // Give up on file logging — console only
-    }
+    return null;
   }
 }
+
+logStream =
+  tryOpenLog(LOG_FILE) ||
+  tryOpenLog(join(dirname(process.execPath), 'whatson-api.log')) ||
+  tryOpenLog(join(require('os').tmpdir(), 'whatson-api.log'));
 
 function timestamp(): string {
   return new Date().toISOString();

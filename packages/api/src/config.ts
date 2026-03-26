@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import type { ServerConfig } from '@whatson/shared';
 
 export interface AppConfig extends ServerConfig {
@@ -50,3 +52,68 @@ export const config: AppConfig = new Proxy({} as AppConfig, {
     return true;
   },
 });
+
+/**
+ * Find the .env file path (same search order as index.ts).
+ * If none exists, creates one next to the executable or in cwd.
+ */
+export function getEnvFilePath(): string {
+  const programData = process.env.ProgramData || 'C:\\ProgramData';
+  const candidates = [
+    join(dirname(process.execPath), '.env'),
+    join(programData, 'WhatsOn', '.env'),
+    join(process.cwd(), '.env'),
+    join(__dirname, '..', '.env'),
+  ];
+
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+
+  // Default: create in cwd
+  return join(process.cwd(), '.env');
+}
+
+/**
+ * Save config values to the .env file.
+ * Preserves comments and unrecognized keys; updates known keys in place.
+ */
+export function saveConfigToEnv(values: Record<string, string>): void {
+  const envPath = getEnvFilePath();
+  let lines: string[] = [];
+
+  if (existsSync(envPath)) {
+    lines = readFileSync(envPath, 'utf-8').split('\n');
+  }
+
+  const written = new Set<string>();
+
+  // Update existing lines
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^([A-Z_]+)\s*=/);
+    if (match && match[1] in values) {
+      lines[i] = `${match[1]}=${values[match[1]]}`;
+      written.add(match[1]);
+    }
+  }
+
+  // Append new keys
+  for (const [key, val] of Object.entries(values)) {
+    if (!written.has(key)) {
+      lines.push(`${key}=${val}`);
+    }
+  }
+
+  const dir = dirname(envPath);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(envPath, lines.join('\n'));
+  console.log(`[Config] Saved config to ${envPath}`);
+}
+
+/**
+ * Reload config from current process.env values.
+ * Call after updating process.env (e.g., after saving .env and re-parsing).
+ */
+export function reloadConfig(): void {
+  _config = loadConfig();
+}

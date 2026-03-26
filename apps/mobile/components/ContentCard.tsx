@@ -39,9 +39,10 @@ interface ContentCardProps {
   tvRef?: (ref: any) => void;
   nextFocusUp?: number;
   nextFocusDown?: number;
+  hasTVPreferredFocus?: boolean;
 }
 
-export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstInRow, isLastInRow, tvRef, nextFocusUp, nextFocusDown }: ContentCardProps) {
+export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstInRow, isLastInRow, tvRef, nextFocusUp, nextFocusDown, hasTVPreferredFocus }: ContentCardProps) {
   const episodeLabel =
     item.type === 'episode' && item.seasonNumber != null && item.episodeNumber != null
       ? `S${String(item.seasonNumber).padStart(2, '0')}E${String(item.episodeNumber).padStart(2, '0')}`
@@ -141,6 +142,7 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
     if (isLastInRow && selfNodeId) focusProps.nextFocusRight = selfNodeId;
     if (nextFocusUp) focusProps.nextFocusUp = nextFocusUp;
     if (nextFocusDown) focusProps.nextFocusDown = nextFocusDown;
+    if (hasTVPreferredFocus) focusProps.hasTVPreferredFocus = true;
   }
 
   return (

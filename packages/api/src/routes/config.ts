@@ -1,11 +1,15 @@
 import { Router } from 'express';
-import { config } from '../config.js';
+import dotenv from 'dotenv';
+import axios from 'axios';
+import { config, saveConfigToEnv, reloadConfig, getEnvFilePath } from '../config.js';
 import * as plex from '../services/plex.js';
 import * as plexPlayback from '../services/plexPlayback.js';
 import * as sonarr from '../services/sonarr.js';
 import * as radarr from '../services/radarr.js';
 import { getCached, setCached } from '../cache.js';
 import type { ApiResponse } from '@whatson/shared';
+
+const PLEX_CLIENT_ID = 'whatson-api-server';
 
 export const configRouter = Router();
 
@@ -52,8 +56,14 @@ configRouter.get('/config/status', async (_req, res) => {
 configRouter.post('/config/test', async (req, res) => {
   const { service, url, token, apiKey } = req.body;
 
-  if (!service || !url) {
-    res.status(400).json({ success: false, error: 'service and url are required' });
+  if (!service) {
+    res.status(400).json({ success: false, error: 'service is required' });
+    return;
+  }
+
+  // Plex can work without a URL (auto-discover), but Sonarr/Radarr need one
+  if (service !== 'plex' && !url) {
+    res.status(400).json({ success: false, error: 'url is required' });
     return;
   }
 
@@ -63,7 +73,7 @@ configRouter.post('/config/test', async (req, res) => {
     if (service === 'plex') {
       const origUrl = config.plex.url;
       const origToken = config.plex.token;
-      config.plex.url = url;
+      config.plex.url = url || '';
       config.plex.token = token || config.plex.token;
       plex.resetClient();
       connected = await plex.testConnection();
@@ -100,6 +110,116 @@ configRouter.post('/config/test', async (req, res) => {
     data: { connected },
   };
   res.json(response);
+});
+
+/** Save config to .env and hot-reload */
+configRouter.post('/config/save', async (req, res) => {
+  try {
+    const { plex: plexCfg, sonarr: sonarrCfg, radarr: radarrCfg, epg: epgCfg, port } = req.body;
+    const values: Record<string, string> = {};
+
+    if (port != null) {
+      values.PORT = String(port);
+    }
+
+    if (plexCfg) {
+      if ('url' in plexCfg) values.PLEX_URL = plexCfg.url || '';
+      if ('token' in plexCfg) values.PLEX_TOKEN = plexCfg.token || '';
+    }
+    if (sonarrCfg) {
+      if ('url' in sonarrCfg) values.SONARR_URL = sonarrCfg.url || '';
+      if ('apiKey' in sonarrCfg) values.SONARR_API_KEY = sonarrCfg.apiKey || '';
+    }
+    if (radarrCfg) {
+      if ('url' in radarrCfg) values.RADARR_URL = radarrCfg.url || '';
+      if ('apiKey' in radarrCfg) values.RADARR_API_KEY = radarrCfg.apiKey || '';
+    }
+    if (epgCfg) {
+      if ('provider' in epgCfg) values.EPG_PROVIDER = epgCfg.provider || 'tvmaze';
+      if ('country' in epgCfg) values.EPG_COUNTRY = epgCfg.country || 'US';
+      if ('tmdbApiKey' in epgCfg) values.TMDB_API_KEY = epgCfg.tmdbApiKey || '';
+    }
+
+    if (Object.keys(values).length === 0) {
+      res.status(400).json({ success: false, error: 'No config values provided' });
+      return;
+    }
+
+    // Save to .env file
+    saveConfigToEnv(values);
+
+    // Re-read .env into process.env
+    dotenv.config({ path: getEnvFilePath(), override: true });
+
+    // Reload runtime config
+    reloadConfig();
+
+    // Reset service clients so they pick up new config
+    plex.resetClient();
+    sonarr.resetClient();
+    radarr.resetClient();
+
+    res.json({ success: true, data: { saved: true } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/** Plex OAuth: request a PIN */
+configRouter.post('/plex/pin', async (_req, res) => {
+  try {
+    const response = await axios.post(
+      'https://plex.tv/api/v2/pins',
+      { strong: true, 'X-Plex-Product': 'Whats On', 'X-Plex-Client-Identifier': PLEX_CLIENT_ID },
+      {
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      },
+    );
+
+    const { id, code } = response.data;
+    const authUrl = `https://app.plex.tv/auth#?clientID=${PLEX_CLIENT_ID}&code=${code}&context%5Bdevice%5D%5Bproduct%5D=Whats%20On`;
+
+    res.json({
+      success: true,
+      data: { pinId: id, code, authUrl },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/** Plex OAuth: check PIN status */
+configRouter.get('/plex/pin/:pinId', async (req, res) => {
+  try {
+    const response = await axios.get(
+      `https://plex.tv/api/v2/pins/${req.params.pinId}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+        },
+      },
+    );
+
+    const { authToken } = response.data;
+
+    if (authToken) {
+      // Save the token immediately
+      saveConfigToEnv({ PLEX_TOKEN: authToken });
+      dotenv.config({ path: getEnvFilePath(), override: true });
+      reloadConfig();
+      plex.resetClient();
+
+      res.json({ success: true, data: { completed: true, token: '••••' + authToken.slice(-4) } });
+    } else {
+      res.json({ success: true, data: { completed: false } });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
 });
 
 /** Get Plex deep link for playback */

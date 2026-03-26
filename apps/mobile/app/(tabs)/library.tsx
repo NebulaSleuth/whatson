@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions, UIManager, Platform, findNodeHandle } from 'react-native';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,11 +33,13 @@ const NUM_COLUMNS = isTV ? Math.max(1, Math.floor((SCREEN_WIDTH - GRID_PADDING) 
 const ITEM_WIDTH = isTV ? Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS) : Math.floor((SCREEN_WIDTH - GRID_PADDING) / NUM_COLUMNS);
 
 const LibraryCard = React.memo(function LibraryCard({
-  item, width, posterHeight, focused, onPress, onFocus, cardRef,
+  item, width, posterHeight, onPress, onFocus, hasTVPreferredFocus,
 }: {
-  item: ContentItem; width: number; posterHeight?: number; focused: boolean;
-  onPress: () => void; onFocus: () => void; cardRef?: React.Ref<any>;
+  item: ContentItem; width: number; posterHeight?: number;
+  onPress: () => void; onFocus: () => void; hasTVPreferredFocus?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
+
   // If posterHeight is set, derive width from it to maintain 2:3 ratio
   // Otherwise derive height from width
   const maxPw = width - spacing.xs * 2;
@@ -46,12 +48,13 @@ const LibraryCard = React.memo(function LibraryCard({
 
   return (
     <Pressable
-      ref={cardRef}
       style={[cardStyles.container, { width }]}
       onPress={onPress}
-      onFocus={onFocus}
+      onFocus={() => { setFocused(true); onFocus(); }}
+      onBlur={() => setFocused(false)}
       focusable={true}
       android_ripple={isTV ? null : undefined}
+      {...(hasTVPreferredFocus ? { hasTVPreferredFocus: true } : {})}
     >
       <View style={[cardStyles.poster, { width: pw, height: ph }, focused && cardStyles.posterFocused]}>
         <Image
@@ -101,22 +104,23 @@ const cardStyles = StyleSheet.create({
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
   const currentRowRef = useRef(0);
-  const firstCardRef = useRef<any>(null);
+  const [focusTrigger, setFocusTrigger] = useState(0);
+
+  // Reset focus trigger after a short delay so it can fire again
+  useEffect(() => {
+    if (focusTrigger > 0) {
+      const timer = setTimeout(() => setFocusTrigger(0), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [focusTrigger]);
 
   useTVBackHandler(useCallback(() => {
-    setFocusedId(null);
     currentRowRef.current = 0;
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    // Focus the first card
-    if (firstCardRef.current && Platform.OS === 'android') {
-      try {
-        const nodeId = findNodeHandle(firstCardRef.current);
-        if (nodeId) UIManager.updateView(nodeId, 'RCTView', { hasTVPreferredFocus: true });
-      } catch {}
-    }
+    // Trigger hasTVPreferredFocus on the first card
+    setFocusTrigger((t) => t + 1);
     return true;
   }, []));
 
@@ -132,31 +136,33 @@ export default function LibraryScreen() {
   }, []);
 
   // On TV: when a card gets focus, snap scroll to show full rows
-  const handleCardFocus = useCallback((item: ContentItem, index: number) => {
-    setFocusedId(item.id);
-
-    if (isTV && listRef.current) {
+  // Use a ref so renderItem doesn't depend on this callback's identity
+  const listRefStable = listRef;
+  const handleCardFocus = useCallback((_item: ContentItem, index: number) => {
+    if (isTV && listRefStable.current) {
       const row = Math.floor(index / NUM_COLUMNS);
       if (row !== currentRowRef.current) {
         currentRowRef.current = row;
         const topRow = Math.max(0, row - 1);
         const scrollY = topRow * TV_ROW_H;
-        listRef.current.scrollToOffset({ offset: scrollY, animated: false });
+        listRefStable.current.scrollToOffset({ offset: scrollY, animated: false });
       }
     }
   }, []);
+
+  // Stable extraData so FlatList only re-renders when focusTrigger changes
+  const extraData = useMemo(() => ({ focusTrigger }), [focusTrigger]);
 
   const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
     <LibraryCard
       item={item}
       width={ITEM_WIDTH}
       posterHeight={isTV ? TV_POSTER_H : undefined}
-      focused={focusedId === item.id}
       onPress={() => handleItemPress(item)}
       onFocus={() => handleCardFocus(item, index)}
-      cardRef={index === 0 ? firstCardRef : undefined}
+      hasTVPreferredFocus={index === 0 && focusTrigger > 0}
     />
-  ), [handleItemPress, focusedId, handleCardFocus]);
+  ), [handleItemPress, handleCardFocus, focusTrigger]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -170,7 +176,7 @@ export default function LibraryScreen() {
       <View style={styles.toggleRow}>
         <TVPressable
           style={[styles.toggleChip, type === 'show' && styles.toggleChipActive]}
-          onPress={() => { setType('show'); setFocusedId(null); }}
+          onPress={() => setType('show')}
         >
           <Text style={[styles.toggleText, type === 'show' && styles.toggleTextActive]}>
             TV Shows
@@ -178,7 +184,7 @@ export default function LibraryScreen() {
         </TVPressable>
         <TVPressable
           style={[styles.toggleChip, type === 'movie' && styles.toggleChipActive]}
-          onPress={() => { setType('movie'); setFocusedId(null); }}
+          onPress={() => setType('movie')}
         >
           <Text style={[styles.toggleText, type === 'movie' && styles.toggleTextActive]}>
             Movies

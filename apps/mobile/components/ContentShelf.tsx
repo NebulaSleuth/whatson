@@ -15,6 +15,8 @@ interface ContentShelfProps {
   belowFirstCardId?: number;
   /** Callback to report this shelf's first card node ID */
   onFirstCardRef?: (nodeId: number) => void;
+  /** When true, set hasTVPreferredFocus on the first card */
+  focusFirstCard?: boolean;
 }
 
 const TV_SHELF_HEIGHT = cardDimensions.poster.height + 60 + 40;
@@ -26,6 +28,7 @@ export function ContentShelf({
   aboveFirstCardId,
   belowFirstCardId,
   onFirstCardRef,
+  focusFirstCard,
 }: ContentShelfProps) {
   const listRef = useRef<FlatList>(null);
 
@@ -67,6 +70,7 @@ export function ContentShelf({
             tvRef={index === 0 ? handleFirstCardMounted : undefined}
             nextFocusUp={aboveFirstCardId}
             nextFocusDown={belowFirstCardId}
+            hasTVPreferredFocus={index === 0 && focusFirstCard}
           />
         )}
         showsHorizontalScrollIndicator={false}
