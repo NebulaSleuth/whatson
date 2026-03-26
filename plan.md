@@ -243,14 +243,6 @@ interface ServerConfig {
 - [x] Error state UI with retry button
 - [x] Settings tab with full server config display
 
-#### 1.7 — Setup/Onboarding Flow — MOVED TO PHASE 2.16 (Web Admin UI)
-- Replaced by Web Admin UI served by the backend itself (see Phase 2.16)
-- Plex OAuth PIN flow happens in the browser on the server, not in the mobile/TV app
-- Mobile/TV apps consume the API — they don't need to know about auth tokens
-
-**Remaining for Phase 1**:
-- Web Admin UI for server config (moved to Phase 2.16)
-
 ---
 
 ### Phase 1.5: Discovery & Tracking ✅ COMPLETE
