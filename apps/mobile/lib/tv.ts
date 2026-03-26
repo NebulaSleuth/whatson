@@ -9,8 +9,12 @@ export const isTVOS = (Platform as any).isTVOS === true;
 /** Whether running on Android TV specifically */
 export const isAndroidTV = isTV && Platform.OS === 'android';
 
-/** Safe area padding for TV (10-foot UI guidelines) */
+/**
+ * Safe area padding for TV (10-foot UI guidelines).
+ * Apple TV: 90px sides, 60px top/bottom (Apple HIG)
+ * Android TV: 48px sides, 27px top/bottom (Android design guidelines)
+ */
 export const TV_SAFE_AREA = {
-  horizontal: isTV ? 48 : 0,
-  vertical: isTV ? 27 : 0,
+  horizontal: isTVOS ? 90 : isTV ? 48 : 0,
+  vertical: isTVOS ? 60 : isTV ? 27 : 0,
 };

@@ -31,9 +31,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.whatson.app',
+      bundleIdentifier: isTV ? 'com.whatson.tv' : 'com.whatson.app',
       infoPlist: {
         LSApplicationQueriesSchemes: ['plex', 'plexapp', 'nflx', 'hulu', 'aiv'],
+        ...(isTV ? { UIRequiredDeviceCapabilities: ['arm64'] } : {}),
       },
     },
     android: {
@@ -47,8 +48,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-router',
       ['@react-native-tvos/config-tv', {
         isTV: true,
+        tvosDeploymentTarget: '15.1',
         androidTVRequired: isTV, // true = TV-only, false = universal
         androidTVBanner: './assets/tv-banner.png',
+        ...(isTV ? {
+          appleTVImages: {
+            icon: './assets/tv/icon-1280x768.png',
+            iconSmall: './assets/tv/icon-small-400x240.png',
+            iconSmall2x: './assets/tv/icon-small-2x-800x480.png',
+            topShelf: './assets/tv/topshelf-1920x720.png',
+            topShelf2x: './assets/tv/topshelf-2x-3840x1440.png',
+            topShelfWide: './assets/tv/topshelf-wide-2320x720.png',
+            topShelfWide2x: './assets/tv/topshelf-wide-2x-4640x1440.png',
+          },
+        } : {}),
       }],
     ],
     install: {
