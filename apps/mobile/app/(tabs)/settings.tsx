@@ -6,15 +6,17 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  Switch,
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 
 interface ServiceStatus {
@@ -33,7 +35,7 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser } = useAppStore();
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -131,6 +133,54 @@ export default function SettingsScreen() {
           <TVPressable style={styles.primaryButton} onPress={saveApiUrl}>
             <Text style={styles.primaryButtonText}>Save & Test</Text>
           </TVPressable>
+        </View>
+
+        {/* User */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>User</Text>
+          {currentUser ? (
+            <>
+              <View style={styles.serviceRow}>
+                <View style={styles.serviceInfo}>
+                  <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
+                  <Text style={styles.serviceLabel}>Signed in as {currentUser.title}</Text>
+                </View>
+              </View>
+              <View style={[styles.serviceRow, { borderBottomWidth: 0 }]}>
+                <Text style={styles.serviceLabel}>Remember login</Text>
+                <Switch
+                  value={rememberUser}
+                  onValueChange={async (val) => {
+                    setRememberUser(val);
+                    await saveRememberUser(val);
+                    if (val && currentUser) {
+                      await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
+                    }
+                  }}
+                  trackColor={{ false: '#333', true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <TVPressable
+                style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
+                onPress={() => {
+                  setCurrentUser(null);
+                  setSavedUser(null);
+                  queryClient.clear();
+                  router.replace('/select-user' as any);
+                }}
+              >
+                <Text style={[styles.primaryButtonText, { color: colors.text }]}>Switch User</Text>
+              </TVPressable>
+            </>
+          ) : (
+            <TVPressable
+              style={styles.primaryButton}
+              onPress={() => router.replace('/select-user' as any)}
+            >
+              <Text style={styles.primaryButtonText}>Select User</Text>
+            </TVPressable>
+          )}
         </View>
 
         {/* Service Status */}

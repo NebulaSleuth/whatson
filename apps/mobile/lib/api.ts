@@ -15,13 +15,20 @@ export function resolveArtworkUrl(url: string): string {
   return `${base}${url}`;
 }
 
+function getUserId(): string | undefined {
+  const user = useAppStore.getState().currentUser;
+  return user ? String(user.id) : undefined;
+}
+
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
+  const userId = getUserId();
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      ...(userId ? { 'X-Plex-User': userId } : {}),
       ...options?.headers,
     },
     ...options,
@@ -198,6 +205,16 @@ export const api = {
 
   removeTracked: (tmdbId: number) =>
     fetchApi<{ removed: boolean }>(`/tracked/${tmdbId}`, { method: 'DELETE' }),
+
+  // Users
+  getUsers: () =>
+    fetchApi<Array<{ id: number; title: string; thumb: string; admin: boolean; hasPassword: boolean; restricted: boolean }>>('/users'),
+
+  selectUser: (userId: number, pin?: string) =>
+    fetchApi<{ userId: number; token: string; selected: boolean }>('/users/select', {
+      method: 'POST',
+      body: JSON.stringify({ userId, pin }),
+    }),
 
   // Sonarr/Radarr add
   getSonarrProfiles: () => fetchApi<Array<{ id: number; name: string }>>('/sonarr/profiles'),

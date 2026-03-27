@@ -45,6 +45,8 @@ import { discoverRouter } from './routes/discover.js';
 import { addRouter } from './routes/add.js';
 import { playbackRouter } from './routes/playback.js';
 import { libraryRouter } from './routes/library.js';
+import { usersRouter } from './routes/users.js';
+import { userContext } from './middleware/userContext.js';
 import { initWebSocket } from './ws.js';
 
 const app = express();
@@ -70,7 +72,11 @@ for (const dir of adminCandidates) {
 // Fallback: serve inline HTML if static files not found
 app.use('/setup', setupRouter);
 
+// User context middleware — sets per-user Plex token and data paths
+app.use('/api', userContext);
+
 // Routes
+app.use('/api', usersRouter);
 app.use('/api', healthRouter);
 app.use('/api', homeRouter);
 app.use('/api', tvRouter);

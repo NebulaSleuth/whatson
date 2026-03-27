@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useRealtimeUpdates } from '@/lib/useRealtimeUpdates';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser } from '@/lib/storage';
+import { api } from '@/lib/api';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,14 +35,34 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function init() {
-      const [storedUrl, configured] = await Promise.all([
+      const [storedUrl, configured, savedUser, rememberUser] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
+        getSavedUser(),
+        getRememberUser(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
       }
       setConfigured(configured);
+      useAppStore.getState().setRememberUser(rememberUser);
+
+      // If "remember user" is on and we have a saved user, auto-login
+      if (rememberUser && savedUser) {
+        try {
+          await api.selectUser(savedUser.id);
+          useAppStore.getState().setCurrentUser({
+            ...savedUser,
+            admin: false,
+            hasPassword: false,
+            restricted: false,
+          });
+        } catch {
+          // Token expired or user removed — clear saved user
+          await setSavedUser(null);
+        }
+      }
+
       setReady(true);
     }
     init();
@@ -78,6 +99,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: colors.background },
           }}
         >
+          <Stack.Screen name="select-user" options={{ animation: 'fade' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="player"

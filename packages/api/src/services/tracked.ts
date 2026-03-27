@@ -3,37 +3,55 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
-const TRACKED_FILE = join(DATA_DIR, 'tracked.json');
-const WATCHED_FILE = join(DATA_DIR, 'watched.json');
+
+// Active user ID for the current request context (set via setRequestUserId)
+let _requestUserId: string | null = null;
+
+/** Set the user ID for per-user data scoping */
+export function setRequestUserId(userId: string | null): void {
+  _requestUserId = userId;
+}
+
+function getUserDir(): string {
+  if (_requestUserId) {
+    return join(DATA_DIR, 'users', _requestUserId);
+  }
+  return DATA_DIR;
+}
 
 function ensureDataDir(): void {
-  try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+  try { mkdirSync(getUserDir(), { recursive: true }); } catch {}
 }
+
+function trackedFile(): string { return join(getUserDir(), 'tracked.json'); }
+function watchedFile(): string { return join(getUserDir(), 'watched.json'); }
 
 function loadTracked(): TrackedItem[] {
   try {
-    if (!existsSync(TRACKED_FILE)) return [];
-    return JSON.parse(readFileSync(TRACKED_FILE, 'utf-8'));
+    const f = trackedFile();
+    if (!existsSync(f)) return [];
+    return JSON.parse(readFileSync(f, 'utf-8'));
   } catch { return []; }
 }
 
 function saveTracked(items: TrackedItem[]): void {
   ensureDataDir();
-  writeFileSync(TRACKED_FILE, JSON.stringify(items, null, 2), 'utf-8');
+  writeFileSync(trackedFile(), JSON.stringify(items, null, 2), 'utf-8');
 }
 
 // ── Watched State for Tracked Items ──
 
 function loadWatched(): Set<string> {
   try {
-    if (!existsSync(WATCHED_FILE)) return new Set();
-    return new Set(JSON.parse(readFileSync(WATCHED_FILE, 'utf-8')));
+    const f = watchedFile();
+    if (!existsSync(f)) return new Set();
+    return new Set(JSON.parse(readFileSync(f, 'utf-8')));
   } catch { return new Set(); }
 }
 
 function saveWatched(ids: Set<string>): void {
   ensureDataDir();
-  writeFileSync(WATCHED_FILE, JSON.stringify([...ids], null, 2), 'utf-8');
+  writeFileSync(watchedFile(), JSON.stringify([...ids], null, 2), 'utf-8');
 }
 
 /**

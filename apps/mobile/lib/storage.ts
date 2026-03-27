@@ -3,6 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 const KEYS = {
   API_URL: 'whatson_apiUrl',
   CONFIGURED: 'whatson_configured',
+  SAVED_USER: 'whatson_savedUser',
+  REMEMBER_USER: 'whatson_rememberUser',
   SONARR_PROFILE: 'whatson_sonarrProfile',
   SONARR_FOLDER: 'whatson_sonarrFolder',
   SONARR_MONITOR: 'whatson_sonarrMonitor',
@@ -36,6 +38,44 @@ export async function isAppConfigured(): Promise<boolean> {
 export async function setAppConfigured(configured: boolean): Promise<void> {
   try {
     await SecureStore.setItemAsync(KEYS.CONFIGURED, String(configured));
+  } catch {}
+}
+
+// ── User Preferences ──
+
+export async function getSavedUser(): Promise<{ id: number; title: string; thumb: string } | null> {
+  try {
+    const json = await SecureStore.getItemAsync(KEYS.SAVED_USER);
+    return json ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setSavedUser(user: { id: number; title: string; thumb: string } | null): Promise<void> {
+  try {
+    if (user) {
+      await SecureStore.setItemAsync(KEYS.SAVED_USER, JSON.stringify(user));
+    } else {
+      await SecureStore.deleteItemAsync(KEYS.SAVED_USER);
+    }
+  } catch {}
+}
+
+export async function getRememberUser(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(KEYS.REMEMBER_USER)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function setRememberUser(remember: boolean): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(KEYS.REMEMBER_USER, String(remember));
+    if (!remember) {
+      await SecureStore.deleteItemAsync(KEYS.SAVED_USER);
+    }
   } catch {}
 }
 

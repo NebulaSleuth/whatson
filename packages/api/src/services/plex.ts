@@ -121,21 +121,50 @@ async function ensureDiscovered(): Promise<string> {
   return discoveryPromise;
 }
 
+// Per-user client cache: token -> AxiosInstance
+const userClients = new Map<string, AxiosInstance>();
+
+// Active token for the current request context (set via setRequestToken)
+let _requestToken: string | null = null;
+
+/** Set the Plex token to use for the current request context */
+export function setRequestToken(token: string | null): void {
+  _requestToken = token;
+}
+
+function getActiveToken(): string {
+  return _requestToken || config.plex.token;
+}
+
 async function getClient(): Promise<AxiosInstance> {
-  if (!client) {
+  const token = getActiveToken();
+
+  // Check per-user client cache
+  const cached = userClients.get(token);
+  if (cached) return cached;
+
+  // Build default client if none cached
+  if (!client || _requestToken) {
     const baseURL = await ensureDiscovered();
 
-    client = axios.create({
+    const newClient = axios.create({
       baseURL,
       headers: {
         Accept: 'application/json',
-        'X-Plex-Token': config.plex.token,
+        'X-Plex-Token': token,
         'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
         'X-Plex-Product': PLEX_PRODUCT,
         'X-Plex-Version': APP_VERSION,
       },
       timeout: 30000,
     });
+
+    if (_requestToken) {
+      userClients.set(token, newClient);
+      return newClient;
+    }
+
+    client = newClient;
   }
   return client;
 }
@@ -143,7 +172,7 @@ async function getClient(): Promise<AxiosInstance> {
 function artworkUrl(path: string | undefined): string {
   if (!path) return '';
   if (!resolvedServerUrl) return '';
-  return `${resolvedServerUrl}${path}?X-Plex-Token=${config.plex.token}`;
+  return `${resolvedServerUrl}${path}?X-Plex-Token=${getActiveToken()}`;
 }
 
 /** Get the resolved server URL (triggers discovery if needed) */
@@ -349,4 +378,5 @@ export async function testConnection(): Promise<boolean> {
 export function resetClient(): void {
   client = null;
   resolvedServerUrl = null;
+  userClients.clear();
 }
