@@ -7,11 +7,12 @@ const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
 // Active user ID for the current request context (set via setRequestUserId)
 let _requestUserId: string | null = null;
 
-/** Set the user ID for per-user data scoping */
+/** Set the user ID for per-user data scoping (affects watched state only) */
 export function setRequestUserId(userId: string | null): void {
   _requestUserId = userId;
 }
 
+/** Per-user directory for watched state */
 function getUserDir(): string {
   if (_requestUserId) {
     return join(DATA_DIR, 'users', _requestUserId);
@@ -20,10 +21,17 @@ function getUserDir(): string {
 }
 
 function ensureDataDir(): void {
+  try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+}
+
+function ensureUserDir(): void {
   try { mkdirSync(getUserDir(), { recursive: true }); } catch {}
 }
 
-function trackedFile(): string { return join(getUserDir(), 'tracked.json'); }
+/** Tracked items (watchlist) are shared across all users */
+function trackedFile(): string { return join(DATA_DIR, 'tracked.json'); }
+
+/** Watched state is per-user */
 function watchedFile(): string { return join(getUserDir(), 'watched.json'); }
 
 function loadTracked(): TrackedItem[] {
@@ -35,22 +43,33 @@ function loadTracked(): TrackedItem[] {
 }
 
 function saveTracked(items: TrackedItem[]): void {
-  ensureDataDir();
+  ensureDataDir();  // Shared directory
   writeFileSync(trackedFile(), JSON.stringify(items, null, 2), 'utf-8');
 }
 
 // ── Watched State for Tracked Items ──
 
 function loadWatched(): Set<string> {
+  const ids = new Set<string>();
+  // Load from shared watched file
   try {
-    const f = watchedFile();
-    if (!existsSync(f)) return new Set();
-    return new Set(JSON.parse(readFileSync(f, 'utf-8')));
-  } catch { return new Set(); }
+    const shared = join(DATA_DIR, 'watched.json');
+    if (existsSync(shared)) {
+      for (const id of JSON.parse(readFileSync(shared, 'utf-8'))) ids.add(id);
+    }
+  } catch {}
+  // Load from per-user watched file (if user context is set)
+  try {
+    const perUser = watchedFile();
+    if (perUser !== join(DATA_DIR, 'watched.json') && existsSync(perUser)) {
+      for (const id of JSON.parse(readFileSync(perUser, 'utf-8'))) ids.add(id);
+    }
+  } catch {}
+  return ids;
 }
 
 function saveWatched(ids: Set<string>): void {
-  ensureDataDir();
+  ensureUserDir();  // Per-user directory
   writeFileSync(watchedFile(), JSON.stringify([...ids], null, 2), 'utf-8');
 }
 

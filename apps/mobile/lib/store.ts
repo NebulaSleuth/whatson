@@ -20,11 +20,15 @@ interface AppState {
   isReady: boolean;
   currentUser: PlexUser | null;
   rememberUser: boolean;
+  autoSkipIntro: boolean;
+  autoSkipCredits: boolean;
   setApiUrl: (url: string) => void;
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
   setCurrentUser: (user: PlexUser | null) => void;
   setRememberUser: (remember: boolean) => void;
+  setAutoSkipIntro: (skip: boolean) => void;
+  setAutoSkipCredits: (skip: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -33,9 +37,13 @@ export const useAppStore = create<AppState>((set) => ({
   isReady: false,
   currentUser: null,
   rememberUser: false,
+  autoSkipIntro: false,
+  autoSkipCredits: false,
   setApiUrl: (apiUrl) => set({ apiUrl }),
   setConfigured: (isConfigured) => set({ isConfigured }),
   setReady: (isReady) => set({ isReady }),
   setCurrentUser: (currentUser) => set({ currentUser }),
   setRememberUser: (rememberUser) => set({ rememberUser }),
+  setAutoSkipIntro: (autoSkipIntro) => set({ autoSkipIntro }),
+  setAutoSkipCredits: (autoSkipCredits) => set({ autoSkipCredits }),
 }));

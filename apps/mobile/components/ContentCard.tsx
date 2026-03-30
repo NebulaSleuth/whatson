@@ -12,19 +12,28 @@ function formatAvailableDate(isoDate: string): string {
   const date = new Date(isoDate);
   if (isNaN(date.getTime())) return '';
 
-  // Compare calendar dates in local timezone, not timestamps
   const now = new Date();
   const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dateLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.round((dateLocal.getTime() - todayLocal.getTime()) / (1000 * 60 * 60 * 24));
+  const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-  if (diffDays <= 0) {
-    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return `Today ${timeStr}`;
-  }
+  // Today — show time
+  if (diffDays === 0) return timeStr;
+
+  // Future
   if (diffDays === 1) return 'Tomorrow';
-  if (diffDays <= 7) {
+  if (diffDays > 1 && diffDays <= 7) {
     return date.toLocaleDateString('en-US', { weekday: 'short' });
+  }
+  if (diffDays > 7) {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  // Past
+  if (diffDays === -1) return 'Yesterday';
+  if (diffDays >= -6) {
+    return 'Last ' + date.toLocaleDateString('en-US', { weekday: 'short' });
   }
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
@@ -34,6 +43,7 @@ interface ContentCardProps {
   onPress?: (item: ContentItem) => void;
   onMarkWatched?: () => void;
   onTVFocus?: () => void;
+  onTVBlur?: () => void;
   isFirstInRow?: boolean;
   isLastInRow?: boolean;
   tvRef?: (ref: any) => void;
@@ -42,7 +52,7 @@ interface ContentCardProps {
   hasTVPreferredFocus?: boolean;
 }
 
-export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstInRow, isLastInRow, tvRef, nextFocusUp, nextFocusDown, hasTVPreferredFocus }: ContentCardProps) {
+export const ContentCard = React.memo(function ContentCard({ item, onPress, onMarkWatched, onTVFocus, onTVBlur, isFirstInRow, isLastInRow, tvRef, nextFocusUp, nextFocusDown, hasTVPreferredFocus }: ContentCardProps) {
   const episodeLabel =
     item.type === 'episode' && item.seasonNumber != null && item.episodeNumber != null
       ? `S${String(item.seasonNumber).padStart(2, '0')}E${String(item.episodeNumber).padStart(2, '0')}`
@@ -64,9 +74,12 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
         text: 'Mark as Watched',
         onPress: async () => {
           try {
+            console.log('[Card] marking watched:', item.id, item.source, item.sourceId);
             await api.markWatched(item.sourceId, item.source, item.id);
+            console.log('[Card] markWatched success, calling onMarkWatched:', !!onMarkWatched);
             onMarkWatched?.();
           } catch (error) {
+            console.error('[Card] markWatched error:', (error as Error).message);
             Alert.alert('Error', (error as Error).message);
           }
         },
@@ -135,6 +148,10 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
     tvRef?.(ref);
   }, [tvRef]);
 
+  const handlePress = useCallback(() => onPress?.(item), [onPress, item]);
+  const handleFocus = useCallback(() => { setFocused(true); onTVFocus?.(); }, [onTVFocus]);
+  const handleBlur = useCallback(() => { setFocused(false); onTVBlur?.(); }, [onTVBlur]);
+
   // Build directional focus overrides for Android TV
   const focusProps: any = {};
   if (isTV) {
@@ -148,10 +165,10 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
   return (
     <Pressable
       ref={handleRef}
-      onPress={() => onPress?.(item)}
+      onPress={handlePress}
       onLongPress={handleLongPress}
-      onFocus={() => { setFocused(true); onTVFocus?.(); }}
-      onBlur={() => setFocused(false)}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       android_ripple={isTV ? null : undefined}
       focusable={true}
       {...focusProps}
@@ -186,6 +203,11 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
               <Text style={styles.comingSoonText}>{formatAvailableDate(item.availability.availableAt)}</Text>
             </View>
           )}
+          {item.status === 'ready' && item.source === 'live' && item.availability.availableAt && (
+            <View style={styles.statusOverlay}>
+              <Text style={styles.comingSoonText}>{formatAvailableDate(item.availability.availableAt)}</Text>
+            </View>
+          )}
         </View>
       </View>
       <View style={styles.info}>
@@ -209,7 +231,7 @@ export function ContentCard({ item, onPress, onMarkWatched, onTVFocus, isFirstIn
       </View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

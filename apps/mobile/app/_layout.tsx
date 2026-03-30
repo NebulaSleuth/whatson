@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits } from '@/lib/storage';
 import { api } from '@/lib/api';
 
 const queryClient = new QueryClient({
@@ -32,22 +32,30 @@ focusManager.setEventListener((handleFocus) => {
 function AppInitializer({ children }: { children: React.ReactNode }) {
   const { setApiUrl, setConfigured, setReady } = useAppStore();
   const lastRefreshDate = useRef(new Date().toDateString());
+  const initDone = useRef(false);
 
   useEffect(() => {
     async function init() {
-      const [storedUrl, configured, savedUser, rememberUser] = await Promise.all([
+      if (initDone.current) return;
+      initDone.current = true;
+      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
         getSavedUser(),
         getRememberUser(),
+        getAutoSkipIntro(),
+        getAutoSkipCredits(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
       }
       setConfigured(configured);
       useAppStore.getState().setRememberUser(rememberUser);
+      useAppStore.getState().setAutoSkipIntro(skipIntro);
+      useAppStore.getState().setAutoSkipCredits(skipCredits);
 
       // If "remember user" is on and we have a saved user, auto-login
+      let userRestored = false;
       if (rememberUser && savedUser) {
         try {
           await api.selectUser(savedUser.id);
@@ -57,6 +65,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
             hasPassword: false,
             restricted: false,
           });
+          userRestored = true;
         } catch {
           // Token expired or user removed — clear saved user
           await setSavedUser(null);
@@ -64,6 +73,16 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       }
 
       setReady(true);
+
+      // Navigate to user selection if no user is active (only on initial load)
+      if (!userRestored) {
+        console.log('[Init] No user restored, redirecting to select-user');
+        setTimeout(() => {
+          router.replace('/select-user' as any);
+        }, 100);
+      } else {
+        console.log('[Init] User restored: ' + useAppStore.getState().currentUser?.title);
+      }
     }
     init();
   }, [setApiUrl, setConfigured, setReady]);
@@ -100,6 +119,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="select-user" options={{ animation: 'fade' }} />
+          <Stack.Screen name="show-detail" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="player"

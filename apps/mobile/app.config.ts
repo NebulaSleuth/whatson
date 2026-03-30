@@ -43,9 +43,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#0F0F0F',
       },
       package: isTV ? 'com.whatson.tv' : 'com.whatson.app',
+      usesCleartextTraffic: true,
     },
     plugins: [
-      'expo-router',
+      ['expo-router', { root: './app' }],
       ['@react-native-tvos/config-tv', {
         isTV: true,
         tvosDeploymentTarget: '15.1',

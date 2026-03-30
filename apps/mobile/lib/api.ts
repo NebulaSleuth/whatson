@@ -133,8 +133,14 @@ export const api = {
   // Library
   getLibrary: (type: 'movie' | 'show') => fetchApi<ContentItem[]>(`/library/${type}`),
 
+  getShowSeasons: (ratingKey: string) =>
+    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; thumb: string }>>(`/library/show/${ratingKey}/seasons`),
+
+  getSeasonEpisodes: (ratingKey: string) =>
+    fetchApi<ContentItem[]>(`/library/season/${ratingKey}/episodes`),
+
   // Playback
-  getPlaybackInfo: (ratingKey: string, offset?: number, maxBitrate?: number, resolution?: string) => {
+  getPlaybackInfo: (ratingKey: string, offset?: number, maxBitrate?: number, resolution?: string, subtitleStreamID?: number, audioStreamID?: number) => {
     const params = new URLSearchParams();
     if (offset) params.set('offset', String(Math.floor(offset / 1000)));
     if (maxBitrate) {
@@ -142,6 +148,8 @@ export const api = {
       params.set('forceTranscode', '1');
     }
     if (resolution) params.set('resolution', resolution);
+    if (subtitleStreamID != null) params.set('subtitleStreamID', String(subtitleStreamID));
+    if (audioStreamID != null) params.set('audioStreamID', String(audioStreamID));
     const qs = params.toString();
     return fetchApi<{
       streamUrl: string;
@@ -156,6 +164,7 @@ export const api = {
       viewOffset: number;
       subtitles: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
+      markers: Array<{ type: 'intro' | 'credits'; startMs: number; endMs: number }>;
       serverUrl: string;
     }>(`/playback/${ratingKey}${qs ? `?${qs}` : ''}`);
   },

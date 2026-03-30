@@ -116,11 +116,20 @@ async function trackedTvToEpisodeItems(
   if (recent) {
     const ep = recent.episode;
     const epKey = `tracked-ep-${item.tmdbId}-S${ep.season}E${ep.number}`;
-    if (!tracked.isWatched(epKey)) {
+    const airDate = ep.airstamp || ep.airdate;
+
+    // Auto-expire: skip episodes older than 7 days past air date
+    const daysSinceAired = airDate
+      ? (Date.now() - new Date(airDate).getTime()) / (1000 * 60 * 60 * 24)
+      : 0;
+
+    if (!tracked.isWatched(epKey) && daysSinceAired <= 7) {
       const summary = ep.summary
         ? ep.summary.replace(/<[^>]+>/g, '').trim()
         : item.overview;
-      ready.push({
+      const hasAired = daysSinceAired >= 0;
+      const target = hasAired ? ready : comingSoon;
+      target.push({
         ...baseItem,
         id: epKey,
         type: 'episode',
@@ -129,13 +138,13 @@ async function trackedTvToEpisodeItems(
         episodeNumber: ep.number,
         summary,
         duration: ep.runtime || 0,
-        status: 'ready',
+        status: hasAired ? 'ready' : 'coming_soon',
         progress: { watched: false, percentage: 0, currentPosition: 0 },
         availability: {
-          availableAt: ep.airstamp || ep.airdate,
+          availableAt: airDate,
           network: providerLabel,
         },
-        addedAt: ep.airstamp || ep.airdate,
+        addedAt: airDate,
       });
     }
   }
@@ -187,6 +196,35 @@ function filterWatched(items: ContentItem[]): ContentItem[] {
   return items.filter((item) => !item.progress.watched);
 }
 
+function sortByDate(items: ContentItem[]): ContentItem[] {
+  return items.sort((a, b) => {
+    const dateA = a.availability.availableAt ? new Date(a.availability.availableAt).getTime() : 0;
+    const dateB = b.availability.availableAt ? new Date(b.availability.availableAt).getTime() : 0;
+    return dateA - dateB; // Soonest first
+  });
+}
+
+/** Keep only the earliest unwatched episode per show */
+function oneEpisodePerShow(items: ContentItem[]): ContentItem[] {
+  const seen = new Set<string>();
+  // Sort by season+episode so earliest comes first
+  const sorted = [...items].sort((a, b) => {
+    if (a.showTitle && b.showTitle && a.showTitle === b.showTitle) {
+      const seA = (a.seasonNumber || 0) * 1000 + (a.episodeNumber || 0);
+      const seB = (b.seasonNumber || 0) * 1000 + (b.episodeNumber || 0);
+      return seA - seB;
+    }
+    return 0;
+  });
+  return sorted.filter((item) => {
+    if (item.type !== 'episode' || !item.showTitle) return true; // keep movies as-is
+    const key = item.showTitle.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function deduplicateById(items: ContentItem[]): ContentItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -214,13 +252,13 @@ function isPlexConfigured(): boolean {
 
 // ── Main Aggregation ──
 
-export async function getHomeData(): Promise<HomeResponse> {
+export async function getHomeData(userToken?: string): Promise<HomeResponse> {
   // Fetch all data in parallel
   const [continueWatching, onDeck, recentPlex, sonarrUpcoming, sonarrRecent, sonarrQueue, radarrRecent, radarrUpcoming, radarrQueue] =
     await Promise.all([
-      isPlexConfigured() ? safeCall(() => plex.getContinueWatching(), []) : [],
-      isPlexConfigured() ? safeCall(() => plex.getOnDeck(), []) : [],
-      isPlexConfigured() ? safeCall(() => plex.getRecentlyAdded(), []) : [],
+      isPlexConfigured() ? safeCall(() => plex.getContinueWatching(userToken), []) : [],
+      isPlexConfigured() ? safeCall(() => plex.getOnDeck(userToken), []) : [],
+      isPlexConfigured() ? safeCall(() => plex.getRecentlyAdded(50, userToken), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getUpcoming(), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getRecentDownloads(), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getQueue(), []) : [],
@@ -266,21 +304,23 @@ export async function getHomeData(): Promise<HomeResponse> {
   const watchingIds = new Set(allWatching.map((i) => i.id));
 
   // TV: ready to watch = Plex episodes (not in Continue Watching) + tracked TV recent episodes
-  const tvReady = deduplicateById(
+  // Only show the earliest unwatched episode per show
+  const tvReady = oneEpisodePerShow(deduplicateById(
     filterWatched(
       sortInProgressFirst([
         ...recentPlex.filter((i) => i.type === 'episode' && !watchingIds.has(i.id)),
         ...trackedTvReady,
       ]),
     ),
-  );
+  ));
 
   // TV: coming soon = Sonarr calendar + downloading queue + tracked TV upcoming episodes
-  const tvComingSoon = filterWatched(deduplicateById([
+  // Sorted by availability date (soonest first)
+  const tvComingSoon = sortByDate(filterWatched(deduplicateById([
     ...sonarrQueue,
     ...enrichedSonarrUpcoming,
     ...trackedTvComingSoon,
-  ]));
+  ])));
 
   // Movies: ready to watch = Plex movies (not in Continue Watching) + Radarr downloads + tracked movies
   const moviesReady = deduplicateById(
@@ -294,7 +334,7 @@ export async function getHomeData(): Promise<HomeResponse> {
   );
 
   // Movies: coming soon = Radarr calendar + downloading queue
-  const moviesComingSoon = filterWatched(deduplicateById([...radarrQueue, ...enrichedRadarrUpcoming]));
+  const moviesComingSoon = sortByDate(filterWatched(deduplicateById([...radarrQueue, ...enrichedRadarrUpcoming])));
 
   const sections: ContentSection[] = [];
   let order = 0;

@@ -10,6 +10,7 @@ import { isTV } from '@/lib/tv';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 import { colors, spacing, typography } from '@/constants/theme';
 
 export default function HomeScreen() {
@@ -23,9 +24,11 @@ export default function HomeScreen() {
   }, []));
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
 
+  const isReady = useAppStore((s) => s.isReady);
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['home'],
     queryFn: () => api.getHome(),
+    enabled: isReady,
   });
 
   const handleItemPress = useCallback((item: ContentItem) => {

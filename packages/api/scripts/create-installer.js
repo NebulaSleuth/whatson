@@ -134,6 +134,10 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install"
+  ; Stop existing service before overwriting files
+  nsExec::ExecToLog 'net stop whatson-api'
+  Sleep 2000
+
   SetOutPath "$INSTDIR"
   File "${EXE.replace(/\\/g, '\\\\')}"
   File "${envExample.replace(/\\/g, '\\\\')}"

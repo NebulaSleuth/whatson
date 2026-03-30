@@ -16,6 +16,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 import { isTV } from '@/lib/tv';
 import { suppressRealtimeUpdates } from '@/lib/useRealtimeUpdates';
 
@@ -40,12 +41,29 @@ const BITRATE_OPTIONS = [
 const SEEK_STEP_SECONDS = 10; // D-pad seek step
 const SCRUB_STEP_SECONDS = 30; // Progress bar scrub step
 
+interface TrackInfo {
+  id: number;
+  index: number;
+  language: string;
+  title: string;
+  selected: boolean;
+}
+
+interface MarkerInfo {
+  type: 'intro' | 'credits';
+  startMs: number;
+  endMs: number;
+}
+
 interface PlaybackInfo {
   sessionId: string;
   title: string;
   duration: number;
   viewOffset: number;
   serverUrl: string;
+  subtitles: TrackInfo[];
+  audioTracks: TrackInfo[];
+  markers: MarkerInfo[];
 }
 
 const formatTime = (ms: number) => {
@@ -74,13 +92,15 @@ function SeekIndicator({ direction, seconds }: { direction: 'forward' | 'rewind'
 // ── TV Controls Overlay ──
 function TVControls({
   visible, playing, displayPosition, duration, title,
-  onPlayPause, onSeekBack, onSeekForward, onQuality, onBack,
+  onPlayPause, onSeekBack, onSeekForward, onQuality, onSubtitles, onAudio, onBack,
   onInteraction, onProgressFocusChange,
+  hasSubtitles, hasAudioTracks,
 }: {
   visible: boolean; playing: boolean; displayPosition: number; duration: number; title: string;
   onPlayPause: () => void; onSeekBack: () => void; onSeekForward: () => void;
-  onQuality: () => void; onBack: () => void;
+  onQuality: () => void; onSubtitles: () => void; onAudio: () => void; onBack: () => void;
   onInteraction: () => void; onProgressFocusChange?: (focused: boolean) => void;
+  hasSubtitles: boolean; hasAudioTracks: boolean;
 }) {
   const [focused, setFocused] = useState<string | null>(null);
   const pressableRef = useRef<any>(null);
@@ -140,6 +160,12 @@ function TVControls({
       </Pressable>
 
       <View style={tvStyles.controls}>
+        {hasAudioTracks && (
+          <Pressable style={[tvStyles.btn, focused === 'audio' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onAudio(); }} onFocus={() => handleFocus('audio')} onBlur={() => handleBlur('audio')} focusable={true}>
+            <MaterialIcons name="audiotrack" size={32} color="#fff" />
+          </Pressable>
+        )}
         <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
           onPress={() => { onInteraction(); onBack(); }} onFocus={() => handleFocus('back')} onBlur={() => handleBlur('back')} focusable={true}>
           <MaterialIcons name="stop-circle" size={32} color="#fff" />
@@ -161,10 +187,50 @@ function TVControls({
           onPress={() => { onInteraction(); onQuality(); }} onFocus={() => handleFocus('quality')} onBlur={() => handleBlur('quality')} focusable={true}>
           <MaterialIcons name="high-quality" size={32} color="#fff" />
         </Pressable>
+        {hasSubtitles && (
+          <Pressable style={[tvStyles.btn, focused === 'subs' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onSubtitles(); }} onFocus={() => handleFocus('subs')} onBlur={() => handleBlur('subs')} focusable={true}>
+            <MaterialIcons name="subtitles" size={32} color="#fff" />
+          </Pressable>
+        )}
       </View>
     </View>
   );
 }
+
+// ── Video Player wrapper — remounts on key change to get a fresh player ──
+const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePosition, onPlayer, onPlaying }: {
+  url: string;
+  resumePosition: number;
+  onPlayer: (p: any) => void;
+  onPlaying: () => void;
+}) {
+  const onPlayerRef = useRef(onPlayer);
+  const onPlayingRef = useRef(onPlaying);
+  onPlayerRef.current = onPlayer;
+  onPlayingRef.current = onPlaying;
+
+  const p = useVideoPlayer(url || '', (player) => {
+    console.log('[VideoPlayerView] setup: url=' + (url || '').slice(0, 60) + '... resume=' + resumePosition);
+    if (resumePosition > 0) {
+      player.currentTime = resumePosition / 1000;
+    }
+    player.play();
+  });
+
+  useEffect(() => {
+    onPlayerRef.current(p);
+    onPlayingRef.current();
+  }, [p]);
+
+  return (
+    <VideoView
+      player={p}
+      style={styles.video}
+      nativeControls={false}
+    />
+  );
+});
 
 // ── Main Player Screen ──
 export default function PlayerScreen() {
@@ -180,9 +246,17 @@ export default function PlayerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
   const [streamUrl, setStreamUrl] = useState<string>('');
+  const [playerKey, setPlayerKey] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsMode, setSettingsMode] = useState<'quality' | 'subtitles' | 'audio'>('quality');
   const [selectedBitrate, setSelectedBitrate] = useState(20000);
   const [focusedBitrate, setFocusedBitrate] = useState<number | null>(null);
+  const [selectedSubtitleId, setSelectedSubtitleId] = useState<number | null>(null);
+  const [selectedAudioId, setSelectedAudioId] = useState<number | null>(null);
+  const [activeMarker, setActiveMarker] = useState<MarkerInfo | null>(null);
+  const skippedMarkers = useRef(new Set<string>());
+  const autoSkipIntro = useAppStore((s) => s.autoSkipIntro);
+  const autoSkipCredits = useAppStore((s) => s.autoSkipCredits);
   const [showControls, setShowControls] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [progressBarFocused, setProgressBarFocused] = useState(false);
@@ -197,25 +271,50 @@ export default function PlayerScreen() {
   const progressBarFocusedRef = useRef(false);
   const resetControlsTimerRef = useRef<() => void>(() => {});
 
-  // expo-video player
-  const player = useVideoPlayer(streamUrl || '', (p) => {
-    p.play();
-    setIsPlaying(true);
-  });
+  // Player lives in a separate component so playerKey can force full remount
+  const player = useRef<any>(null);
+  const handlePlayerReady = useCallback((p: any) => { player.current = p; }, []);
+  const handlePlayingState = useCallback(() => setIsPlaying(true), []);
 
   // Track position + detect end of playback
   useEffect(() => {
-    if (!player) return;
+    if (!player.current) return;
     const interval = setInterval(() => {
       try {
-        const currentMs = Math.floor((player.currentTime || 0) * 1000);
+        const currentMs = Math.floor((player.current?.currentTime || 0) * 1000);
         currentPositionRef.current = currentMs;
         setDisplayPosition(currentMs);
 
         // Auto-close when video ends (within 2 seconds of duration)
         if (playbackInfo && playbackInfo.duration > 0 && currentMs > 0) {
           if (currentMs >= playbackInfo.duration - 2000) {
-            handleBack();
+            exitPlayer();
+            return;
+          }
+        }
+
+        // Marker detection (intro/credits)
+        if (playbackInfo?.markers?.length) {
+          const marker = playbackInfo.markers.find(
+            (m) => currentMs >= m.startMs && currentMs < m.endMs,
+          );
+          const markerKey = marker ? `${marker.type}-${marker.startMs}` : null;
+
+          if (marker && markerKey && !skippedMarkers.current.has(markerKey)) {
+            // Auto-skip if enabled
+            if ((marker.type === 'intro' && autoSkipIntro) || (marker.type === 'credits' && autoSkipCredits)) {
+              skippedMarkers.current.add(markerKey);
+              if (player.current) {
+                player.current.currentTime = marker.endMs / 1000;
+                currentPositionRef.current = marker.endMs;
+                setDisplayPosition(marker.endMs);
+              }
+              setActiveMarker(null);
+            } else {
+              setActiveMarker(marker);
+            }
+          } else if (!marker) {
+            setActiveMarker(null);
           }
         }
       } catch {}
@@ -246,8 +345,8 @@ export default function PlayerScreen() {
   // Seek and update display position immediately
   const doSeek = useCallback((deltaSeconds: number) => {
     try {
-      const newTime = Math.max(0, (player.currentTime || 0) + deltaSeconds);
-      player.currentTime = newTime;
+      const newTime = Math.max(0, (player.current?.currentTime || 0) + deltaSeconds);
+      if (player.current) player.current.currentTime = newTime;
       const newMs = Math.floor(newTime * 1000);
       currentPositionRef.current = newMs;
       setDisplayPosition(newMs);
@@ -322,7 +421,15 @@ export default function PlayerScreen() {
         setPlaybackInfo({
           sessionId: info.sessionId, title: info.title, duration: info.duration,
           viewOffset: info.viewOffset, serverUrl: info.serverUrl,
+          subtitles: info.subtitles || [], audioTracks: info.audioTracks || [],
+          markers: info.markers || [],
         });
+
+        // Set initial selections from Plex defaults
+        const defaultSub = info.subtitles?.find((s: TrackInfo) => s.selected);
+        if (defaultSub) setSelectedSubtitleId(defaultSub.id);
+        const defaultAudio = info.audioTracks?.find((a: TrackInfo) => a.selected);
+        if (defaultAudio) setSelectedAudioId(defaultAudio.id);
 
         let url = info.streamUrl;
         if (info.viewOffset > 0) {
@@ -347,6 +454,17 @@ export default function PlayerScreen() {
     return () => { cancelled = true; if (progressInterval.current) clearInterval(progressInterval.current); };
   }, [ratingKey, resetControlsTimer]);
 
+  // Exit player — always exits, used by auto-close on video end
+  const exitPlayer = useCallback(async () => {
+    try { player.current?.pause(); } catch {}
+    if (playbackInfo) {
+      await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId).catch(() => {});
+      await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
+    }
+    if (progressInterval.current) clearInterval(progressInterval.current);
+    router.back();
+  }, [ratingKey, playbackInfo]);
+
   // Back — hides controls first, then exits player on second press
   const handleBack = useCallback(async () => {
     if (showSettings) { setShowSettings(false); return; }
@@ -355,15 +473,8 @@ export default function PlayerScreen() {
       if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
       return;
     }
-    // Controls already hidden — exit player
-    try { player.pause(); } catch {}
-    if (playbackInfo) {
-      await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId).catch(() => {});
-      await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
-    }
-    if (progressInterval.current) clearInterval(progressInterval.current);
-    router.back();
-  }, [ratingKey, playbackInfo, showSettings, showControls, player]);
+    await exitPlayer();
+  }, [showSettings, showControls, exitPlayer]);
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });
@@ -375,10 +486,10 @@ export default function PlayerScreen() {
     resetControlsTimer();
     try {
       if (isPlaying) {
-        player.pause();
+        player.current?.pause();
         setIsPlaying(false);
       } else {
-        player.play();
+        player.current?.play();
         setIsPlaying(true);
       }
     } catch (e) {
@@ -394,37 +505,94 @@ export default function PlayerScreen() {
 
   // Bitrate change — request a new stream from the server with the selected quality
   const handleBitrateChange = useCallback(async (bitrate: number) => {
-    if (!playbackInfo || !ratingKey) return;
+    if (!playbackInfo || !ratingKey) {
+      console.log('[Player] handleBitrateChange: no playbackInfo or ratingKey');
+      return;
+    }
+    console.log('[Player] handleBitrateChange: bitrate=' + bitrate);
     setSelectedBitrate(bitrate);
     setShowSettings(false);
     resetControlsTimer();
 
-    const currentTime = player.currentTime || 0;
-    player.pause();
+    const currentTime = player.current?.currentTime || 0;
+    console.log('[Player] currentTime=' + currentTime + ', pausing...');
+    player.current?.pause();
 
-    await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
+    console.log('[Player] stopping old session: ' + playbackInfo.sessionId);
+    await api.stopPlayback(playbackInfo.sessionId).catch((e) => console.log('[Player] stopPlayback error:', e));
 
     // Request new stream with specific bitrate — server handles transcode params
     const resolution = bitrate <= 2000 ? '720x480' : bitrate <= 4000 ? '1280x720' : '1920x1080';
     const isOriginal = bitrate === 0;
-    const newInfo = await api.getPlaybackInfo(
-      ratingKey,
-      currentPositionRef.current,
-      isOriginal ? undefined : bitrate,
-      isOriginal ? undefined : resolution,
-    );
+    console.log('[Player] requesting new stream: bitrate=' + bitrate + ', resolution=' + resolution + ', isOriginal=' + isOriginal);
+    try {
+      const newInfo = await api.getPlaybackInfo(
+        ratingKey,
+        currentPositionRef.current,
+        isOriginal ? undefined : bitrate,
+        isOriginal ? undefined : resolution,
+        selectedSubtitleId === null ? undefined : selectedSubtitleId,
+        selectedAudioId ?? undefined,
+      );
+      console.log('[Player] got new stream URL (first 100 chars): ' + newInfo.streamUrl.slice(0, 100));
+      console.log('[Player] new sessionId: ' + newInfo.sessionId);
 
-    setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
-    setStreamUrl(newInfo.streamUrl);
+      setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
+      currentPositionRef.current = Math.floor(currentTime * 1000);
+      setStreamUrl(newInfo.streamUrl);
+      setPlayerKey((k) => {
+        console.log('[Player] playerKey: ' + k + ' -> ' + (k + 1));
+        return k + 1;
+      });
+    } catch (e) {
+      console.error('[Player] getPlaybackInfo error:', e);
+    }
+  }, [playbackInfo, ratingKey, resetControlsTimer, selectedSubtitleId, selectedAudioId]);
 
-    setTimeout(() => {
-      try {
-        player.currentTime = currentTime;
-        player.play();
-        setIsPlaying(true);
-      } catch {}
-    }, 1000);
-  }, [playbackInfo, ratingKey, resetControlsTimer, player]);
+  // Subtitle/Audio change — restart stream with new track selection
+  const handleTrackChange = useCallback(async (type: 'subtitle' | 'audio', trackId: number | null) => {
+    if (!playbackInfo || !ratingKey) return;
+    console.log('[Player] handleTrackChange: type=' + type + ', trackId=' + trackId);
+    if (type === 'subtitle') setSelectedSubtitleId(trackId);
+    else setSelectedAudioId(trackId);
+    setShowSettings(false);
+    resetControlsTimer();
+
+    const currentTime = player.current?.currentTime || 0;
+    console.log('[Player] track change currentTime=' + currentTime);
+    player.current?.pause();
+    await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
+
+    const resolution = selectedBitrate <= 2000 ? '720x480' : selectedBitrate <= 4000 ? '1280x720' : '1920x1080';
+    const isOriginal = selectedBitrate === 0;
+    const subId = type === 'subtitle' ? trackId : selectedSubtitleId;
+    const audId = type === 'audio' ? trackId : selectedAudioId;
+    console.log('[Player] track request: subId=' + subId + ' audId=' + audId + ' bitrate=' + selectedBitrate);
+
+    try {
+      const newInfo = await api.getPlaybackInfo(
+        ratingKey,
+        currentPositionRef.current,
+        isOriginal ? undefined : selectedBitrate,
+        isOriginal ? undefined : resolution,
+        subId === null ? 0 : subId,        // 0 = no subtitles
+        audId ?? undefined,
+      );
+      console.log('[Player] track change got new URL, sessionId=' + newInfo.sessionId);
+
+      setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
+      currentPositionRef.current = Math.floor(currentTime * 1000);
+      setStreamUrl(newInfo.streamUrl);
+      setPlayerKey((k) => {
+        console.log('[Player] track playerKey: ' + k + ' -> ' + (k + 1));
+        return k + 1;
+      });
+    } catch (e) {
+      console.error('[Player] track change FAILED:', (e as Error).message);
+      // Resume playback on error
+      try { player.current?.play(); setIsPlaying(true); } catch {}
+    }
+  }, [playbackInfo, ratingKey, resetControlsTimer, player, selectedBitrate, selectedSubtitleId, selectedAudioId]);
 
   if (error) {
     return (
@@ -444,12 +612,12 @@ export default function PlayerScreen() {
     <TouchableWithoutFeedback onPress={handleScreenPress}>
       <View style={styles.container}>
         <View style={styles.videoContainer} pointerEvents="none">
-          <VideoView
-            player={player}
-            style={styles.video}
-            allowsFullscreen={false}
-            allowsPictureInPicture={!isTV}
-            nativeControls={false}
+          <VideoPlayerView
+            key={playerKey}
+            url={streamUrl}
+            resumePosition={playerKey > 0 ? currentPositionRef.current : 0}
+            onPlayer={handlePlayerReady}
+            onPlaying={handlePlayingState}
           />
         </View>
 
@@ -471,10 +639,14 @@ export default function PlayerScreen() {
             onPlayPause={handlePlayPause}
             onSeekBack={() => handleSeek(-30)}
             onSeekForward={() => handleSeek(30)}
-            onQuality={() => { setShowSettings(true); if (!isTV) setShowControls(true); }}
+            onQuality={() => { setSettingsMode('quality'); setShowSettings(true); if (!isTV) setShowControls(true); }}
+            onSubtitles={() => { setSettingsMode('subtitles'); setShowSettings(true); }}
+            onAudio={() => { setSettingsMode('audio'); setShowSettings(true); }}
             onBack={handleBack}
             onInteraction={resetControlsTimer}
             onProgressFocusChange={setProgressBarFocused}
+            hasSubtitles={(playbackInfo?.subtitles?.length || 0) > 0}
+            hasAudioTracks={(playbackInfo?.audioTracks?.length || 0) > 1}
           />
         )}
 
@@ -483,29 +655,104 @@ export default function PlayerScreen() {
           <SeekIndicator direction={seekDirection} seconds={seekAmount} />
         )}
 
-        {/* Bitrate picker */}
+        {/* Skip Intro / Skip Credits button */}
+        {activeMarker && !showSettings && (
+          <View style={skipStyles.container}>
+            <Pressable
+              style={({ focused }) => [skipStyles.button, isTV && focused && skipStyles.buttonFocused]}
+              focusable
+              onPress={() => {
+                const key = `${activeMarker.type}-${activeMarker.startMs}`;
+                skippedMarkers.current.add(key);
+                if (player.current) {
+                  player.current.currentTime = activeMarker.endMs / 1000;
+                  currentPositionRef.current = activeMarker.endMs;
+                  setDisplayPosition(activeMarker.endMs);
+                }
+                setActiveMarker(null);
+              }}
+            >
+              <Text style={skipStyles.text}>
+                {activeMarker.type === 'intro' ? 'Skip Intro' : 'Skip Credits'}
+              </Text>
+              <MaterialIcons name="skip-next" size={20} color="#000" />
+            </Pressable>
+          </View>
+        )}
+
+        {/* Settings picker (quality / subtitles / audio) */}
         <Modal visible={showSettings} transparent animationType="fade" onRequestClose={() => setShowSettings(false)}>
           <Pressable style={styles.settingsOverlay} onPress={() => setShowSettings(false)}>
             <Pressable style={styles.settingsPanel} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.settingsTitle}>Video Quality</Text>
-              <FlatList
-                data={BITRATE_OPTIONS}
-                keyExtractor={(item) => String(item.value)}
-                renderItem={({ item, index }) => (
-                  <Pressable
-                    style={[styles.bitrateOption, selectedBitrate === item.value && styles.bitrateSelected,
-                      isTV && focusedBitrate === item.value && styles.bitrateFocused]}
-                    onPress={() => handleBitrateChange(item.value)}
-                    onFocus={() => setFocusedBitrate(item.value)}
-                    onBlur={() => setFocusedBitrate(null)}
-                    focusable={true} hasTVPreferredFocus={index === 0}>
-                    <Text style={[styles.bitrateText, selectedBitrate === item.value && styles.bitrateTextSelected]}>
-                      {item.label}
-                    </Text>
-                    {selectedBitrate === item.value && <Text style={styles.bitrateCheck}>✓</Text>}
-                  </Pressable>
-                )}
-              />
+              <Text style={styles.settingsTitle}>
+                {settingsMode === 'quality' ? 'Video Quality' : settingsMode === 'subtitles' ? 'Subtitles' : 'Audio Track'}
+              </Text>
+              {settingsMode === 'quality' && (
+                <FlatList
+                  data={BITRATE_OPTIONS}
+                  keyExtractor={(item) => String(item.value)}
+                  renderItem={({ item, index }) => (
+                    <Pressable
+                      style={[styles.bitrateOption, selectedBitrate === item.value && styles.bitrateSelected,
+                        isTV && focusedBitrate === item.value && styles.bitrateFocused]}
+                      onPress={() => handleBitrateChange(item.value)}
+                      onFocus={() => setFocusedBitrate(item.value)}
+                      onBlur={() => setFocusedBitrate(null)}
+                      focusable={true} hasTVPreferredFocus={index === 0}>
+                      <Text style={[styles.bitrateText, selectedBitrate === item.value && styles.bitrateTextSelected]}>
+                        {item.label}
+                      </Text>
+                      {selectedBitrate === item.value && <Text style={styles.bitrateCheck}>✓</Text>}
+                    </Pressable>
+                  )}
+                />
+              )}
+              {settingsMode === 'subtitles' && (
+                <FlatList
+                  data={[{ id: 0, title: 'None', language: '', index: 0, selected: false }, ...(playbackInfo?.subtitles || [])]}
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={({ item, index }) => {
+                    const isSelected = item.id === 0 ? selectedSubtitleId === null : selectedSubtitleId === item.id;
+                    return (
+                      <Pressable
+                        style={[styles.bitrateOption, isSelected && styles.bitrateSelected,
+                          isTV && focusedBitrate === item.id && styles.bitrateFocused]}
+                        onPress={() => handleTrackChange('subtitle', item.id === 0 ? null : item.id)}
+                        onFocus={() => setFocusedBitrate(item.id)}
+                        onBlur={() => setFocusedBitrate(null)}
+                        focusable={true} hasTVPreferredFocus={index === 0}>
+                        <Text style={[styles.bitrateText, isSelected && styles.bitrateTextSelected]}>
+                          {item.title}
+                        </Text>
+                        {isSelected && <Text style={styles.bitrateCheck}>✓</Text>}
+                      </Pressable>
+                    );
+                  }}
+                />
+              )}
+              {settingsMode === 'audio' && (
+                <FlatList
+                  data={playbackInfo?.audioTracks || []}
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={({ item, index }) => {
+                    const isSelected = selectedAudioId === item.id;
+                    return (
+                      <Pressable
+                        style={[styles.bitrateOption, isSelected && styles.bitrateSelected,
+                          isTV && focusedBitrate === item.id && styles.bitrateFocused]}
+                        onPress={() => handleTrackChange('audio', item.id)}
+                        onFocus={() => setFocusedBitrate(item.id)}
+                        onBlur={() => setFocusedBitrate(null)}
+                        focusable={true} hasTVPreferredFocus={index === 0}>
+                        <Text style={[styles.bitrateText, isSelected && styles.bitrateTextSelected]}>
+                          {item.title}
+                        </Text>
+                        {isSelected && <Text style={styles.bitrateCheck}>✓</Text>}
+                      </Pressable>
+                    );
+                  }}
+                />
+              )}
             </Pressable>
           </Pressable>
         </Modal>
@@ -547,6 +794,34 @@ const tvStyles = StyleSheet.create({
   },
   btnFocused: { borderColor: colors.focus, backgroundColor: 'rgba(255,255,255,0.25)' },
   btnPlay: { backgroundColor: colors.primary, padding: spacing.md, borderRadius: 26 },
+});
+
+const skipStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: isTV ? 120 : 80,
+    right: isTV ? 48 : 20,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: isTV ? 12 : 10,
+    paddingHorizontal: isTV ? 24 : 18,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    gap: 8,
+  },
+  buttonFocused: {
+    borderColor: '#fff',
+    transform: [{ scale: 1.05 }],
+  },
+  text: {
+    color: '#000',
+    fontSize: isTV ? 18 : 16,
+    fontWeight: '700',
+  },
 });
 
 const styles = StyleSheet.create({

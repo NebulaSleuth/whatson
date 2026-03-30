@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 import { isTV } from '@/lib/tv';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography } from '@/constants/theme';
@@ -48,6 +49,7 @@ export default function TVShowsScreen() {
   }, []));
 
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+  const isReady = useAppStore((s) => s.isReady);
 
   const {
     data: recent,
@@ -58,6 +60,7 @@ export default function TVShowsScreen() {
   } = useQuery({
     queryKey: ['tv', 'recent'],
     queryFn: api.getTvRecent,
+    enabled: isReady,
   });
 
   const {
@@ -105,14 +108,14 @@ export default function TVShowsScreen() {
     setSelectedItem(item);
   }, []);
 
-  const readyItems = recent?.filter((i) => !i.progress.watched) || [];
-  const comingSoonItems = upcoming || [];
-  const downloadingItems = downloading || [];
+  const readyItems = useMemo(() => recent?.filter((i) => !i.progress.watched) || [], [recent]);
+  const comingSoonItems = useMemo(() => upcoming || [], [upcoming]);
+  const downloadingItems = useMemo(() => downloading || [], [downloading]);
 
   // All tracked TV shows, sorted alphabetically
-  const trackedItems: ContentItem[] = (trackedTv || [])
+  const trackedItems = useMemo(() => (trackedTv || [])
     .sort((a: TrackedItem, b: TrackedItem) => a.title.localeCompare(b.title))
-    .map(trackedShowToContentItem);
+    .map(trackedShowToContentItem), [trackedTv]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

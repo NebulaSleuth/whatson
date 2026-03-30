@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useImperativeHandle, forwardRef, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useImperativeHandle, forwardRef, useEffect, useRef, useMemo } from 'react';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { ContentShelf } from './ContentShelf';
 import { isTV } from '@/lib/tv';
@@ -26,16 +26,13 @@ export const ShelfList = forwardRef<ShelfListHandle, ShelfListProps>(
       });
     }, []);
 
-    // Expose focusFirst to parent via ref
     useImperativeHandle(ref, () => ({
       focusFirst: () => {
         if (!isTV || sections.length === 0) return;
-        // Increment trigger to activate hasTVPreferredFocus on first card
         setFocusTrigger((t) => t + 1);
       },
     }), [sections]);
 
-    // Reset the focus trigger after a short delay so it can fire again
     useEffect(() => {
       if (focusTrigger > 0) {
         focusTimerRef.current = setTimeout(() => setFocusTrigger(0), 300);
@@ -43,15 +40,21 @@ export const ShelfList = forwardRef<ShelfListHandle, ShelfListProps>(
       }
     }, [focusTrigger]);
 
+    // Pre-build stable onFirstCardRef callbacks per section to avoid inline closures
+    const firstCardRefCallbacks = useMemo(() => {
+      if (!isTV) return {};
+      const cbs: Record<string, (nodeId: number) => void> = {};
+      for (const section of sections) {
+        cbs[section.id] = (nodeId: number) => handleFirstCardRef(section.id, nodeId);
+      }
+      return cbs;
+    }, [sections, handleFirstCardRef]);
+
     return (
       <>
         {sections.map((section, index) => {
           const aboveSection = index > 0 ? sections[index - 1] : null;
           const belowSection = index < sections.length - 1 ? sections[index + 1] : null;
-
-          const aboveId = isTV && aboveSection
-            ? firstCardIds[aboveSection.id]
-            : undefined;
 
           return (
             <ContentShelf
@@ -59,9 +62,9 @@ export const ShelfList = forwardRef<ShelfListHandle, ShelfListProps>(
               section={section}
               onItemPress={onItemPress}
               onRefresh={onRefresh}
-              aboveFirstCardId={aboveId}
+              aboveFirstCardId={isTV && aboveSection ? firstCardIds[aboveSection.id] : undefined}
               belowFirstCardId={isTV && belowSection ? firstCardIds[belowSection.id] : undefined}
-              onFirstCardRef={isTV ? (nodeId) => handleFirstCardRef(section.id, nodeId) : undefined}
+              onFirstCardRef={firstCardRefCallbacks[section.id]}
               focusFirstCard={index === 0 && focusTrigger > 0}
             />
           );

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 import { isTV } from '@/lib/tv';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography } from '@/constants/theme';
@@ -22,6 +23,7 @@ export default function MoviesScreen() {
   }, []));
 
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+  const isReady = useAppStore((s) => s.isReady);
 
   const {
     data: recent,
@@ -32,6 +34,7 @@ export default function MoviesScreen() {
   } = useQuery({
     queryKey: ['movies', 'recent'],
     queryFn: api.getMoviesRecent,
+    enabled: isReady,
   });
 
   const {
@@ -65,9 +68,9 @@ export default function MoviesScreen() {
     setSelectedItem(item);
   }, []);
 
-  const recentItems = recent?.filter((i) => !i.progress.watched) || [];
-  const comingSoonItems = upcoming || [];
-  const downloadingItems = downloading || [];
+  const recentItems = useMemo(() => recent?.filter((i) => !i.progress.watched) || [], [recent]);
+  const comingSoonItems = useMemo(() => upcoming || [], [upcoming]);
+  const downloadingItems = useMemo(() => downloading || [], [downloading]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

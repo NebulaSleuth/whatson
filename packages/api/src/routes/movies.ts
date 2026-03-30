@@ -29,12 +29,12 @@ function trackedMoviesToContentItems(): ContentItem[] {
   }));
 }
 
-moviesRouter.get('/movies/recent', async (_req, res) => {
+moviesRouter.get('/movies/recent', async (req, res) => {
   try {
     const limit = 20;
     const [radarrRecent, plexRecent] = await Promise.all([
       config.radarr.url ? radarr.getRecentDownloads(limit) : [],
-      config.plex.token ? plex.getRecentlyAdded(limit) : [],
+      config.plex.token ? plex.getRecentlyAdded(limit, req.plexUserToken) : [],
     ]);
     const movies = [
       ...radarrRecent,

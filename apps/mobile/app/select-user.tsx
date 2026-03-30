@@ -156,15 +156,17 @@ export default function SelectUserScreen() {
             />
             <View style={styles.pinButtons}>
               <Pressable
-                style={[styles.pinButton, styles.pinCancel]}
+                style={({ focused }) => [styles.pinButton, styles.pinCancel, isTV && focused && styles.pinButtonFocused]}
                 onPress={() => { setPinUserId(null); setPin(''); }}
+                focusable
               >
                 <Text style={styles.pinButtonText}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[styles.pinButton, styles.pinSubmit]}
+                style={({ focused }) => [styles.pinButton, styles.pinSubmit, isTV && focused && styles.pinButtonFocused]}
                 onPress={handlePinSubmit}
                 disabled={!pin || selecting}
+                focusable
               >
                 <Text style={[styles.pinButtonText, { color: '#000' }]}>
                   {selecting ? 'Signing in...' : 'OK'}
@@ -315,6 +317,10 @@ const styles = StyleSheet.create({
   },
   pinSubmit: {
     backgroundColor: colors.primary,
+  },
+  pinButtonFocused: {
+    borderWidth: 3,
+    borderColor: colors.focus,
   },
   pinButtonText: {
     fontSize: isTV ? 18 : 16,

@@ -1,7 +1,16 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getUserToken } from '../services/users.js';
-import { setRequestToken } from '../services/plex.js';
 import { setRequestUserId } from '../services/tracked.js';
+
+// Extend Express Request to carry user context
+declare global {
+  namespace Express {
+    interface Request {
+      plexUserToken?: string;
+      plexUserId?: string;
+    }
+  }
+}
 
 /**
  * Middleware that extracts the X-Plex-User header and sets up
@@ -12,25 +21,25 @@ export function userContext(req: Request, _res: Response, next: NextFunction): v
   const userId = Array.isArray(userIdHeader) ? userIdHeader[0] : userIdHeader;
 
   if (userId) {
+    req.plexUserId = userId;
+
     // Set per-user tracked items storage
     setRequestUserId(userId);
 
-    // Set per-user Plex token if available
+    // Look up per-user Plex token
     const token = getUserToken(parseInt(userId, 10));
     if (token) {
-      setRequestToken(token);
+      req.plexUserToken = token;
     }
-  } else {
-    // No user specified — use defaults
-    setRequestUserId(null);
-    setRequestToken(null);
+
+    // Clean up tracked items scope after request
+    _res.on('finish', () => setRequestUserId(null));
   }
 
-  // Clean up after request completes
-  _res.on('finish', () => {
-    setRequestUserId(null);
-    setRequestToken(null);
-  });
-
   next();
+}
+
+/** Helper to get user token from request */
+export function getReqUserToken(req: Request): string | undefined {
+  return req.plexUserToken;
 }

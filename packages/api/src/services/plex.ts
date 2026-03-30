@@ -124,27 +124,19 @@ async function ensureDiscovered(): Promise<string> {
 // Per-user client cache: token -> AxiosInstance
 const userClients = new Map<string, AxiosInstance>();
 
-// Active token for the current request context (set via setRequestToken)
-let _requestToken: string | null = null;
-
-/** Set the Plex token to use for the current request context */
-export function setRequestToken(token: string | null): void {
-  _requestToken = token;
+function getTokenForClient(userToken?: string): string {
+  return userToken || config.plex.token;
 }
 
-function getActiveToken(): string {
-  return _requestToken || config.plex.token;
-}
-
-async function getClient(): Promise<AxiosInstance> {
-  const token = getActiveToken();
+async function getClient(userToken?: string): Promise<AxiosInstance> {
+  const token = getTokenForClient(userToken);
 
   // Check per-user client cache
   const cached = userClients.get(token);
   if (cached) return cached;
 
   // Build default client if none cached
-  if (!client || _requestToken) {
+  if (!client || userToken) {
     const baseURL = await ensureDiscovered();
 
     const newClient = axios.create({
@@ -159,7 +151,7 @@ async function getClient(): Promise<AxiosInstance> {
       timeout: 30000,
     });
 
-    if (_requestToken) {
+    if (userToken) {
       userClients.set(token, newClient);
       return newClient;
     }
@@ -169,10 +161,10 @@ async function getClient(): Promise<AxiosInstance> {
   return client;
 }
 
-function artworkUrl(path: string | undefined): string {
+function artworkUrl(path: string | undefined, userToken?: string): string {
   if (!path) return '';
   if (!resolvedServerUrl) return '';
-  return `${resolvedServerUrl}${path}?X-Plex-Token=${getActiveToken()}`;
+  return `${resolvedServerUrl}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
 }
 
 /** Get the resolved server URL (triggers discovery if needed) */
@@ -197,7 +189,7 @@ export async function getMachineIdentifier(): Promise<string | null> {
 
 // ── Data Mapping ──
 
-function plexToContentItem(item: any, status: ContentItem['status']): ContentItem {
+function plexToContentItem(item: any, status: ContentItem['status'], userToken?: string): ContentItem {
   const isEpisode = item.type === 'episode';
   const duration = item.duration ? Math.round(item.duration / 60000) : 0;
   const viewOffset = item.viewOffset || 0;
@@ -214,9 +206,9 @@ function plexToContentItem(item: any, status: ContentItem['status']): ContentIte
     summary: item.summary || '',
     duration,
     artwork: {
-      poster: artworkUrl(isEpisode ? item.grandparentThumb : item.thumb),
-      thumbnail: artworkUrl(item.thumb),
-      background: artworkUrl(item.art),
+      poster: artworkUrl(isEpisode ? item.grandparentThumb : item.thumb, userToken),
+      thumbnail: artworkUrl(item.thumb, userToken),
+      background: artworkUrl(item.art, userToken),
     },
     source: 'plex',
     sourceId: String(item.ratingKey),
@@ -241,72 +233,98 @@ function plexToContentItem(item: any, status: ContentItem['status']): ContentIte
 
 // ── Public API ──
 
-export async function getOnDeck(): Promise<ContentItem[]> {
-  const cacheKey = 'plex:onDeck';
+/** Cache key prefix scoped to the user token */
+function userCacheKey(base: string, userToken?: string): string {
+  const token = getTokenForClient(userToken);
+  const scope = token ? token.slice(-8) : 'default';
+  return `${base}:${scope}`;
+}
+
+export async function getOnDeck(userToken?: string): Promise<ContentItem[]> {
+  const cacheKey = userCacheKey('plex:onDeck', userToken);
   const cached = getCached<ContentItem[]>(cacheKey);
   if (cached) return cached;
 
-  const http = await getClient();
+  const http = await getClient(userToken);
   const { data } = await http.get('/library/onDeck');
   const items = data.MediaContainer?.Metadata || [];
-  const result = items.map((item: any) => plexToContentItem(item, 'watching'));
+  const result = items.map((item: any) => plexToContentItem(item, 'watching', userToken));
 
   setCached(cacheKey, result);
   return result;
 }
 
-export async function getContinueWatching(): Promise<ContentItem[]> {
-  const cacheKey = 'plex:continueWatching';
+export async function getContinueWatching(userToken?: string): Promise<ContentItem[]> {
+  const cacheKey = userCacheKey('plex:continueWatching', userToken);
   const cached = getCached<ContentItem[]>(cacheKey);
   if (cached) return cached;
 
-  const http = await getClient();
+  const http = await getClient(userToken);
   const { data } = await http.get('/hubs');
   const hubs = data.MediaContainer?.Hub || [];
   const continueHub = hubs.find(
     (h: any) => h.hubIdentifier === 'home.continue' || h.title === 'Continue Watching',
   );
   const items = continueHub?.Metadata || [];
-  const result = items.map((item: any) => plexToContentItem(item, 'watching'));
+  const result = items.map((item: any) => plexToContentItem(item, 'watching', userToken));
 
   setCached(cacheKey, result);
   return result;
 }
 
-export async function getRecentlyAdded(limit: number = 50): Promise<ContentItem[]> {
-  const cacheKey = `plex:recentlyAdded:${limit}`;
+export async function getRecentlyAdded(limit: number = 50, userToken?: string): Promise<ContentItem[]> {
+  const cacheKey = userCacheKey(`plex:recentlyAdded:${limit}`, userToken);
   const cached = getCached<ContentItem[]>(cacheKey);
   if (cached) return cached;
 
-  const http = await getClient();
-  const { data } = await http.get('/library/recentlyAdded', {
+  const http = await getClient(userToken);
+
+  // Fetch movies from global recently added
+  const { data: globalData } = await http.get('/library/recentlyAdded', {
     params: { 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': limit },
   });
-  const items = data.MediaContainer?.Metadata || [];
-  const result = items
-    .map((item: any) => plexToContentItem(item, 'ready'))
+  const globalItems = (globalData.MediaContainer?.Metadata || [])
+    .filter((item: any) => item.type === 'movie');
+
+  // Fetch recent episodes from TV library sections (global recentlyAdded only returns seasons, not episodes)
+  let episodeItems: any[] = [];
+  try {
+    const { data: sectionsData } = await http.get('/library/sections');
+    const tvSections = (sectionsData.MediaContainer?.Directory || []).filter((s: any) => s.type === 'show');
+    for (const section of tvSections) {
+      const { data: epData } = await http.get(`/library/sections/${section.key}/recentlyAdded`, {
+        params: { 'X-Plex-Container-Size': limit, type: 4 }, // type=4 = episodes
+      });
+      episodeItems.push(...(epData.MediaContainer?.Metadata || []));
+    }
+  } catch {}
+
+  const result = [...globalItems, ...episodeItems]
+    .map((item: any) => plexToContentItem(item, 'ready', userToken))
     .filter((item: ContentItem) => !item.progress.watched);
 
   setCached(cacheKey, result);
   return result;
 }
 
-export async function markWatched(ratingKey: string): Promise<void> {
-  const http = await getClient();
+export async function markWatched(ratingKey: string, userToken?: string): Promise<void> {
+  const http = await getClient(userToken);
   await http.get('/:/scrobble', {
     params: {
       key: ratingKey,
       identifier: 'com.plexapp.plugins.library',
     },
   });
-  // Invalidate relevant caches
-  getCached('plex:onDeck') && setCached('plex:onDeck', undefined, 1);
-  getCached('plex:continueWatching') && setCached('plex:continueWatching', undefined, 1);
-  getCached('plex:recentlyAdded:50') && setCached('plex:recentlyAdded:50', undefined, 1);
+  const onDeckKey = userCacheKey('plex:onDeck', userToken);
+  const continueKey = userCacheKey('plex:continueWatching', userToken);
+  const recentKey = userCacheKey('plex:recentlyAdded:50', userToken);
+  getCached(onDeckKey) && setCached(onDeckKey, undefined, 1);
+  getCached(continueKey) && setCached(continueKey, undefined, 1);
+  getCached(recentKey) && setCached(recentKey, undefined, 1);
 }
 
-export async function markUnwatched(ratingKey: string): Promise<void> {
-  const http = await getClient();
+export async function markUnwatched(ratingKey: string, userToken?: string): Promise<void> {
+  const http = await getClient(userToken);
   await http.get('/:/unscrobble', {
     params: {
       key: ratingKey,
@@ -319,12 +337,12 @@ export async function markUnwatched(ratingKey: string): Promise<void> {
  * Get all items from a Plex library section, sorted alphabetically.
  * @param type 'movie' or 'show'
  */
-export async function getLibrary(type: 'movie' | 'show'): Promise<ContentItem[]> {
-  const cacheKey = `plex:library:${type}`;
+export async function getLibrary(type: 'movie' | 'show', userToken?: string): Promise<ContentItem[]> {
+  const cacheKey = userCacheKey(`plex:library:${type}`, userToken);
   const cached = getCached<ContentItem[]>(cacheKey);
   if (cached) return cached;
 
-  const http = await getClient();
+  const http = await getClient(userToken);
 
   // First get library sections to find the right one
   const { data: sectionsData } = await http.get('/library/sections');
@@ -341,7 +359,7 @@ export async function getLibrary(type: 'movie' | 'show'): Promise<ContentItem[]>
     });
     const items = data.MediaContainer?.Metadata || [];
     for (const item of items) {
-      allItems.push(plexToContentItem(item, 'ready'));
+      allItems.push(plexToContentItem(item, 'ready', userToken));
     }
   }
 
@@ -356,13 +374,43 @@ export async function getLibrary(type: 'movie' | 'show'): Promise<ContentItem[]>
   return allItems;
 }
 
-export async function search(query: string): Promise<ContentItem[]> {
-  const http = await getClient();
+export interface PlexSeason {
+  ratingKey: string;
+  index: number;
+  title: string;
+  episodeCount: number;
+  thumb: string;
+}
+
+export async function getShowSeasons(showRatingKey: string, userToken?: string): Promise<PlexSeason[]> {
+  const http = await getClient(userToken);
+  const { data } = await http.get(`/library/metadata/${showRatingKey}/children`);
+  const items = data.MediaContainer?.Metadata || [];
+  return items
+    .filter((s: any) => s.index != null && s.index > 0) // Skip specials (index=0)
+    .map((s: any) => ({
+      ratingKey: String(s.ratingKey),
+      index: s.index,
+      title: s.title || `Season ${s.index}`,
+      episodeCount: s.leafCount || 0,
+      thumb: artworkUrl(s.thumb, userToken),
+    }));
+}
+
+export async function getSeasonEpisodes(seasonRatingKey: string, userToken?: string): Promise<ContentItem[]> {
+  const http = await getClient(userToken);
+  const { data } = await http.get(`/library/metadata/${seasonRatingKey}/children`);
+  const items = data.MediaContainer?.Metadata || [];
+  return items.map((item: any) => plexToContentItem(item, 'ready', userToken));
+}
+
+export async function search(query: string, userToken?: string): Promise<ContentItem[]> {
+  const http = await getClient(userToken);
   const { data } = await http.get('/search', { params: { query } });
   const items = data.MediaContainer?.Metadata || [];
   return items
     .filter((item: any) => item.type === 'movie' || item.type === 'episode' || item.type === 'show')
-    .map((item: any) => plexToContentItem(item, 'ready'));
+    .map((item: any) => plexToContentItem(item, 'ready', userToken));
 }
 
 export async function testConnection(): Promise<boolean> {
@@ -377,6 +425,7 @@ export async function testConnection(): Promise<boolean> {
 
 export function resetClient(): void {
   client = null;
-  resolvedServerUrl = null;
+  // Don't clear resolvedServerUrl — it's the same server for all users
+  // and artwork URLs depend on it being set
   userClients.clear();
 }

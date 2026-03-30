@@ -107,6 +107,14 @@ server.on('error', (err: NodeJS.ErrnoException) => {
   }
 });
 
+// Eagerly discover Plex server on startup so artwork URLs work from the first request
+import { getServerUrl } from './services/plex.js';
+if (config.plex.token) {
+  getServerUrl().then((url) => {
+    if (url) console.log(`[Plex] Server discovered: ${url}`);
+  }).catch(() => {});
+}
+
 server.listen(config.port, () => {
   console.log(`[Whats On API] Ready on port ${config.port}`);
   console.log(`[Whats On API] Admin UI: http://localhost:${config.port}/setup`);

@@ -5,35 +5,41 @@ import { colors, spacing } from '@/constants/theme';
 import { isTV } from '@/lib/tv';
 import { Clock } from '@/components/Clock';
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    Home: focused ? '◉' : '○',
-    'TV Shows': focused ? '▣' : '□',
-    Movies: focused ? '▶' : '▷',
-    Library: focused ? '▤' : '▤',
-    Search: focused ? '⦿' : '◎',
-    Settings: focused ? '⚙' : '⚙',
-  };
+const ICONS: Record<string, [string, string]> = {
+  Home: ['◉', '○'],
+  'TV Shows': ['▣', '□'],
+  Movies: ['▶', '▷'],
+  Library: ['▤', '▤'],
+  Search: ['⦿', '◎'],
+  Settings: ['⚙', '⚙'],
+};
+
+const TabIcon = React.memo(function TabIcon({ name, focused }: { name: string; focused: boolean }) {
+  const pair = ICONS[name] || ['○', '○'];
   return (
-    <Text style={{ fontSize: isTV ? 24 : 20, color: focused ? colors.primary : colors.textMuted }}>
-      {icons[name] || '○'}
+    <Text style={[tabIconStyle, { color: focused ? colors.primary : colors.textMuted }]}>
+      {focused ? pair[0] : pair[1]}
     </Text>
   );
-}
+});
+
+const tabIconStyle = { fontSize: isTV ? 24 : 20 };
 
 /**
  * On TV, tabs should switch when focused (D-pad navigation), not just on press.
  * This custom button triggers onPress when it receives focus.
  */
-function TVTabButton(props: any) {
+const TVTabButton = React.memo(function TVTabButton(props: any) {
   const { children, onPress, accessibilityState, style, ...rest } = props;
   const isSelected = accessibilityState?.selected;
+  const onPressRef = React.useRef(onPress);
+  onPressRef.current = onPress;
 
   const handleFocus = useCallback(() => {
-    if (!isSelected && onPress) {
-      onPress();
+    if (!isSelected) {
+      onPressRef.current?.();
     }
-  }, [isSelected, onPress]);
+  }, [isSelected]);
 
   return (
     <Pressable
@@ -50,7 +56,7 @@ function TVTabButton(props: any) {
       {children}
     </Pressable>
   );
-}
+});
 
 export default function TabLayout() {
   return (

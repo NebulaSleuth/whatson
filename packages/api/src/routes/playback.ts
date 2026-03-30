@@ -21,11 +21,12 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
       return;
     }
 
-    // Get item metadata for duration, subtitles, audio tracks
+    // Get item metadata for duration, subtitles, audio tracks, markers
     const { data: metaRaw } = await axios.get(`${serverUrl}/library/metadata/${ratingKey}`, {
+      params: { includeMarkers: 1 },
       headers: {
         Accept: 'application/json',
-        'X-Plex-Token': config.plex.token,
+        'X-Plex-Token': req.plexUserToken || config.plex.token,
         'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
       },
       timeout: 10000,
@@ -82,27 +83,67 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
     const directPlay = forceTranscode ? '0' : '0';
     const directStream = forceTranscode ? '0' : '1';
 
+    const subtitleStreamID = req.query.subtitleStreamID as string | undefined;
+    const audioStreamID = req.query.audioStreamID as string | undefined;
+
+    // Force transcode when subtitle or audio track is explicitly selected
+    const hasTrackOverride = !!subtitleStreamID || !!audioStreamID;
+    const finalDirectPlay = hasTrackOverride ? '0' : directPlay;
+    const finalDirectStream = hasTrackOverride ? '0' : directStream;
+
     const sessionId = `whatson-${Date.now()}`;
-    const streamUrl = `${serverUrl}/video/:/transcode/universal/start.m3u8?` +
-      new URLSearchParams({
-        path: `/library/metadata/${ratingKey}`,
-        protocol: 'hls',
-        session: sessionId,
-        offset: String(offset),
-        directPlay,
-        directStream,
-        videoQuality: forceTranscode ? '75' : '100',
-        videoResolution: resolution,
-        maxVideoBitrate: String(maxBitrate),
-        mediaIndex: '0',
-        partIndex: '0',
-        location: 'lan',
-        subtitles: 'auto',
-        'X-Plex-Token': config.plex.token,
-        'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
-        'X-Plex-Product': PLEX_PRODUCT,
-        'X-Plex-Platform': 'Android',
-      }).toString();
+    const transcodeParams: Record<string, string> = {
+      path: `/library/metadata/${ratingKey}`,
+      protocol: 'hls',
+      session: sessionId,
+      offset: String(offset),
+      directPlay: finalDirectPlay,
+      directStream: finalDirectStream,
+      videoQuality: forceTranscode ? '75' : '100',
+      videoResolution: resolution,
+      maxVideoBitrate: String(maxBitrate),
+      mediaIndex: '0',
+      partIndex: '0',
+      location: 'lan',
+      subtitles: 'auto',
+      copyts: '1',
+      hasMDE: '1',
+      fastSeek: '1',
+      'X-Plex-Token': req.plexUserToken || config.plex.token,
+      'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+      'X-Plex-Product': PLEX_PRODUCT,
+      'X-Plex-Platform': 'Chrome',
+    };
+    // Set audio/subtitle preferences on the part BEFORE transcoding
+    const partId = part?.id;
+    const plexToken = req.plexUserToken || config.plex.token;
+    if (partId && (audioStreamID || subtitleStreamID)) {
+      try {
+        const partParams: Record<string, string> = { 'X-Plex-Token': plexToken };
+        if (audioStreamID) partParams.audioStreamID = audioStreamID;
+        if (subtitleStreamID) partParams.subtitleStreamID = subtitleStreamID;
+        await axios.put(`${serverUrl}/library/parts/${partId}`, null, { params: partParams, timeout: 5000 });
+      } catch {}
+    }
+
+    if (subtitleStreamID) {
+      transcodeParams.subtitles = 'burn';
+    }
+
+    // Call the decision endpoint first — tells Plex to set up the transcode session
+    try {
+      await axios.get(`${serverUrl}/video/:/transcode/universal/decision`, {
+        params: transcodeParams,
+        headers: { Accept: 'application/json' },
+        timeout: 10000,
+      });
+    } catch {}
+
+    // Build stream URL using axios-style param encoding (Plex requires unencoded slashes in path)
+    const streamUrl = axios.getUri({
+      url: `${serverUrl}/video/:/transcode/universal/start.m3u8`,
+      params: transcodeParams,
+    });
 
     // Also build a direct play URL as fallback
     const directPlayUrl = part?.key
@@ -126,6 +167,11 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
         viewOffset: item.viewOffset || 0, // milliseconds — resume position
         subtitles,
         audioTracks,
+        markers: (item.Marker || []).map((m: any) => ({
+          type: m.type,
+          startMs: m.startTimeOffset,
+          endMs: m.endTimeOffset,
+        })),
         serverUrl,
       },
     });
@@ -156,7 +202,7 @@ playbackRouter.post('/playback/progress', async (req, res) => {
         duration: String(duration),
       },
       headers: {
-        'X-Plex-Token': config.plex.token,
+        'X-Plex-Token': req.plexUserToken || config.plex.token,
         'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
         'X-Plex-Session-Identifier': sessionId || PLEX_CLIENT_IDENTIFIER,
       },

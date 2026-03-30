@@ -5,6 +5,8 @@ const KEYS = {
   CONFIGURED: 'whatson_configured',
   SAVED_USER: 'whatson_savedUser',
   REMEMBER_USER: 'whatson_rememberUser',
+  AUTO_SKIP_INTRO: 'whatson_autoSkipIntro',
+  AUTO_SKIP_CREDITS: 'whatson_autoSkipCredits',
   SONARR_PROFILE: 'whatson_sonarrProfile',
   SONARR_FOLDER: 'whatson_sonarrFolder',
   SONARR_MONITOR: 'whatson_sonarrMonitor',
@@ -77,6 +79,24 @@ export async function setRememberUser(remember: boolean): Promise<void> {
       await SecureStore.deleteItemAsync(KEYS.SAVED_USER);
     }
   } catch {}
+}
+
+// ── Auto-Skip Preferences ──
+
+export async function getAutoSkipIntro(): Promise<boolean> {
+  try { return (await SecureStore.getItemAsync(KEYS.AUTO_SKIP_INTRO)) === 'true'; } catch { return false; }
+}
+
+export async function setAutoSkipIntro(skip: boolean): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.AUTO_SKIP_INTRO, String(skip)); } catch {}
+}
+
+export async function getAutoSkipCredits(): Promise<boolean> {
+  try { return (await SecureStore.getItemAsync(KEYS.AUTO_SKIP_CREDITS)) === 'true'; } catch { return false; }
+}
+
+export async function setAutoSkipCredits(skip: boolean): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.AUTO_SKIP_CREDITS, String(skip)); } catch {}
 }
 
 // ── Arr Preferences ──

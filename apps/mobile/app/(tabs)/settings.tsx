@@ -16,7 +16,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 
 interface ServiceStatus {
@@ -35,7 +35,7 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits } = useAppStore();
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -146,7 +146,17 @@ export default function SettingsScreen() {
                   <Text style={styles.serviceLabel}>Signed in as {currentUser.title}</Text>
                 </View>
               </View>
-              <View style={[styles.serviceRow, { borderBottomWidth: 0 }]}>
+              <TVPressable
+                style={[styles.serviceRow, { borderBottomWidth: 0 }]}
+                onPress={async () => {
+                  const val = !rememberUser;
+                  setRememberUser(val);
+                  await saveRememberUser(val);
+                  if (val && currentUser) {
+                    await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
+                  }
+                }}
+              >
                 <Text style={styles.serviceLabel}>Remember login</Text>
                 <Switch
                   value={rememberUser}
@@ -160,7 +170,7 @@ export default function SettingsScreen() {
                   trackColor={{ false: '#333', true: colors.primary }}
                   thumbColor="#fff"
                 />
-              </View>
+              </TVPressable>
               <TVPressable
                 style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
                 onPress={() => {
@@ -181,6 +191,49 @@ export default function SettingsScreen() {
               <Text style={styles.primaryButtonText}>Select User</Text>
             </TVPressable>
           )}
+        </View>
+
+        {/* Playback */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Playback</Text>
+          <TVPressable
+            style={styles.serviceRow}
+            onPress={async () => {
+              const val = !autoSkipIntro;
+              setAutoSkipIntro(val);
+              await saveAutoSkipIntro(val);
+            }}
+          >
+            <Text style={styles.serviceLabel}>Auto-skip intros</Text>
+            <Switch
+              value={autoSkipIntro}
+              onValueChange={async (val) => {
+                setAutoSkipIntro(val);
+                await saveAutoSkipIntro(val);
+              }}
+              trackColor={{ false: '#333', true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </TVPressable>
+          <TVPressable
+            style={[styles.serviceRow, { borderBottomWidth: 0 }]}
+            onPress={async () => {
+              const val = !autoSkipCredits;
+              setAutoSkipCredits(val);
+              await saveAutoSkipCredits(val);
+            }}
+          >
+            <Text style={styles.serviceLabel}>Auto-skip credits</Text>
+            <Switch
+              value={autoSkipCredits}
+              onValueChange={async (val) => {
+                setAutoSkipCredits(val);
+                await saveAutoSkipCredits(val);
+              }}
+              trackColor={{ false: '#333', true: colors.primary }}
+              thumbColor="#fff"
+            />
+          </TVPressable>
         </View>
 
         {/* Service Status */}

@@ -15,7 +15,7 @@ scrobbleRouter.post('/scrobble', async (req, res) => {
     }
 
     if (source === 'plex') {
-      await plex.markWatched(sourceId);
+      await plex.markWatched(sourceId, req.plexUserToken);
     } else if (source === 'live') {
       // Tracked/live TV item — sourceId could be "tmdbId" or item id like "tracked-ep-123-S1E5"
       // Extract a watched key from the request
@@ -42,7 +42,7 @@ scrobbleRouter.post('/unscrobble', async (req, res) => {
     }
 
     if (source === 'plex') {
-      await plex.markUnwatched(sourceId);
+      await plex.markUnwatched(sourceId, req.plexUserToken);
     } else if (source === 'live') {
       const episodeKey = req.body.episodeKey || sourceId;
       tracked.markUnwatched(episodeKey);
@@ -61,12 +61,12 @@ scrobbleRouter.post('/scrobble/all', async (req, res) => {
     const { showTitle, source, sourceId } = req.body;
 
     if (source === 'plex' && showTitle) {
-      const items = await plex.search(showTitle);
+      const items = await plex.search(showTitle, req.plexUserToken);
       const episodes = items.filter(
         (i) => i.type === 'episode' && i.showTitle?.toLowerCase() === showTitle.toLowerCase(),
       );
       for (const ep of episodes) {
-        try { await plex.markWatched(ep.sourceId); } catch {}
+        try { await plex.markWatched(ep.sourceId, req.plexUserToken); } catch {}
       }
       console.log(`[Scrobble] Marked ${episodes.length} episodes of "${showTitle}" as watched in Plex`);
     } else if (source === 'live' && sourceId) {

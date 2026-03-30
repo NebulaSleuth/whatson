@@ -10,7 +10,7 @@ homeRouter.get('/home', async (req, res) => {
     if (req.query.refresh === 'true') {
       invalidateAll();
     }
-    const data = await getHomeData();
+    const data = await getHomeData(req.plexUserToken);
     const response: ApiResponse<HomeResponse> = { success: true, data };
     res.json(response);
   } catch (error) {

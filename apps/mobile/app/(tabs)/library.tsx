@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
 import { DetailSheet } from '@/components/DetailSheet';
@@ -117,6 +118,7 @@ export default function LibraryScreen() {
   }, [focusTrigger]);
 
   useTVBackHandler(useCallback(() => {
+    console.log('[Library] back handler fired');
     currentRowRef.current = 0;
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
     // Trigger hasTVPreferredFocus on the first card
@@ -132,8 +134,22 @@ export default function LibraryScreen() {
   const items = data || [];
 
   const handleItemPress = useCallback((item: ContentItem) => {
-    setSelectedItem(item);
-  }, []);
+    if (type === 'show') {
+      console.log('[Library] navigating to show-detail: ratingKey=' + item.sourceId + ' title=' + (item.showTitle || item.title));
+      router.navigate({
+        pathname: '/show-detail',
+        params: {
+          ratingKey: item.sourceId,
+          title: item.showTitle || item.title,
+          poster: item.artwork.poster,
+          summary: item.summary || '',
+          year: String(item.year || ''),
+        },
+      } as any);
+    } else {
+      setSelectedItem(item);
+    }
+  }, [type]);
 
   // On TV: when a card gets focus, snap scroll to show full rows
   // Use a ref so renderItem doesn't depend on this callback's identity

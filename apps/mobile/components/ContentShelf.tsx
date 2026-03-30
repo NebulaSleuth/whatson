@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, findNodeHandle } from 'react-native';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { ContentCard } from './ContentCard';
@@ -9,19 +9,17 @@ interface ContentShelfProps {
   section: ContentSection;
   onItemPress?: (item: ContentItem) => void;
   onRefresh?: () => void;
-  /** Node ID of the first card in the shelf above (for nextFocusUp) */
   aboveFirstCardId?: number;
-  /** Node ID of the first card in the shelf below (for nextFocusDown) */
   belowFirstCardId?: number;
-  /** Callback to report this shelf's first card node ID */
   onFirstCardRef?: (nodeId: number) => void;
-  /** When true, set hasTVPreferredFocus on the first card */
   focusFirstCard?: boolean;
 }
 
 const TV_SHELF_HEIGHT = cardDimensions.poster.height + 60 + 40;
 
-export function ContentShelf({
+const keyExtractor = (item: ContentItem) => item.id;
+
+export const ContentShelf = React.memo(function ContentShelf({
   section,
   onItemPress,
   onRefresh,
@@ -34,7 +32,6 @@ export function ContentShelf({
 
   const handleCardFocus = useCallback((index: number) => {
     if (isTV && listRef.current) {
-      // Scroll to beginning if focusing the first card
       if (index === 0) {
         listRef.current.scrollToOffset({ offset: 0, animated: true });
       } else {
@@ -42,6 +39,8 @@ export function ContentShelf({
       }
     }
   }, []);
+
+  const handleCardBlur = useCallback(() => {}, []);
 
   const handleFirstCardMounted = useCallback((ref: any) => {
     if (!isTV || !ref) return;
@@ -51,39 +50,49 @@ export function ContentShelf({
     }
   }, [onFirstCardRef]);
 
+  const itemCount = section.items.length;
+
+  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
+    <ContentCard
+      item={item}
+      onPress={onItemPress}
+      onMarkWatched={onRefresh}
+      onTVFocus={() => handleCardFocus(index)}
+      onTVBlur={handleCardBlur}
+      isFirstInRow={index === 0}
+      isLastInRow={index === itemCount - 1}
+      tvRef={index === 0 ? handleFirstCardMounted : undefined}
+      nextFocusUp={aboveFirstCardId}
+      nextFocusDown={belowFirstCardId}
+      hasTVPreferredFocus={index === 0 && focusFirstCard}
+    />
+  ), [onItemPress, onRefresh, handleCardFocus, handleCardBlur, itemCount, handleFirstCardMounted, aboveFirstCardId, belowFirstCardId, focusFirstCard]);
+
   return (
-    <View style={[styles.container, isTV && { height: TV_SHELF_HEIGHT }]}>
+    <View style={[styles.container, isTV && tvContainerStyle]}>
       <Text style={styles.title}>{section.title}</Text>
       <FlatList
         ref={listRef}
         horizontal
         data={section.items}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => (
-          <ContentCard
-            item={item}
-            onPress={onItemPress}
-            onMarkWatched={onRefresh}
-            onTVFocus={() => handleCardFocus(index)}
-            isFirstInRow={index === 0}
-            isLastInRow={index === section.items.length - 1}
-            tvRef={index === 0 ? handleFirstCardMounted : undefined}
-            nextFocusUp={aboveFirstCardId}
-            nextFocusDown={belowFirstCardId}
-            hasTVPreferredFocus={index === 0 && focusFirstCard}
-          />
-        )}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.list}
         snapToInterval={isTV ? undefined : cardDimensions.poster.width + spacing.md}
         decelerationRate="fast"
-        windowSize={isTV ? 7 : 5}
+        windowSize={isTV ? 11 : 5}
+        maxToRenderPerBatch={isTV ? 8 : 5}
+        initialNumToRender={isTV ? 7 : 5}
         removeClippedSubviews={false}
+        updateCellsBatchingPeriod={isTV ? 100 : 50}
         onScrollToIndexFailed={() => {}}
       />
     </View>
   );
-}
+});
+
+const tvContainerStyle = { height: TV_SHELF_HEIGHT };
 
 const styles = StyleSheet.create({
   container: {
