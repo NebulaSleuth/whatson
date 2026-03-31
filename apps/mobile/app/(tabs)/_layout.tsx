@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { colors, spacing } from '@/constants/theme';
-import { isTV } from '@/lib/tv';
+import { isTV, TV_SAFE_AREA } from '@/lib/tv';
 import { Clock } from '@/components/Clock';
 
 const ICONS: Record<string, [string, string]> = {
@@ -23,7 +23,7 @@ const TabIcon = React.memo(function TabIcon({ name, focused }: { name: string; f
   );
 });
 
-const tabIconStyle = { fontSize: isTV ? 24 : 20 };
+const tabIconStyle = { fontSize: isTV ? 28 : 20 };
 
 /**
  * On TV, tabs should switch when focused (D-pad navigation), not just on press.
@@ -66,10 +66,11 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: isTV
           ? {
-              backgroundColor: colors.background,
+              backgroundColor: colors.surface,
               borderBottomColor: colors.cardBorder,
               borderBottomWidth: 1,
-              height: 56,
+              height: 50 + Math.ceil(TV_SAFE_AREA.vertical * 0.55),
+              paddingTop: Math.ceil(TV_SAFE_AREA.vertical * 0.55),
               paddingRight: 100,
             }
           : {
@@ -82,7 +83,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
-          fontSize: isTV ? 14 : 11,
+          fontSize: isTV ? 18 : 11,
           fontWeight: '600',
         },
         ...(isTV ? {
@@ -143,7 +144,7 @@ export default function TabLayout() {
 const layoutStyles = StyleSheet.create({
   clockOverlay: {
     position: 'absolute',
-    top: isTV ? 16 : 50,
+    top: isTV ? 16 + Math.ceil(TV_SAFE_AREA.vertical * 0.55) : 50,
     right: spacing.lg,
     zIndex: 100,
   },
@@ -160,7 +161,7 @@ const tvStyles = StyleSheet.create({
     marginHorizontal: 2,
   },
   tabButtonSelected: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceHover,
     borderColor: colors.focus,
   },
 });

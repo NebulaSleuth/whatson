@@ -608,8 +608,7 @@ export default function PlayerScreen() {
     );
   }
 
-  return (
-    <TouchableWithoutFeedback onPress={handleScreenPress}>
+  const playerContent = (
       <View style={styles.container}>
         <View style={styles.videoContainer} pointerEvents="none">
           <VideoPlayerView
@@ -757,6 +756,14 @@ export default function PlayerScreen() {
           </Pressable>
         </Modal>
       </View>
+  );
+
+  // On TV, don't wrap in TouchableWithoutFeedback — it blocks the tvOS focus
+  // engine from navigating between player control buttons via left/right D-pad.
+  if (isTV) return playerContent;
+  return (
+    <TouchableWithoutFeedback onPress={handleScreenPress}>
+      {playerContent}
     </TouchableWithoutFeedback>
   );
 }

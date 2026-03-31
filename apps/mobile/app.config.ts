@@ -31,7 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: isTV ? 'com.whatson.tv' : 'com.whatson.app',
+      bundleIdentifier: isTV ? 'com.extrastrength.whatson' : 'com.whatson.app',
       infoPlist: {
         LSApplicationQueriesSchemes: ['plex', 'plexapp', 'nflx', 'hulu', 'aiv'],
         ...(isTV ? { UIRequiredDeviceCapabilities: ['arm64'] } : {}),

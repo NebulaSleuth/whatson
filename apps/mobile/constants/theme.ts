@@ -1,6 +1,12 @@
-import { Platform } from 'react-native';
+import { Platform, Dimensions } from 'react-native';
 
 const isTV = Platform.isTV;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// Target ~14% of screen width per card (gives ~6 cards on 1920, ~5 on 960)
+const TV_POSTER_WIDTH = isTV
+  ? Math.max(140, Math.min(300, Math.floor(SCREEN_WIDTH * 0.14)))
+  : 140;
 
 export const colors = {
   background: '#0F0F0F',
@@ -66,14 +72,14 @@ export const typography = {
 } as const;
 
 export const cardDimensions = {
-  // Portrait poster card (2:3 ratio) — sized to fit ~5-6 cards on a 1080p TV
+  // Portrait poster card (2:3 ratio) — sized relative to screen width on TV
   poster: {
-    width: isTV ? 160 : 140,
-    height: isTV ? 240 : 210,
+    width: isTV ? TV_POSTER_WIDTH : 140,
+    height: isTV ? Math.floor(TV_POSTER_WIDTH * 1.5) : 210,
   },
   // Landscape thumbnail card (16:9 ratio)
   landscape: {
-    width: isTV ? 300 : 280,
-    height: isTV ? 169 : 158,
+    width: isTV ? Math.floor(TV_POSTER_WIDTH * 1.875) : 280,
+    height: isTV ? Math.floor(TV_POSTER_WIDTH * 1.875 * 9 / 16) : 158,
   },
-} as const;
+};

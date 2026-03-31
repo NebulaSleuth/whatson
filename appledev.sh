@@ -23,7 +23,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 MOBILE_DIR="$PROJECT_ROOT/apps/mobile"
 
 # Backend API URL — change this to your backend's IP
-export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://192.168.1.241:3001/api}"
+export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-http://www.nebulasleuth.com:3001/api}"
 
 # =============================================================================
 # 1. INITIAL SETUP (run once)
@@ -88,16 +88,26 @@ device() {
 }
 
 # =============================================================================
-# 4. DEBUG
+# 4. START METRO BUNDLER (for development with hot reload)
+# =============================================================================
+metro() {
+    echo "=== Starting Metro bundler ==="
+    cd "$MOBILE_DIR"
+    WHATSON_TV=1 npx expo start "$@"
+}
+
+# =============================================================================
+# 5. DEBUG
 # =============================================================================
 debug() {
     echo "=== Debug commands ==="
     echo ""
     echo "Metro bundler (JS hot reload):"
-    echo "  cd $MOBILE_DIR && WHATSON_TV=1 npx expo start"
+    echo "  $0 metro          — start Metro bundler"
+    echo "  $0 metro --clear  — start with cache cleared"
     echo ""
     echo "View device logs:"
-    echo "  xcrun simctl spawn booted log stream --predicate 'subsystem == \"com.whatson.tv\"'"
+    echo "  xcrun simctl spawn booted log stream --predicate 'subsystem == \"com.extrastrength.whatson\"'"
     echo ""
     echo "Open React Native debugger (in simulator, press Cmd+D):"
     echo "  - 'Open Debugger' opens Chrome DevTools"
@@ -105,9 +115,6 @@ debug() {
     echo ""
     echo "Open Xcode project directly (for native debugging):"
     echo "  open $MOBILE_DIR/ios/WhatsOnTV.xcworkspace"
-    echo ""
-    echo "Reset Metro cache:"
-    echo "  cd $MOBILE_DIR && WHATSON_TV=1 npx expo start --clear"
     echo ""
     echo "Clean rebuild (if things are broken):"
     echo "  cd $MOBILE_DIR && rm -rf ios && WHATSON_TV=1 npx expo prebuild --platform ios --clean && cd ios && pod install"
@@ -243,6 +250,7 @@ case "${1:-help}" in
     setup)             setup ;;
     simulator|sim)     simulator ;;
     device|dev)        device ;;
+    metro|start)       shift; metro "$@" ;;
     debug)             debug ;;
     archive|publish)   archive ;;
     export-plist)      create_export_plist ;;
@@ -255,6 +263,7 @@ case "${1:-help}" in
         echo "  setup              Initial setup (npm install, prebuild, pod install)"
         echo "  simulator (sim)    Build & run in Apple TV Simulator"
         echo "  device (dev)       Build & run on real Apple TV"
+        echo "  metro (start)      Start Metro bundler (JS hot reload)"
         echo "  debug              Show debugging tips and commands"
         echo "  archive (publish)  Build for App Store / TestFlight"
         echo "  export-plist       Create ExportOptions.plist for CLI archive"
@@ -262,7 +271,7 @@ case "${1:-help}" in
         echo "  tips (xcode)       Xcode tips and keyboard shortcuts"
         echo ""
         echo "Environment variables:"
-        echo "  EXPO_PUBLIC_API_URL  Backend API URL (default: http://192.168.1.241:3001/api)"
+        echo "  EXPO_PUBLIC_API_URL  Backend API URL (default: http://www.nebulasleuth.com:3001/api)"
         echo ""
         echo "Quick start:"
         echo "  $0 setup       # First time only"
