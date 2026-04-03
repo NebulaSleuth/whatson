@@ -22,6 +22,7 @@ interface AppState {
   rememberUser: boolean;
   autoSkipIntro: boolean;
   autoSkipCredits: boolean;
+  disableTouchSurface: boolean;
   setApiUrl: (url: string) => void;
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
@@ -29,6 +30,7 @@ interface AppState {
   setRememberUser: (remember: boolean) => void;
   setAutoSkipIntro: (skip: boolean) => void;
   setAutoSkipCredits: (skip: boolean) => void;
+  setDisableTouchSurface: (disable: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -39,6 +41,7 @@ export const useAppStore = create<AppState>((set) => ({
   rememberUser: false,
   autoSkipIntro: false,
   autoSkipCredits: false,
+  disableTouchSurface: false,
   setApiUrl: (apiUrl) => set({ apiUrl }),
   setConfigured: (isConfigured) => set({ isConfigured }),
   setReady: (isReady) => set({ isReady }),
@@ -46,4 +49,5 @@ export const useAppStore = create<AppState>((set) => ({
   setRememberUser: (rememberUser) => set({ rememberUser }),
   setAutoSkipIntro: (autoSkipIntro) => set({ autoSkipIntro }),
   setAutoSkipCredits: (autoSkipCredits) => set({ autoSkipCredits }),
+  setDisableTouchSurface: (disableTouchSurface) => set({ disableTouchSurface }),
 }));

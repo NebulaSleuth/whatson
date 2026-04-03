@@ -12,6 +12,7 @@ const KEYS = {
   SONARR_MONITOR: 'whatson_sonarrMonitor',
   RADARR_PROFILE: 'whatson_radarrProfile',
   RADARR_FOLDER: 'whatson_radarrFolder',
+  DISABLE_TOUCH_SURFACE: 'whatson_disableTouchSurface',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -97,6 +98,16 @@ export async function getAutoSkipCredits(): Promise<boolean> {
 
 export async function setAutoSkipCredits(skip: boolean): Promise<void> {
   try { await SecureStore.setItemAsync(KEYS.AUTO_SKIP_CREDITS, String(skip)); } catch {}
+}
+
+// ── Apple TV Remote Preferences ──
+
+export async function getDisableTouchSurface(): Promise<boolean> {
+  try { return (await SecureStore.getItemAsync(KEYS.DISABLE_TOUCH_SURFACE)) === 'true'; } catch { return false; }
+}
+
+export async function setDisableTouchSurface(disable: boolean): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.DISABLE_TOUCH_SURFACE, String(disable)); } catch {}
 }
 
 // ── Arr Preferences ──

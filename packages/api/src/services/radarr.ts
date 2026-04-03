@@ -159,9 +159,17 @@ export async function getQueue(): Promise<ContentItem[]> {
   const http = getClient();
   const { data } = await http.get('/queue', { params: { includeMovie: true } });
   const records = toArray(data);
-  const result = records.map((record: any) =>
-    radarrToContentItem(record.movie || record, 'downloading'),
-  );
+  // Radarr can have multiple queue entries for the same movie (quality upgrades).
+  // Deduplicate by movie ID to prevent duplicate-key errors in the UI.
+  const seen = new Set<number>();
+  const result: ContentItem[] = [];
+  for (const record of records) {
+    const movie = record.movie || record;
+    const movieId = movie.id;
+    if (movieId && seen.has(movieId)) continue;
+    if (movieId) seen.add(movieId);
+    result.push(radarrToContentItem(movie, 'downloading'));
+  }
 
   setCached(cacheKey, result, 60);
   return result;

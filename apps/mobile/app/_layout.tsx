@@ -6,7 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface } from '@/lib/storage';
+import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
 const queryClient = new QueryClient({
@@ -38,13 +39,14 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       if (initDone.current) return;
       initDone.current = true;
-      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits] = await Promise.all([
+      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
         getSavedUser(),
         getRememberUser(),
         getAutoSkipIntro(),
         getAutoSkipCredits(),
+        getDisableTouchSurface(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
@@ -53,6 +55,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       useAppStore.getState().setRememberUser(rememberUser);
       useAppStore.getState().setAutoSkipIntro(skipIntro);
       useAppStore.getState().setAutoSkipCredits(skipCredits);
+      useAppStore.getState().setDisableTouchSurface(disableTouch);
+
+      // Apply touch surface setting on Apple TV
+      if (isTVOS && disableTouch) {
+        try {
+          const { TVEventControl } = require('react-native');
+          TVEventControl?.disableTVPanGesture?.();
+        } catch {}
+      }
 
       // If "remember user" is on and we have a saved user, auto-login
       let userRestored = false;

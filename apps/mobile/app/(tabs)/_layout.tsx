@@ -69,8 +69,8 @@ export default function TabLayout() {
               backgroundColor: colors.surface,
               borderBottomColor: colors.cardBorder,
               borderBottomWidth: 1,
-              height: 50 + Math.ceil(TV_SAFE_AREA.vertical * 0.55),
-              paddingTop: Math.ceil(TV_SAFE_AREA.vertical * 0.55),
+              height: 62 + Math.ceil(TV_SAFE_AREA.vertical * 0.35),
+              paddingTop: Math.ceil(TV_SAFE_AREA.vertical * 0.35),
               paddingRight: 100,
             }
           : {
@@ -82,6 +82,8 @@ export default function TabLayout() {
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
+        tabBarLabelPosition: isTV ? 'below-icon' : undefined,
+        tabBarIconStyle: isTV ? { minHeight: 32 } : undefined,
         tabBarLabelStyle: {
           fontSize: isTV ? 18 : 11,
           fontWeight: '600',
@@ -144,7 +146,7 @@ export default function TabLayout() {
 const layoutStyles = StyleSheet.create({
   clockOverlay: {
     position: 'absolute',
-    top: isTV ? 16 + Math.ceil(TV_SAFE_AREA.vertical * 0.55) : 50,
+    top: isTV ? 16 + Math.ceil(TV_SAFE_AREA.vertical * 0.35) : 50,
     right: spacing.lg,
     zIndex: 100,
   },

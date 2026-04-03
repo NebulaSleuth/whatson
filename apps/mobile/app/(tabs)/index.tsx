@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +30,16 @@ export default function HomeScreen() {
     queryFn: () => api.getHome(),
     enabled: isReady,
   });
+
+  // On TV, focus the first shelf card when data loads
+  const hasFocusedInitial = useRef(false);
+  useEffect(() => {
+    if (isTV && data?.sections?.length && !hasFocusedInitial.current) {
+      hasFocusedInitial.current = true;
+      // Short delay to let ShelfList render and register card refs
+      setTimeout(() => shelfListRef.current?.focusFirst(), 100);
+    }
+  }, [data]);
 
   const handleItemPress = useCallback((item: ContentItem) => {
     setSelectedItem(item);

@@ -50,7 +50,17 @@ export const ContentShelf = React.memo(function ContentShelf({
     }
   }, [onFirstCardRef]);
 
-  const itemCount = section.items.length;
+  // Deduplicate items by id to prevent "two children with the same key" errors
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    return section.items.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [section.items]);
+
+  const itemCount = items.length;
 
   const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
     <ContentCard
@@ -74,7 +84,7 @@ export const ContentShelf = React.memo(function ContentShelf({
       <FlatList
         ref={listRef}
         horizontal
-        data={section.items}
+        data={items}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         showsHorizontalScrollIndicator={false}

@@ -16,8 +16,26 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
+import { isTV, isTVOS } from '@/lib/tv';
+
+/** Visible toggle for TV — the native Switch is invisible on tvOS */
+function TVToggle({ value }: { value: boolean }) {
+  return (
+    <View style={{
+      width: 56, height: 30, borderRadius: 15,
+      backgroundColor: value ? colors.primary : '#333',
+      justifyContent: 'center', paddingHorizontal: 3,
+    }}>
+      <View style={{
+        width: 24, height: 24, borderRadius: 12,
+        backgroundColor: '#fff',
+        alignSelf: value ? 'flex-end' : 'flex-start',
+      }} />
+    </View>
+  );
+}
 
 interface ServiceStatus {
   connected: boolean;
@@ -35,7 +53,7 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface } = useAppStore();
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -158,18 +176,20 @@ export default function SettingsScreen() {
                 }}
               >
                 <Text style={styles.serviceLabel}>Remember login</Text>
-                <Switch
-                  value={rememberUser}
-                  onValueChange={async (val) => {
-                    setRememberUser(val);
-                    await saveRememberUser(val);
-                    if (val && currentUser) {
-                      await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
-                    }
-                  }}
-                  trackColor={{ false: '#333', true: colors.primary }}
-                  thumbColor="#fff"
-                />
+                {isTV ? <TVToggle value={rememberUser} /> : (
+                  <Switch
+                    value={rememberUser}
+                    onValueChange={async (val) => {
+                      setRememberUser(val);
+                      await saveRememberUser(val);
+                      if (val && currentUser) {
+                        await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
+                      }
+                    }}
+                    trackColor={{ false: '#333', true: colors.primary }}
+                    thumbColor="#fff"
+                  />
+                )}
               </TVPressable>
               <TVPressable
                 style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
@@ -205,15 +225,17 @@ export default function SettingsScreen() {
             }}
           >
             <Text style={styles.serviceLabel}>Auto-skip intros</Text>
-            <Switch
-              value={autoSkipIntro}
-              onValueChange={async (val) => {
-                setAutoSkipIntro(val);
-                await saveAutoSkipIntro(val);
-              }}
-              trackColor={{ false: '#333', true: colors.primary }}
-              thumbColor="#fff"
-            />
+            {isTV ? <TVToggle value={autoSkipIntro} /> : (
+              <Switch
+                value={autoSkipIntro}
+                onValueChange={async (val) => {
+                  setAutoSkipIntro(val);
+                  await saveAutoSkipIntro(val);
+                }}
+                trackColor={{ false: '#333', true: colors.primary }}
+                thumbColor="#fff"
+              />
+            )}
           </TVPressable>
           <TVPressable
             style={[styles.serviceRow, { borderBottomWidth: 0 }]}
@@ -224,17 +246,50 @@ export default function SettingsScreen() {
             }}
           >
             <Text style={styles.serviceLabel}>Auto-skip credits</Text>
-            <Switch
-              value={autoSkipCredits}
-              onValueChange={async (val) => {
-                setAutoSkipCredits(val);
-                await saveAutoSkipCredits(val);
-              }}
-              trackColor={{ false: '#333', true: colors.primary }}
-              thumbColor="#fff"
-            />
+            {isTV ? <TVToggle value={autoSkipCredits} /> : (
+              <Switch
+                value={autoSkipCredits}
+                onValueChange={async (val) => {
+                  setAutoSkipCredits(val);
+                  await saveAutoSkipCredits(val);
+                }}
+                trackColor={{ false: '#333', true: colors.primary }}
+                thumbColor="#fff"
+              />
+            )}
           </TVPressable>
         </View>
+
+        {/* Apple TV Remote */}
+        {isTVOS && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Remote</Text>
+            <TVPressable
+              style={[styles.serviceRow, { borderBottomWidth: 0 }]}
+              onPress={async () => {
+                const val = !disableTouchSurface;
+                setDisableTouchSurface(val);
+                await saveDisableTouchSurface(val);
+                try {
+                  const { TVEventControl } = require('react-native');
+                  if (val) {
+                    TVEventControl?.disableTVPanGesture?.();
+                  } else {
+                    TVEventControl?.enableTVPanGesture?.();
+                  }
+                } catch {}
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.serviceLabel}>D-pad only (disable swipe)</Text>
+                <Text style={[styles.sectionDescription, { marginBottom: 0, marginTop: 4 }]}>
+                  Disable the touch/swipe surface on the Siri Remote
+                </Text>
+              </View>
+              <TVToggle value={disableTouchSurface} />
+            </TVPressable>
+          </View>
+        )}
 
         {/* Service Status */}
         <View style={styles.section}>
@@ -348,7 +403,9 @@ const styles = StyleSheet.create({
   refreshText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
   serviceRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.cardBorder,
+    paddingVertical: isTV ? spacing.lg : spacing.md,
+    borderBottomWidth: isTV ? 0 : 1, borderBottomColor: colors.cardBorder,
+    ...(isTV ? { borderWidth: 2, borderColor: 'transparent', borderRadius: 8, marginBottom: spacing.xs } : {}),
   },
   serviceInfo: { flexDirection: 'row', alignItems: 'center' },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.md },

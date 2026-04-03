@@ -222,9 +222,17 @@ export async function getQueue(): Promise<ContentItem[]> {
   });
 
   const records = toArray(data);
-  const result = records.map((record: any) =>
-    sonarrEpisodeToContentItem(record.episode || record, record.series, 'downloading'),
-  );
+  // Sonarr can have multiple queue entries for the same episode (quality upgrades).
+  // Deduplicate by episode ID to prevent duplicate-key errors in the UI.
+  const seen = new Set<number>();
+  const result: ContentItem[] = [];
+  for (const record of records) {
+    const ep = record.episode || record;
+    const epId = ep.id || ep.episodeId;
+    if (epId && seen.has(epId)) continue;
+    if (epId) seen.add(epId);
+    result.push(sonarrEpisodeToContentItem(ep, record.series, 'downloading'));
+  }
 
   setCached(cacheKey, result, 60);
   return result;

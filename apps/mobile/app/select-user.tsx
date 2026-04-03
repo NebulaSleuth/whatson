@@ -100,13 +100,14 @@ export default function SelectUserScreen() {
       <Text style={styles.title}>Who's Watching?</Text>
 
       <View style={styles.grid}>
-        {users.map((user) => (
+        {users.map((user, index) => (
           <Pressable
             key={user.id}
             style={({ focused }) => [styles.userCard, isTV && focused && styles.userCardFocused]}
             onPress={() => handleSelectUser(user)}
             disabled={selecting}
             focusable
+            {...(isTV && index === 0 ? { hasTVPreferredFocus: true } : {})}
           >
             {user.thumb ? (
               <Image
