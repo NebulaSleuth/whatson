@@ -7,6 +7,8 @@ interface ShelfListProps {
   sections: ContentSection[];
   onItemPress?: (item: ContentItem) => void;
   onRefresh?: () => void;
+  /** Node ID of the tab bar button — cards in the first shelf use this for nextFocusUp */
+  tabBarNodeId?: number;
 }
 
 export interface ShelfListHandle {
@@ -14,7 +16,7 @@ export interface ShelfListHandle {
 }
 
 export const ShelfList = forwardRef<ShelfListHandle, ShelfListProps>(
-  function ShelfList({ sections, onItemPress, onRefresh }, ref) {
+  function ShelfList({ sections, onItemPress, onRefresh, tabBarNodeId }, ref) {
     const [firstCardIds, setFirstCardIds] = useState<Record<string, number>>({});
     const [focusTrigger, setFocusTrigger] = useState(0);
     const focusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);

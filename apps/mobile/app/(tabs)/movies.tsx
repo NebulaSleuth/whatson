@@ -10,12 +10,14 @@ import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { isTV } from '@/lib/tv';
+import { useTabNodeId } from './_layout';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography } from '@/constants/theme';
 
 export default function MoviesScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const shelfListRef = useRef<ShelfListHandle>(null);
+  const tabNodeId = useTabNodeId();
   useTVBackHandler(useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
     shelfListRef.current?.focusFirst();
@@ -74,9 +76,11 @@ export default function MoviesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Movies</Text>
-      </View>
+      {!isTV && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Movies</Text>
+        </View>
+      )}
 
       <ScrollView
         ref={scrollRef}
@@ -114,6 +118,7 @@ export default function MoviesScreen() {
                   sections={sections}
                   onItemPress={handleItemPress}
                   onRefresh={refetchAll}
+                  tabBarNodeId={tabNodeId}
                 />
               );
             })()}

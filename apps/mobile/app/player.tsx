@@ -95,12 +95,15 @@ function TVControls({
   onPlayPause, onSeekBack, onSeekForward, onQuality, onSubtitles, onAudio, onBack,
   onInteraction, onProgressFocusChange,
   hasSubtitles, hasAudioTracks,
+  activeMarker, onSkipMarker,
 }: {
   visible: boolean; playing: boolean; displayPosition: number; duration: number; title: string;
   onPlayPause: () => void; onSeekBack: () => void; onSeekForward: () => void;
   onQuality: () => void; onSubtitles: () => void; onAudio: () => void; onBack: () => void;
   onInteraction: () => void; onProgressFocusChange?: (focused: boolean) => void;
   hasSubtitles: boolean; hasAudioTracks: boolean;
+  activeMarker: { type: 'intro' | 'credits'; startMs: number; endMs: number } | null;
+  onSkipMarker: () => void;
 }) {
   const [focused, setFocused] = useState<string | null>(null);
   const pressableRef = useRef<any>(null);
@@ -137,7 +140,7 @@ function TVControls({
       {/* Focusable progress bar — left/right scrubs when focused */}
       <Pressable
         ref={handleProgressRef}
-        style={[tvStyles.progressContainer, focused === 'progress' && tvStyles.progressFocused]}
+        style={tvStyles.progressContainer}
         onFocus={() => handleFocus('progress')}
         onBlur={() => handleBlur('progress')}
         focusable={true}
@@ -152,47 +155,68 @@ function TVControls({
         </View>
         <View style={tvStyles.timeRow}>
           <Text style={tvStyles.time}>{formatTime(displayPosition)}</Text>
-          {focused === 'progress' && (
-            <Text style={tvStyles.scrubHint}>← → to scrub</Text>
-          )}
           <Text style={tvStyles.time}>{formatTime(duration)}</Text>
         </View>
       </Pressable>
 
       <View style={tvStyles.controls}>
-        {hasAudioTracks && (
-          <Pressable style={[tvStyles.btn, focused === 'audio' && tvStyles.btnFocused]}
-            onPress={() => { onInteraction(); onAudio(); }} onFocus={() => handleFocus('audio')} onBlur={() => handleBlur('audio')} focusable={true}>
-            <MaterialIcons name="audiotrack" size={32} color="#fff" />
+        {/* Left side */}
+        <View style={[tvStyles.controlsSide, { justifyContent: 'flex-end' }]}>
+          {hasAudioTracks && (
+            <Pressable style={[tvStyles.btn, focused === 'audio' && tvStyles.btnFocused]}
+              onPress={() => { onInteraction(); onAudio(); }} onFocus={() => handleFocus('audio')} onBlur={() => handleBlur('audio')} focusable={true}>
+              <MaterialIcons name="audiotrack" size={32} color="#fff" />
+            </Pressable>
+          )}
+          <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onBack(); }} onFocus={() => handleFocus('back')} onBlur={() => handleBlur('back')} focusable={true}>
+            <MaterialIcons name="stop-circle" size={32} color="#fff" />
           </Pressable>
-        )}
-        <Pressable style={[tvStyles.btn, focused === 'back' && tvStyles.btnFocused]}
-          onPress={() => { onInteraction(); onBack(); }} onFocus={() => handleFocus('back')} onBlur={() => handleBlur('back')} focusable={true}>
-          <MaterialIcons name="stop-circle" size={32} color="#fff" />
-        </Pressable>
-        <Pressable style={[tvStyles.btn, focused === 'rew' && tvStyles.btnFocused]}
-          onPress={() => { onInteraction(); onSeekBack(); }} onFocus={() => handleFocus('rew')} onBlur={() => handleBlur('rew')} focusable={true}>
-          <MaterialIcons name="replay-30" size={32} color="#fff" />
-        </Pressable>
+          <Pressable style={[tvStyles.btn, focused === 'rew' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onSeekBack(); }} onFocus={() => handleFocus('rew')} onBlur={() => handleBlur('rew')} focusable={true}>
+            <MaterialIcons name="replay-30" size={32} color="#fff" />
+          </Pressable>
+        </View>
+
+        {/* Center — play/pause always centered */}
         <Pressable style={[tvStyles.btn, tvStyles.btnPlay, focused === 'play' && tvStyles.btnFocused]}
           onPress={() => { onInteraction(); onPlayPause(); }} onFocus={() => handleFocus('play')} onBlur={() => handleBlur('play')}
-          focusable={true} hasTVPreferredFocus={true}>
+          focusable={true} hasTVPreferredFocus={!activeMarker}>
           <MaterialIcons name={playing ? 'pause-circle-filled' : 'play-circle-filled'} size={38} color="#000" />
         </Pressable>
-        <Pressable style={[tvStyles.btn, focused === 'fwd' && tvStyles.btnFocused]}
-          onPress={() => { onInteraction(); onSeekForward(); }} onFocus={() => handleFocus('fwd')} onBlur={() => handleBlur('fwd')} focusable={true}>
-          <MaterialIcons name="forward-30" size={32} color="#fff" />
-        </Pressable>
-        <Pressable style={[tvStyles.btn, focused === 'quality' && tvStyles.btnFocused]}
-          onPress={() => { onInteraction(); onQuality(); }} onFocus={() => handleFocus('quality')} onBlur={() => handleBlur('quality')} focusable={true}>
-          <MaterialIcons name="high-quality" size={32} color="#fff" />
-        </Pressable>
-        {hasSubtitles && (
-          <Pressable style={[tvStyles.btn, focused === 'subs' && tvStyles.btnFocused]}
-            onPress={() => { onInteraction(); onSubtitles(); }} onFocus={() => handleFocus('subs')} onBlur={() => handleBlur('subs')} focusable={true}>
-            <MaterialIcons name="subtitles" size={32} color="#fff" />
+
+        {/* Right side */}
+        <View style={tvStyles.controlsSide}>
+          <Pressable style={[tvStyles.btn, focused === 'fwd' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onSeekForward(); }} onFocus={() => handleFocus('fwd')} onBlur={() => handleBlur('fwd')} focusable={true}>
+            <MaterialIcons name="forward-30" size={32} color="#fff" />
           </Pressable>
-        )}
+          <Pressable style={[tvStyles.btn, focused === 'quality' && tvStyles.btnFocused]}
+            onPress={() => { onInteraction(); onQuality(); }} onFocus={() => handleFocus('quality')} onBlur={() => handleBlur('quality')} focusable={true}>
+            <MaterialIcons name="high-quality" size={32} color="#fff" />
+          </Pressable>
+          {hasSubtitles && (
+            <Pressable style={[tvStyles.btn, focused === 'subs' && tvStyles.btnFocused]}
+              onPress={() => { onInteraction(); onSubtitles(); }} onFocus={() => handleFocus('subs')} onBlur={() => handleBlur('subs')} focusable={true}>
+              <MaterialIcons name="subtitles" size={32} color="#fff" />
+            </Pressable>
+          )}
+          {activeMarker && (
+            <Pressable
+              style={[tvStyles.btnSkip, focused === 'skip' && tvStyles.btnSkipFocused]}
+              onPress={onSkipMarker}
+              onFocus={() => handleFocus('skip')}
+              onBlur={() => handleBlur('skip')}
+              focusable={true}
+              hasTVPreferredFocus={true}
+            >
+              <Text style={tvStyles.btnSkipText}>
+                {activeMarker.type === 'intro' ? 'Skip Intro' : 'Skip Credits'}
+              </Text>
+              <MaterialIcons name="skip-next" size={20} color="#000" />
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -358,18 +382,25 @@ export default function PlayerScreen() {
     } catch {}
   }, [player, showSeekIndicator]);
 
+  // Keep refs for TV event handler (avoids stale closure)
+  const doSeekRef = useRef(doSeek);
+  doSeekRef.current = doSeek;
+  const showSettingsRef = useRef(showSettings);
+  showSettingsRef.current = showSettings;
+
   // TV D-pad event handler
   if (isTV && useTVEventHandler) {
     useTVEventHandler((evt: any) => {
-      if (showSettings) return;
+      console.log('[Player] TV event:', evt.eventType);
+      if (showSettingsRef.current) return;
 
       // When progress bar is focused, left/right scrubs
       if (progressBarFocusedRef.current && showControlsRef.current) {
         if (evt.eventType === 'right' || evt.eventType === 'longRight') {
-          doSeek(SCRUB_STEP_SECONDS);
+          doSeekRef.current(SCRUB_STEP_SECONDS);
           return;
         } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
-          doSeek(-SCRUB_STEP_SECONDS);
+          doSeekRef.current(-SCRUB_STEP_SECONDS);
           return;
         }
       }
@@ -377,10 +408,10 @@ export default function PlayerScreen() {
       // When controls are hidden
       if (!showControlsRef.current) {
         if (evt.eventType === 'right' || evt.eventType === 'longRight') {
-          doSeek(SEEK_STEP_SECONDS);
+          doSeekRef.current(SEEK_STEP_SECONDS);
         } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
-          doSeek(-SEEK_STEP_SECONDS);
-        } else if (evt.eventType === 'down' || evt.eventType === 'up') {
+          doSeekRef.current(-SEEK_STEP_SECONDS);
+        } else if (evt.eventType === 'down' || evt.eventType === 'up' || evt.eventType === 'select') {
           resetControlsTimerRef.current();
         }
       }
@@ -480,6 +511,20 @@ export default function PlayerScreen() {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });
     return () => handler.remove();
   }, [handleBack]);
+
+  // Skip marker (intro/credits)
+  const handleSkipMarker = useCallback(() => {
+    if (!activeMarker) return;
+    const key = `${activeMarker.type}-${activeMarker.startMs}`;
+    skippedMarkers.current.add(key);
+    if (player.current) {
+      player.current.currentTime = activeMarker.endMs / 1000;
+      currentPositionRef.current = activeMarker.endMs;
+      setDisplayPosition(activeMarker.endMs);
+    }
+    setActiveMarker(null);
+    setShowControls(false);
+  }, [activeMarker]);
 
   // Play/Pause
   const handlePlayPause = useCallback(() => {
@@ -630,7 +675,7 @@ export default function PlayerScreen() {
         {/* Controls overlay */}
         {!loading && (
           <TVControls
-            visible={showControls}
+            visible={showControls || !!activeMarker}
             playing={isPlaying}
             displayPosition={displayPosition}
             duration={playbackInfo?.duration || 0}
@@ -641,42 +686,19 @@ export default function PlayerScreen() {
             onQuality={() => { setSettingsMode('quality'); setShowSettings(true); if (!isTV) setShowControls(true); }}
             onSubtitles={() => { setSettingsMode('subtitles'); setShowSettings(true); }}
             onAudio={() => { setSettingsMode('audio'); setShowSettings(true); }}
-            onBack={handleBack}
+            onBack={exitPlayer}
             onInteraction={resetControlsTimer}
             onProgressFocusChange={setProgressBarFocused}
             hasSubtitles={(playbackInfo?.subtitles?.length || 0) > 0}
             hasAudioTracks={(playbackInfo?.audioTracks?.length || 0) > 1}
+            activeMarker={activeMarker}
+            onSkipMarker={handleSkipMarker}
           />
         )}
 
         {/* Seek indicator overlay — shown when seeking with controls hidden */}
         {!showControls && seekDirection && (
           <SeekIndicator direction={seekDirection} seconds={seekAmount} />
-        )}
-
-        {/* Skip Intro / Skip Credits button */}
-        {activeMarker && !showSettings && (
-          <View style={skipStyles.container}>
-            <Pressable
-              style={({ focused }) => [skipStyles.button, isTV && focused && skipStyles.buttonFocused]}
-              focusable
-              onPress={() => {
-                const key = `${activeMarker.type}-${activeMarker.startMs}`;
-                skippedMarkers.current.add(key);
-                if (player.current) {
-                  player.current.currentTime = activeMarker.endMs / 1000;
-                  currentPositionRef.current = activeMarker.endMs;
-                  setDisplayPosition(activeMarker.endMs);
-                }
-                setActiveMarker(null);
-              }}
-            >
-              <Text style={skipStyles.text}>
-                {activeMarker.type === 'intro' ? 'Skip Intro' : 'Skip Credits'}
-              </Text>
-              <MaterialIcons name="skip-next" size={20} color="#000" />
-            </Pressable>
-          </View>
         )}
 
         {/* Settings picker (quality / subtitles / audio) */}
@@ -758,9 +780,19 @@ export default function PlayerScreen() {
       </View>
   );
 
-  // On TV, don't wrap in TouchableWithoutFeedback — it blocks the tvOS focus
-  // engine from navigating between player control buttons via left/right D-pad.
-  if (isTV) return playerContent;
+  // On TV, wrap in a focusable Pressable that captures D-pad when controls are hidden.
+  // When controls show, the control buttons steal focus. When they hide, focus returns here.
+  if (isTV) return (
+    <Pressable
+      style={styles.container}
+      focusable={true}
+      onPress={() => {
+        if (!showControls) resetControlsTimer();
+      }}
+    >
+      {playerContent}
+    </Pressable>
+  );
   return (
     <TouchableWithoutFeedback onPress={handleScreenPress}>
       {playerContent}
@@ -780,10 +812,8 @@ const tvStyles = StyleSheet.create({
   },
   title: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: spacing.md },
   progressContainer: {
-    marginBottom: spacing.md, borderWidth: 2, borderColor: 'transparent',
-    borderRadius: 4, padding: spacing.xs,
+    marginBottom: spacing.md, padding: spacing.xs,
   },
-  progressFocused: { borderColor: colors.focus },
   progressTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, position: 'relative' },
   progressFill: { height: 4, backgroundColor: colors.primary, borderRadius: 2 },
   progressThumb: {
@@ -792,41 +822,33 @@ const tvStyles = StyleSheet.create({
   },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xs },
   time: { color: 'rgba(255,255,255,0.6)', fontSize: 11 },
-  scrubHint: { color: colors.primary, fontSize: 10, fontWeight: '600' },
-  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: spacing.lg },
+  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.lg },
+  controlsSide: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   btn: {
     padding: spacing.sm, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
   btnFocused: { borderColor: colors.focus, backgroundColor: 'rgba(255,255,255,0.25)' },
-  btnPlay: { backgroundColor: colors.primary, padding: spacing.md, borderRadius: 26 },
-});
-
-const skipStyles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: isTV ? 120 : 80,
-    right: isTV ? 48 : 20,
-  },
-  button: {
+  btnPlay: { backgroundColor: colors.primary, padding: spacing.md, borderRadius: 26, marginHorizontal: spacing.lg },
+  btnSkip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingVertical: isTV ? 12 : 10,
-    paddingHorizontal: isTV ? 24 : 18,
-    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 22,
+    gap: 6,
     borderWidth: 2,
     borderColor: 'transparent',
-    gap: 8,
   },
-  buttonFocused: {
+  btnSkipFocused: {
     borderColor: '#fff',
     transform: [{ scale: 1.05 }],
   },
-  text: {
+  btnSkipText: {
     color: '#000',
-    fontSize: isTV ? 18 : 16,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

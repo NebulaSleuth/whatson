@@ -1,9 +1,13 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, createContext, useContext, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, findNodeHandle } from 'react-native';
 import { colors, spacing } from '@/constants/theme';
 import { isTV, TV_SAFE_AREA } from '@/lib/tv';
 import { Clock } from '@/components/Clock';
+
+/** Context to share the active tab button's node ID with tab content */
+const TabNodeContext = createContext<number | undefined>(undefined);
+export function useTabNodeId() { return useContext(TabNodeContext); }
 
 const ICONS: Record<string, [string, string]> = {
   Home: ['◉', '○'],
@@ -29,37 +33,38 @@ const tabIconStyle = { fontSize: isTV ? 28 : 20 };
  * On TV, tabs should switch when focused (D-pad navigation), not just on press.
  * This custom button triggers onPress when it receives focus.
  */
-const TVTabButton = React.memo(function TVTabButton(props: any) {
-  const { children, onPress, accessibilityState, style, ...rest } = props;
+function TVTabButton(props: any) {
+  const { children, onPress, accessibilityState, style, onNodeId, ...rest } = props;
   const isSelected = accessibilityState?.selected;
-  const onPressRef = React.useRef(onPress);
-  onPressRef.current = onPress;
-
-  const handleFocus = useCallback(() => {
-    if (!isSelected) {
-      onPressRef.current?.();
-    }
-  }, [isSelected]);
 
   return (
     <Pressable
       {...rest}
+      ref={(ref: any) => {
+        if (isTV && ref && isSelected && onNodeId) {
+          const nodeId = findNodeHandle(ref);
+          if (nodeId) onNodeId(nodeId);
+        }
+      }}
       onPress={onPress}
-      onFocus={handleFocus}
       focusable={true}
-      style={[
+      style={({ focused }) => [
         style,
         tvStyles.tabButton,
         isSelected && tvStyles.tabButtonSelected,
+        focused && tvStyles.tabButtonFocused,
       ]}
     >
       {children}
     </Pressable>
   );
-});
+}
 
 export default function TabLayout() {
+  const [activeTabNodeId, setActiveTabNodeId] = useState<number | undefined>(undefined);
+
   return (
+    <TabNodeContext.Provider value={activeTabNodeId}>
     <View style={{ flex: 1 }}>
     <Tabs
       screenOptions={{
@@ -89,7 +94,7 @@ export default function TabLayout() {
           fontWeight: '600',
         },
         ...(isTV ? {
-          tabBarButton: (props: any) => <TVTabButton {...props} />,
+          tabBarButton: (props: any) => <TVTabButton {...props} onNodeId={setActiveTabNodeId} />,
         } : {}),
       }}
     >
@@ -140,6 +145,7 @@ export default function TabLayout() {
       <Clock />
     </View>
     </View>
+    </TabNodeContext.Provider>
   );
 }
 
@@ -158,12 +164,15 @@ const tvStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'transparent',
     marginHorizontal: 2,
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
   },
   tabButtonSelected: {
-    backgroundColor: colors.surfaceHover,
-    borderColor: colors.focus,
+    borderBottomColor: colors.focus,
+  },
+  tabButtonFocused: {
+    backgroundColor: 'rgba(229, 160, 13, 0.15)',
+    borderBottomColor: colors.focus,
   },
 });

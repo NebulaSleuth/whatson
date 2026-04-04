@@ -8,6 +8,7 @@ import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { isTV } from '@/lib/tv';
 import { useTVBackHandler } from '@/lib/useBackHandler';
+import { useTabNodeId } from './_layout';
 import { ErrorState } from '@/components/ErrorState';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
@@ -16,6 +17,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 export default function HomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const shelfListRef = useRef<ShelfListHandle>(null);
+  const tabNodeId = useTabNodeId();
 
   useTVBackHandler(useCallback(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -51,10 +53,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Whats On</Text>
-        {!isTV && <Text style={styles.headerSubtitle}>Tonight</Text>}
-      </View>
+      {!isTV && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Whats On</Text>
+          <Text style={styles.headerSubtitle}>Tonight</Text>
+        </View>
+      )}
 
       <ScrollView
         ref={scrollRef}
@@ -90,6 +94,7 @@ export default function HomeScreen() {
             sections={data.sections}
             onItemPress={handleItemPress}
             onRefresh={() => refetch()}
+            tabBarNodeId={tabNodeId}
           />
         )}
 
