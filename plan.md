@@ -1,8 +1,8 @@
 # "Whats On" — Implementation Plan
 
-> **Last Updated**: 2026-03-25
-> **Current Phase**: Phase 2 nearly complete, beginning Phase 3
-> **Overall Progress**: Phases 1, 1.5, 2 substantially complete
+> **Last Updated**: 2026-04-05
+> **Current Phase**: Phase 2 complete, Phase 4 partially complete
+> **Overall Progress**: Phases 1, 1.5, 2 complete; Phase 4 multi-user done
 
 ---
 
@@ -12,9 +12,9 @@
 |-------|--------|----------|
 | **Phase 1**: Foundation (Backend + Mobile) | **Complete** | ██████████████ 100% |
 | **Phase 1.5**: Discovery & Tracking | **Complete** | ██████████████ 100% |
-| **Phase 2**: TV Platforms + Video Player + Infrastructure | **Near Complete** | ████████████░░ 90% |
+| **Phase 2**: TV Platforms + Video Player + Infrastructure | **Complete** | ██████████████ 100% |
 | **Phase 3**: Windows + Live TV | Not Started | ░░░░░░░░░░░░░░ 0% |
-| **Phase 4**: Enhanced Features | Not Started | ░░░░░░░░░░░░░░ 0% |
+| **Phase 4**: Enhanced Features | **In Progress** | ████░░░░░░░░░░ 25% |
 | **Phase 5**: Roku + Polish | Not Started | ░░░░░░░░░░░░░░ 0% |
 
 ---
@@ -308,12 +308,12 @@ interface ServerConfig {
 - [x] Tab-scoped back handlers via `useIsFocused()` — only active tab processes back press
 - [x] `TVPressable` wrapper component with focus border styling
 - [x] `TVTextInput` component with TV keyboard handling
-- [x] `TVTabButton` — switches tabs on focus (not just press) for D-pad navigation
+- [x] `TVTabButton` — switches tabs on press; focus glow highlight via Pressable
 
 #### 2.2 — TV Layout Adaptations ✅ COMPLETE
 - [x] Top horizontal tab bar on TV (bottom on phone)
 - [x] Larger cards with TV-appropriate spacing (160x240px on TV vs 140x210px on phone)
-- [x] Safe area compliance (48px horizontal, 27px vertical)
+- [x] Safe area compliance (Apple TV: 90px/60px, Android TV: 48px/27px)
 - [x] Typography scaling (28px title, 18px body on TV)
 - [x] Card peeking at shelf edges
 - [x] Responsive column count on Library grid based on screen width
@@ -330,7 +330,10 @@ interface ServerConfig {
 - [x] Image disk caching via expo-image (`cachePolicy="disk"`)
 - [x] FlatList tuning: `windowSize`, `maxToRenderPerBatch`, `removeClippedSubviews`
 - [x] Library cards manage own focus state internally (prevents FlatList full re-render on focus change)
-- [x] `React.memo` on card components
+- [x] `React.memo` on card, shelf, and tab components
+- [x] `useMemo` for data filtering on TV/Movies screens
+- [x] Stable callbacks via `useCallback` and refs throughout
+- [x] Responsive card dimensions based on screen width
 
 #### 2.5 — Built-in Video Player ✅ COMPLETE
 - [x] HLS streaming via expo-video with quality selection
@@ -347,6 +350,13 @@ interface ServerConfig {
 - [x] Suppress realtime updates during playback (prevents stale data overwriting position)
 - [x] `useTVEventHandler` for D-pad when controls hidden
 - [x] `hasTVPreferredFocus` on play button for initial focus
+- [x] Subtitle track selection (burn-in via Plex transcode)
+- [x] Audio track selection (via PUT /library/parts preference)
+- [x] Skip intro / skip credits buttons (Plex markers)
+- [x] Auto-skip intro/credits setting (persisted per device)
+- [x] Plex decision endpoint for reliable quality/track switching
+- [x] Centered play/pause with left/right button groups
+- [x] VideoPlayerView component for proper remount on source change
 
 #### 2.6 — Backend: Playback API ✅ COMPLETE
 - [x] `GET /api/playback/:ratingKey` — stream URL with HLS transcode parameters
@@ -364,8 +374,13 @@ interface ServerConfig {
 
 #### 2.8 — Backend: Library Endpoint ✅ COMPLETE
 - [x] `GET /api/library/:type` — returns all movies or shows from Plex
+- [x] `GET /api/library/show/:ratingKey/seasons` — show seasons
+- [x] `GET /api/library/season/:ratingKey/episodes` — season episodes
 - [x] Proxied artwork URLs
 - [x] Library tab with toggle between TV Shows and Movies
+- [x] Sort by: A-Z, Date Added, Release Year, Last Watched (per-user)
+- [x] Pagination: fetches all items in 500-item batches
+- [x] Full-screen show detail page with season/episode browser
 
 #### 2.9 — WebSocket / Realtime Updates ✅ COMPLETE
 - [x] WebSocket server on `/ws` path
@@ -416,27 +431,47 @@ interface ServerConfig {
 - [x] Python script for Gradle signing patch (`scripts/patch-signing.py`)
 - [x] Manual trigger (no continuous build)
 
-#### 2.15 — Remaining Items
-- [ ] Apple TV (tvOS) testing and polish — code supports it via react-native-tvos but untested
-- [ ] Card focus expansion on TV: show summary snippet, episode info on focus (planned but not implemented)
+#### 2.15 — Apple TV (tvOS) ✅ COMPLETE
+- [x] tvOS deployment target 15.1, separate bundle ID
+- [x] 7 Apple TV icon/Top Shelf assets (1280x768 through 4640x1440)
+- [x] Apple TV safe areas (90px/60px)
+- [x] Siri Remote D-pad support via useTVEventHandler
+- [x] TVEventControl: disable touch surface option in settings
+- [x] appledev.sh build/debug/publish script
+- [x] Build tested on M1 Mac via SSH
 
-#### 2.16 — Web Admin UI ⬜ NOT STARTED
-**Goal**: Browser-based setup and configuration served by the backend itself at `http://server:3001/setup`.
-Users open this from any device with a browser to configure the backend — no manual `.env` editing required.
+#### 2.16 — Web Admin UI ✅ COMPLETE
+- [x] Static HTML/JS admin app served at `/setup`
+- [x] Plex OAuth PIN flow (sign in via browser, auto-saves token)
+- [x] Sonarr/Radarr/TMDB config with "Test Connection" buttons
+- [x] Connection status dashboard (green/red indicators)
+- [x] Port configuration
+- [x] Hot-reload config (saves to `.env`, reloads runtime config, resets service clients)
+- [x] Works in standalone builds (admin/ directory copied alongside exe)
 
-- [ ] Static HTML/JS admin app served by Express (e.g., `/setup` route)
-- [ ] **Plex OAuth PIN flow**:
-  - Backend requests PIN from `plex.tv/api/v2/pins`
-  - Admin UI opens Plex auth page in browser with PIN code
-  - Backend polls for auth token completion
-  - Token saved to config (`.env` or `data/config.json`)
-- [ ] **Sonarr configuration**: URL + API key entry with "Test Connection" button
-- [ ] **Radarr configuration**: URL + API key entry with "Test Connection" button
-- [ ] **TMDB API key** (optional): entry with validation
-- [ ] **Connection status dashboard**: green/red indicators for each service
-- [ ] **Backend restart** after config changes (or hot-reload config)
-- [ ] First-run detection: if no config exists, redirect API clients to setup URL
-- [ ] Mobile/TV app: show "Configure server at http://x.x.x.x:3001/setup" message when backend has no config
+#### 2.17 — Multi-User Support ✅ COMPLETE
+- [x] Plex Home users as accounts (list, switch with PIN support)
+- [x] Server-specific tokens via resources endpoint
+- [x] Per-user Plex data (Continue Watching, On Deck, watch state)
+- [x] Per-user tracked item watched state (shared watchlist, per-user watched.json)
+- [x] User selection screen ("Who's Watching?" with avatars)
+- [x] PIN entry modal for protected users
+- [x] "Remember login" with auto-restore on startup
+- [x] X-Plex-User header on all API requests
+- [x] Per-user cache keys for Plex data
+- [x] Settings: Switch User, Remember Login toggle
+
+#### 2.18 — Content Intelligence ✅ COMPLETE
+- [x] Only show earliest unwatched episode per show in Ready to Watch
+- [x] Filter seasons/shows from Plex recently added (episodes only from TV sections)
+- [x] Future tracked episodes go to Coming Soon (not Ready to Watch)
+- [x] Auto-expire tracked episodes 7 days after air date
+- [x] Air date formatting: Yesterday, Last Wed, 8:00 PM, Tomorrow, etc.
+- [x] Coming Soon shelves sorted by availability date
+- [x] Eager Plex discovery on startup for artwork URLs
+
+#### 2.19 — Remaining Items
+- [ ] Card focus expansion on TV: show summary snippet, episode info on focus
 
 ---
 
@@ -667,9 +702,16 @@ Users open this from any device with a browser to configure the backend — no m
 | Separate phone/TV build configs | 2 | Android | Core | ✅ Done |
 | Azure DevOps CI/CD pipeline | 2 | All | Core | ✅ Done |
 | Linux installers (.deb, .rpm) | 2 | Backend | Core | ✅ Done |
-| Apple TV testing + polish | 2 | tvOS | Core | ⬜ Todo |
+| Apple TV build + tvOS support | 2 | tvOS | Core | ✅ Done |
+| Web Admin UI (Plex OAuth + service config) | 2 | Backend | Core | ✅ Done |
+| Multi-user (Plex Home users + PIN) | 2 | All | Core | ✅ Done |
+| Subtitle/audio track selection | 2 | All | Core | ✅ Done |
+| Skip intro / skip credits | 2 | All | Core | ✅ Done |
+| Show detail page (seasons/episodes) | 2 | All | Core | ✅ Done |
+| Library sort (A-Z, added, release, watched) | 2 | All | Core | ✅ Done |
+| Library pagination (all items) | 2 | Backend | Core | ✅ Done |
+| Content intelligence (auto-expire, sort) | 2 | Backend | Core | ✅ Done |
 | Card focus expansion (summary on focus) | 2 | TV | Medium | ⬜ Todo |
-| Web Admin UI (Plex OAuth + service config) | 2 | Backend | Medium | ⬜ Todo |
 | Sonarr/Radarr ↔ Plex watch state merge | 1 | All | Medium | ⬜ Todo |
 | Windows desktop app | 3 | Windows | Core | ⬜ Todo |
 | Live TV schedule (TVmaze) | 3 | All | Core | ⬜ Todo |
@@ -678,7 +720,7 @@ Users open this from any device with a browser to configure the backend — no m
 | Push notifications | 4 | Mobile + TV | High | ⬜ Todo |
 | Trakt.tv sync | 4 | All | High | ⬜ Todo |
 | Content requests (Overseerr) | 4 | All | High | ⬜ Todo |
-| Multi-user profiles | 4 | All | Medium | ⬜ Todo |
+| Multi-user profiles | 2 | All | Core | ✅ Done |
 | Recommendations engine | 4 | All | Medium | ⬜ Todo |
 | Home screen widgets | 4 | Android + iOS | Medium | ⬜ Todo |
 | Quick actions (swipe, remote buttons) | 4 | All | Medium | ⬜ Todo |
@@ -853,31 +895,28 @@ Set `EXPO_PUBLIC_API_URL` in the mobile app environment to point to your backend
 1. **Sonarr/Radarr ↔ Plex watch state merging** — matching by series/episode across sources
 
 ### From Phase 2 (remaining):
-2. **Web Admin UI** — browser-based setup at `http://server:3001/setup` with Plex OAuth PIN flow, Sonarr/Radarr config entry, connection testing. Replaces manual `.env` editing and the deferred onboarding/OAuth items from Phase 1.
-3. **Apple TV (tvOS) testing & polish** — code supports it via react-native-tvos but untested on real hardware
-4. **Card focus expansion** — show summary snippet / episode info when card is focused on TV
+2. **Card focus expansion** — show summary snippet / episode info when card is focused on TV
 
 ### Phase 3 (not started):
-5. **Windows desktop app** — react-native-windows build target
-6. **Live TV / EPG integration** — TVmaze schedule, "On Now" / "Tonight" shelves
-7. **Favorite channels** — filter live TV to preferred channels
+3. **Windows desktop app** — react-native-windows build target
+4. **Live TV / EPG integration** — TVmaze schedule, "On Now" / "Tonight" shelves
+5. **Favorite channels** — filter live TV to preferred channels
 
-### Phase 4 (not started):
-8. **Calendar view** — merged Sonarr + Radarr + TVmaze calendar
-9. **Push notifications** — FCM/APNs for new downloads, show returns
-10. **Trakt.tv sync** — bidirectional watch history, recommendations
-11. **Overseerr/Ombi content requests** — request missing content
-12. **Multi-user profiles** — Plex managed users, per-profile state
-13. **Recommendations engine** — "Because you watched X" shelves
-14. **Home screen widgets** — Android/iOS "Up Next" widgets
-15. **Quick actions** — swipe gestures, remote button mappings
+### Phase 4 (remaining):
+6. **Calendar view** — merged Sonarr + Radarr + TVmaze calendar
+7. **Push notifications** — FCM/APNs for new downloads, show returns
+8. **Trakt.tv sync** — bidirectional watch history, recommendations
+9. **Overseerr/Ombi content requests** — request missing content
+10. **Recommendations engine** — "Because you watched X" shelves
+11. **Home screen widgets** — Android/iOS "Up Next" widgets
+12. **Quick actions** — swipe gestures, remote button mappings
 
 ### Phase 5 (not started):
-16. **Roku channel** — BrightScript/SceneGraph native app
-17. **Smart collections** — auto-generated "Quick Watch", "Binge-worthy", etc.
-18. **Statistics dashboard** — watch time charts, top content
-19. **Companion mode** — phone as TV remote
-20. **Watch party** — synchronized playback
-21. **Full EPG grid** — traditional cable-style grid view
-22. **Deep linking** — universal links, URL scheme `whatson://content/{id}`
-23. **Performance & polish** — offline cache, accessibility, i18n, animations
+13. **Roku channel** — BrightScript/SceneGraph native app
+14. **Smart collections** — auto-generated "Quick Watch", "Binge-worthy", etc.
+15. **Statistics dashboard** — watch time charts, top content
+16. **Companion mode** — phone as TV remote
+17. **Watch party** — synchronized playback
+18. **Full EPG grid** — traditional cable-style grid view
+19. **Deep linking** — universal links, URL scheme `whatson://content/{id}`
+20. **Performance & polish** — offline cache, accessibility, i18n, animations
