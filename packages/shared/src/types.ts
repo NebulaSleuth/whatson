@@ -40,6 +40,7 @@ export interface ContentItem {
   availability: Availability;
   playbackUrl?: string;
   addedAt: string; // ISO 8601
+  lastViewedAt?: string; // ISO 8601 — when last watched
   year: number;
   rating?: number;
   genres?: string[];

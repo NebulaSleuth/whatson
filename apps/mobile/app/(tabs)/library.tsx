@@ -14,6 +14,15 @@ import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
+type SortField = 'alpha' | 'added' | 'release' | 'watched';
+type SortDir = 'asc' | 'desc';
+
+const SORT_LABELS: Record<SortField, string> = {
+  alpha: 'A-Z',
+  added: 'Date Added',
+  release: 'Release Year',
+  watched: 'Last Watched',
+};
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_PADDING = spacing.md * 2;
@@ -101,6 +110,8 @@ const cardStyles = StyleSheet.create({
 export default function LibraryScreen() {
   const [type, setType] = useState<LibraryType>('show');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
+  const [sortField, setSortField] = useState<SortField>('alpha');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const listRef = useRef<FlatList>(null);
   const currentRowRef = useRef(0);
   const [focusTrigger, setFocusTrigger] = useState(0);
@@ -127,7 +138,31 @@ export default function LibraryScreen() {
     queryFn: () => api.getLibrary(type),
   });
 
-  const items = data || [];
+  const items = useMemo(() => {
+    const raw = data || [];
+    const sorted = [...raw].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'alpha': {
+          const tA = (a.showTitle || a.title).toLowerCase();
+          const tB = (b.showTitle || b.title).toLowerCase();
+          cmp = tA.localeCompare(tB);
+          break;
+        }
+        case 'added':
+          cmp = new Date(a.addedAt || 0).getTime() - new Date(b.addedAt || 0).getTime();
+          break;
+        case 'release':
+          cmp = (a.year || 0) - (b.year || 0);
+          break;
+        case 'watched':
+          cmp = new Date(a.lastViewedAt || 0).getTime() - new Date(b.lastViewedAt || 0).getTime();
+          break;
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+    return sorted;
+  }, [data, sortField, sortDir]);
 
   const handleItemPress = useCallback((item: ContentItem) => {
     if (type === 'show') {
@@ -202,6 +237,29 @@ export default function LibraryScreen() {
             Movies
           </Text>
         </TVPressable>
+      </View>
+
+      <View style={styles.sortRow}>
+        {(Object.keys(SORT_LABELS) as SortField[]).map((field) => (
+          <TVPressable
+            key={field}
+            style={[styles.sortChip, sortField === field && styles.sortChipActive]}
+            onPress={() => {
+              if (sortField === field) {
+                setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+              } else {
+                setSortField(field);
+                setSortDir(field === 'added' || field === 'watched' ? 'desc' : 'asc');
+              }
+              listRef.current?.scrollToOffset({ offset: 0, animated: false });
+              currentRowRef.current = 0;
+            }}
+          >
+            <Text style={[styles.sortText, sortField === field && styles.sortTextActive]}>
+              {SORT_LABELS[field]}{sortField === field ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+            </Text>
+          </TVPressable>
+        ))}
       </View>
 
       {isLoading ? (
@@ -289,6 +347,33 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: '#000',
+  },
+  sortRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  sortChip: {
+    paddingHorizontal: isTV ? spacing.lg : spacing.md,
+    paddingVertical: isTV ? 6 : 4,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  sortChipActive: {
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+  },
+  sortText: {
+    fontSize: isTV ? 13 : 11,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  sortTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   grid: {
     paddingHorizontal: spacing.md,

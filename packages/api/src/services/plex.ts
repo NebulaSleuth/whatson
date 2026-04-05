@@ -225,6 +225,7 @@ function plexToContentItem(item: any, status: ContentItem['status'], userToken?:
       ? `${resolvedServerUrl}/web/index.html#!/server/${item.machineIdentifier}/details?key=${encodeURIComponent(`/library/metadata/${item.ratingKey}`)}`
       : undefined,
     addedAt: new Date((item.addedAt || 0) * 1000).toISOString(),
+    lastViewedAt: item.lastViewedAt ? new Date(item.lastViewedAt * 1000).toISOString() : undefined,
     year: item.year || 0,
     rating: item.rating,
     genres: item.Genre?.map((g: any) => g.tag) || [],
@@ -352,14 +353,20 @@ export async function getLibrary(type: 'movie' | 'show', userToken?: string): Pr
   const matchingSections = sections.filter((s: any) => s.type === type);
 
   const allItems: ContentItem[] = [];
+  const PAGE_SIZE = 500;
 
   for (const section of matchingSections) {
-    const { data } = await http.get(`/library/sections/${section.key}/all`, {
-      params: { 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 500 },
-    });
-    const items = data.MediaContainer?.Metadata || [];
-    for (const item of items) {
-      allItems.push(plexToContentItem(item, 'ready', userToken));
+    let start = 0;
+    while (true) {
+      const { data } = await http.get(`/library/sections/${section.key}/all`, {
+        params: { 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': PAGE_SIZE },
+      });
+      const items = data.MediaContainer?.Metadata || [];
+      for (const item of items) {
+        allItems.push(plexToContentItem(item, 'ready', userToken));
+      }
+      if (items.length < PAGE_SIZE) break;
+      start += PAGE_SIZE;
     }
   }
 
