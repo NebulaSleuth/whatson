@@ -1,4 +1,4 @@
-import type { ApiResponse, HomeResponse, SearchResponse, ContentItem } from '@whatson/shared';
+import type { ApiResponse, HomeResponse, SearchResponse, ContentItem, ContentSection } from '@whatson/shared';
 import { useAppStore } from './store';
 
 function getBaseUrl(): string {
@@ -129,6 +129,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ clientId, ratingKey }),
     }),
+
+  // Recommendations
+  getRecommendations: (showTmdb: boolean = true) =>
+    fetchApi<{ sections: ContentSection[] }>(`/recommendations${showTmdb ? '' : '?tmdb=0'}`),
 
   // Library
   getLibrary: (type: 'movie' | 'show') => fetchApi<ContentItem[]>(`/library/${type}`),

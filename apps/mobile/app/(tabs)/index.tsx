@@ -33,6 +33,14 @@ export default function HomeScreen() {
     enabled: isReady,
   });
 
+  const showByw = useAppStore((s) => s.showBecauseYouWatched);
+  const { data: recData } = useQuery({
+    queryKey: ['recommendations', showByw],
+    queryFn: () => api.getRecommendations(showByw),
+    enabled: isReady && !isLoading,
+    staleTime: 10 * 60 * 1000, // Fresh for 10 minutes
+  });
+
   // On TV, focus the first shelf card when data loads
   const hasFocusedInitial = useRef(false);
   useEffect(() => {
@@ -95,6 +103,14 @@ export default function HomeScreen() {
             onItemPress={handleItemPress}
             onRefresh={() => refetch()}
             tabBarNodeId={tabNodeId}
+          />
+        )}
+
+        {/* Recommendation shelves — below main content */}
+        {!isLoading && !error && recData?.sections && recData.sections.length > 0 && (
+          <ShelfList
+            sections={recData.sections}
+            onItemPress={handleItemPress}
           />
         )}
 

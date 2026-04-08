@@ -158,3 +158,90 @@ export async function searchMulti(query: string): Promise<TmdbSearchResult[]> {
   console.log('[Discover] Using Sonarr/Radarr lookup');
   return searchViaArrLookup(query);
 }
+
+/** Check if TMDB recommendations are available */
+export function isTmdbAvailable(): boolean {
+  return hasTmdbKey();
+}
+
+/**
+ * Get TMDB "similar" titles for a given movie or TV show.
+ * Returns items not already in the user's Plex library.
+ */
+export async function getTmdbSimilar(
+  tmdbId: number,
+  type: 'movie' | 'tv',
+): Promise<TmdbSearchResult[]> {
+  if (!hasTmdbKey()) return [];
+
+  try {
+    const { data } = await axios.get(`${TMDB_BASE_URL}/${type}/${tmdbId}/similar`, {
+      params: { api_key: config.epg.tmdbApiKey, page: 1 },
+      timeout: 10000,
+    });
+
+    return (data.results || [])
+      .filter((item: any) => item.poster_path)
+      .slice(0, 20)
+      .map((item: any) => ({
+        tmdbId: item.id,
+        title: item.title || item.name || '',
+        type: type === 'movie' ? 'movie' as const : 'tv' as const,
+        year: parseInt((item.release_date || item.first_air_date || '').slice(0, 4)) || 0,
+        overview: item.overview || '',
+        poster: tmdbImage(item.poster_path),
+        backdrop: tmdbImage(item.backdrop_path, 'w780'),
+        rating: item.vote_average || 0,
+        tracked: false,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Build "Because you watched X" recommendations from TMDB.
+ * Takes the user's recent watch history and finds similar titles.
+ */
+export async function getTmdbRecommendations(
+  watchedItems: Array<{ title: string; tmdbId?: number; type: 'movie' | 'tv' }>,
+): Promise<{ title: string; items: TmdbSearchResult[] }[]> {
+  if (!hasTmdbKey() || watchedItems.length === 0) return [];
+
+  const results: { title: string; items: TmdbSearchResult[] }[] = [];
+  const seenIds = new Set<number>();
+
+  // Get similar for up to 5 recent items
+  for (const watched of watchedItems.slice(0, 5)) {
+    let tmdbId = watched.tmdbId;
+
+    // If no TMDB ID, search for it
+    if (!tmdbId) {
+      try {
+        const searchResults = await searchTmdb(watched.title);
+        const match = searchResults.find(
+          (r) => r.type === watched.type && r.title.toLowerCase() === watched.title.toLowerCase(),
+        ) || searchResults[0];
+        if (match) tmdbId = match.tmdbId;
+      } catch {}
+    }
+
+    if (!tmdbId) continue;
+
+    const similar = await getTmdbSimilar(tmdbId, watched.type);
+    const filtered = similar.filter((item) => {
+      if (seenIds.has(item.tmdbId)) return false;
+      seenIds.add(item.tmdbId);
+      return true;
+    });
+
+    if (filtered.length > 0) {
+      results.push({
+        title: `Because you watched ${watched.title}`,
+        items: filtered.slice(0, 10),
+      });
+    }
+  }
+
+  return results;
+}

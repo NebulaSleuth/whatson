@@ -16,7 +16,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { isTV, isTVOS } from '@/lib/tv';
 
@@ -53,7 +53,7 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched } = useAppStore();
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -252,6 +252,27 @@ export default function SettingsScreen() {
                 onValueChange={async (val) => {
                   setAutoSkipCredits(val);
                   await saveAutoSkipCredits(val);
+                }}
+                trackColor={{ false: '#333', true: colors.primary }}
+                thumbColor="#fff"
+              />
+            )}
+          </TVPressable>
+          <TVPressable
+            style={styles.serviceRow}
+            onPress={async () => {
+              const val = !showBecauseYouWatched;
+              setShowBecauseYouWatched(val);
+              await saveShowByw(val);
+            }}
+          >
+            <Text style={styles.serviceLabel}>"Because you watched" recommendations</Text>
+            {isTV ? <TVToggle value={showBecauseYouWatched} /> : (
+              <Switch
+                value={showBecauseYouWatched}
+                onValueChange={async (val) => {
+                  setShowBecauseYouWatched(val);
+                  await saveShowByw(val);
                 }}
                 trackColor={{ false: '#333', true: colors.primary }}
                 thumbColor="#fff"

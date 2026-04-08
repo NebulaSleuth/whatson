@@ -273,6 +273,40 @@ export async function getContinueWatching(userToken?: string): Promise<ContentIt
   return result;
 }
 
+/** Get recommendation hubs from Plex (e.g., "Similar to X", "Top Rated", genre-based) */
+export async function getRecommendationHubs(userToken?: string): Promise<{ title: string; items: ContentItem[] }[]> {
+  const cacheKey = userCacheKey('plex:recommendationHubs', userToken);
+  const cached = getCached<{ title: string; items: ContentItem[] }[]>(cacheKey);
+  if (cached) return cached;
+
+  const http = await getClient(userToken);
+  const { data } = await http.get('/hubs', {
+    params: { count: 10 }, // Get more items per hub
+  });
+  const hubs = data.MediaContainer?.Hub || [];
+
+  // Filter to recommendation-type hubs, skip system hubs we already use
+  const skipIdentifiers = new Set([
+    'home.continue', 'home.ondeck', 'hub.home.recentlyadded',
+  ]);
+
+  const result: { title: string; items: ContentItem[] }[] = [];
+  for (const hub of hubs) {
+    if (skipIdentifiers.has(hub.hubIdentifier)) continue;
+    if (!hub.Metadata || hub.Metadata.length === 0) continue;
+    // Only include movie/episode/show hubs
+    const items = hub.Metadata
+      .filter((m: any) => m.type === 'movie' || m.type === 'episode' || m.type === 'show')
+      .map((m: any) => plexToContentItem(m, 'ready', userToken));
+    if (items.length > 0) {
+      result.push({ title: hub.title, items });
+    }
+  }
+
+  setCached(cacheKey, result, 600); // Cache 10 minutes
+  return result;
+}
+
 export async function getRecentlyAdded(limit: number = 50, userToken?: string): Promise<ContentItem[]> {
   const cacheKey = userCacheKey(`plex:recentlyAdded:${limit}`, userToken);
   const cached = getCached<ContentItem[]>(cacheKey);

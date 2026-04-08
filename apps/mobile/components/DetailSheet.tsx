@@ -20,6 +20,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
 import { hasVideoPlayer } from '@/lib/videoPlayer';
+import { ArrAddPicker } from './ArrAddPicker';
 import { router } from 'expo-router';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -65,7 +66,9 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
       : null;
 
   const isTrackedItem = item.id.startsWith('tracked-');
+  const isDiscoveryItem = item.id.startsWith('tmdb-');
   const isTvShow = item.type === 'episode' || item.type === 'show';
+  const [arrPickerType, setArrPickerType] = useState<'sonarr' | 'radarr' | null>(null);
 
   // On TV, handle back button to close the detail sheet
   React.useEffect(() => {
@@ -178,7 +181,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
     );
   };
 
-  return (
+  return (<>
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.container}>
         <TouchableWithoutFeedback onPress={onClose}>
@@ -258,7 +261,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {(item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
                     <FocusButton
                       title="Mark as Watched"
                       style={styles.watchedButton}
@@ -268,12 +271,32 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isTvShow && (item.showTitle || item.title) ? (
+                  {!isDiscoveryItem && isTvShow && (item.showTitle || item.title) ? (
                     <FocusButton
                       title="Mark All as Watched"
                       style={styles.watchedButton}
                       textStyle={styles.watchedButtonText}
                       onPress={handleMarkAllWatched}
+                    />
+                  ) : null}
+
+                  {isDiscoveryItem && item.source === 'sonarr' ? (
+                    <FocusButton
+                      title="Add to Sonarr"
+                      style={styles.playButton}
+                      textStyle={styles.playButtonText}
+                      onPress={() => setArrPickerType('sonarr')}
+                      preferFocus={true}
+                    />
+                  ) : null}
+
+                  {isDiscoveryItem && item.source === 'radarr' ? (
+                    <FocusButton
+                      title="Add to Radarr"
+                      style={styles.playButton}
+                      textStyle={styles.playButtonText}
+                      onPress={() => setArrPickerType('radarr')}
+                      preferFocus={true}
                     />
                   ) : null}
 
@@ -366,15 +389,27 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     </Pressable>
                   ) : null}
 
-                  {(item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkWatched}>
                       <Text style={styles.watchedButtonText}>Mark as Watched</Text>
                     </Pressable>
                   ) : null}
 
-                  {isTvShow && (item.showTitle || item.title) ? (
+                  {!isDiscoveryItem && isTvShow && (item.showTitle || item.title) ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkAllWatched}>
                       <Text style={styles.watchedButtonText}>Mark All as Watched</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isDiscoveryItem && item.source === 'sonarr' ? (
+                    <Pressable style={styles.playButton} onPress={() => setArrPickerType('sonarr')}>
+                      <Text style={styles.playButtonText}>Add to Sonarr</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isDiscoveryItem && item.source === 'radarr' ? (
+                    <Pressable style={styles.playButton} onPress={() => setArrPickerType('radarr')}>
+                      <Text style={styles.playButtonText}>Add to Radarr</Text>
                     </Pressable>
                   ) : null}
 
@@ -400,6 +435,21 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
         </View>
       </View>
     </Modal>
+
+    {arrPickerType && (
+      <ArrAddPicker
+        visible={true}
+        type={arrPickerType}
+        item={{ title: item.title, tmdbId: parseInt(item.sourceId) }}
+        onClose={() => setArrPickerType(null)}
+        onSuccess={() => {
+          setArrPickerType(null);
+          onRefresh?.();
+          onClose();
+        }}
+      />
+    )}
+    </>
   );
 }
 

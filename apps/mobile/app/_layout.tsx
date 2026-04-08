@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched } from '@/lib/storage';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
@@ -39,7 +39,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       if (initDone.current) return;
       initDone.current = true;
-      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch] = await Promise.all([
+      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
         getSavedUser(),
@@ -47,6 +47,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         getAutoSkipIntro(),
         getAutoSkipCredits(),
         getDisableTouchSurface(),
+        getShowBecauseYouWatched(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
@@ -56,6 +57,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       useAppStore.getState().setAutoSkipIntro(skipIntro);
       useAppStore.getState().setAutoSkipCredits(skipCredits);
       useAppStore.getState().setDisableTouchSurface(disableTouch);
+      useAppStore.getState().setShowBecauseYouWatched(showByw);
 
       // Apply touch surface setting on Apple TV
       if (isTVOS && disableTouch) {

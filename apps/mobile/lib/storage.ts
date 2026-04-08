@@ -13,6 +13,7 @@ const KEYS = {
   RADARR_PROFILE: 'whatson_radarrProfile',
   RADARR_FOLDER: 'whatson_radarrFolder',
   DISABLE_TOUCH_SURFACE: 'whatson_disableTouchSurface',
+  SHOW_BECAUSE_YOU_WATCHED: 'whatson_showBecauseYouWatched',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -108,6 +109,19 @@ export async function getDisableTouchSurface(): Promise<boolean> {
 
 export async function setDisableTouchSurface(disable: boolean): Promise<void> {
   try { await SecureStore.setItemAsync(KEYS.DISABLE_TOUCH_SURFACE, String(disable)); } catch {}
+}
+
+// ── Recommendation Preferences ──
+
+export async function getShowBecauseYouWatched(): Promise<boolean> {
+  try {
+    const val = await SecureStore.getItemAsync(KEYS.SHOW_BECAUSE_YOU_WATCHED);
+    return val === null ? true : val === 'true'; // Default to true
+  } catch { return true; }
+}
+
+export async function setShowBecauseYouWatched(show: boolean): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.SHOW_BECAUSE_YOU_WATCHED, String(show)); } catch {}
 }
 
 // ── Arr Preferences ──

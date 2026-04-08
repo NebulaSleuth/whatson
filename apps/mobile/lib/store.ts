@@ -23,6 +23,7 @@ interface AppState {
   autoSkipIntro: boolean;
   autoSkipCredits: boolean;
   disableTouchSurface: boolean;
+  showBecauseYouWatched: boolean;
   setApiUrl: (url: string) => void;
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
@@ -31,6 +32,7 @@ interface AppState {
   setAutoSkipIntro: (skip: boolean) => void;
   setAutoSkipCredits: (skip: boolean) => void;
   setDisableTouchSurface: (disable: boolean) => void;
+  setShowBecauseYouWatched: (show: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -42,6 +44,7 @@ export const useAppStore = create<AppState>((set) => ({
   autoSkipIntro: false,
   autoSkipCredits: false,
   disableTouchSurface: false,
+  showBecauseYouWatched: true,
   setApiUrl: (apiUrl) => set({ apiUrl }),
   setConfigured: (isConfigured) => set({ isConfigured }),
   setReady: (isReady) => set({ isReady }),
@@ -50,4 +53,5 @@ export const useAppStore = create<AppState>((set) => ({
   setAutoSkipIntro: (autoSkipIntro) => set({ autoSkipIntro }),
   setAutoSkipCredits: (autoSkipCredits) => set({ autoSkipCredits }),
   setDisableTouchSurface: (disableTouchSurface) => set({ disableTouchSurface }),
+  setShowBecauseYouWatched: (showBecauseYouWatched) => set({ showBecauseYouWatched }),
 }));

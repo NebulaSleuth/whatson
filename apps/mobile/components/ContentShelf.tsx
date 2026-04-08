@@ -33,9 +33,9 @@ export const ContentShelf = React.memo(function ContentShelf({
   const handleCardFocus = useCallback((index: number) => {
     if (isTV && listRef.current) {
       if (index === 0) {
-        listRef.current.scrollToOffset({ offset: 0, animated: true });
+        listRef.current.scrollToOffset({ offset: 0, animated: false });
       } else {
-        listRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
+        listRef.current.scrollToIndex({ index, animated: false, viewPosition: 0.3 });
       }
     }
   }, []);

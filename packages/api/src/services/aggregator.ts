@@ -315,12 +315,12 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
   ));
 
   // TV: coming soon = Sonarr calendar + downloading queue + tracked TV upcoming episodes
-  // Sorted by availability date (soonest first)
-  const tvComingSoon = sortByDate(filterWatched(deduplicateById([
+  // Only show one card per show, sorted by availability date (soonest first)
+  const tvComingSoon = sortByDate(oneEpisodePerShow(filterWatched(deduplicateById([
     ...sonarrQueue,
     ...enrichedSonarrUpcoming,
     ...trackedTvComingSoon,
-  ])));
+  ]))));
 
   // Movies: ready to watch = Plex movies (not in Continue Watching) + Radarr downloads + tracked movies
   const moviesReady = deduplicateById(
