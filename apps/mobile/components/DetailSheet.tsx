@@ -138,16 +138,17 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
     ]);
   };
 
+  const isLibraryItem = item.source === 'plex' || item.source === 'jellyfin' || item.source === 'emby';
   const isPlexItem = item.source === 'plex';
   const showKey =
     item.type === 'show' ? item.sourceId :
     item.type === 'episode' ? item.showRatingKey :
     undefined;
-  const canGoToShow = isPlexItem && !!showKey;
+  const canGoToShow = isLibraryItem && !!showKey;
 
   const handlePlay = () => {
     onClose();
-    router.push({ pathname: '/player', params: { ratingKey: item.sourceId } });
+    router.push({ pathname: '/player', params: { ratingKey: item.sourceId, source: item.source } });
   };
 
   const handleGoToShow = () => {
@@ -161,6 +162,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
         poster: item.artwork.poster,
         summary: item.summary || '',
         year: String(item.year || ''),
+        source: item.source,
       },
     } as any);
   };
@@ -249,7 +251,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.tvActions}>
-                  {isPlexItem && hasVideoPlayer ? (
+                  {isLibraryItem && hasVideoPlayer ? (
                     <FocusButton
                       title="Play"
                       style={styles.playButton}
@@ -274,7 +276,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                       style={styles.watchedButton}
                       textStyle={styles.watchedButtonText}
                       onPress={handleMarkWatched}
-                      preferFocus={!isPlexItem}
+                      preferFocus={!isLibraryItem}
                     />
                   ) : null}
 
@@ -384,7 +386,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.actions}>
-                  {isPlexItem && hasVideoPlayer ? (
+                  {isLibraryItem && hasVideoPlayer ? (
                     <Pressable style={styles.playButton} onPress={handlePlay}>
                       <Text style={styles.playButtonText}>Play</Text>
                     </Pressable>

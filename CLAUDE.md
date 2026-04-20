@@ -55,16 +55,34 @@ The client always sends both headers (`lib/api.ts` `fetchApi`). `X-Plex-Connecti
 
 | File | Responsibility |
 |------|----------------|
-| `plex.ts` | `plex.tv` auto-discovery (local-first, single-flight lock), library fetch, watch state, artwork URL generation, Plex search, recommendation hubs |
+| `adapters/` | `MediaServerAdapter` interface + registry. All Plex/Jellyfin/Emby access goes through an adapter; see below. |
+| `plex.ts` | `plex.tv` auto-discovery (local-first, single-flight lock), library fetch, watch state, artwork URL generation, Plex search, recommendation hubs, playback info/progress/stop |
 | `plexPlayback.ts` | Enumerate Plex clients for "play on this device" delegation |
+| `jellyfin.ts` / `emby.ts` | 25-line wrappers over `embyLike.ts`, which contains the shared Jellyfin/Emby service (auth, content, playback, scrobble). |
+| `embyLike.ts` | Factory function for the Jellyfin/Emby-compatible API surface. Parameterised by config selector + source tag. |
 | `sonarr.ts` | Calendar, history, queue, search, add; quality profiles + root folders for Add picker |
 | `radarr.ts` | Same surface as Sonarr for movies |
 | `tmdb.ts` | Multi-search (movies + shows), image URL generation |
 | `tvmaze.ts` | Show search + episode lookup (Phase 3 groundwork) |
+| `liveTv.ts` | TVmaze-backed "What's on TV" shelves — channel list, currently-airing, next-N-hours |
 | `tracked.ts` | Watchlist (`data/tracked.json`) + per-user watched state (`data/users/{id}/watched.json`) |
 | `users.ts` | Plex Home user list + per-server token resolution |
 | `discover.ts` | TMDB search with Sonarr/Radarr fallback when no TMDB key |
-| `aggregator.ts` | Home + search composition; cross-source merging; "Ready to Watch" / "Coming Soon" rules |
+| `updater.ts` | GitHub Releases poller; downloads and silently installs new versions (Windows only) |
+| `aggregator.ts` | Home + search composition; iterates `getConfiguredAdapters()` for library-server data; "Ready to Watch" / "Coming Soon" rules |
+
+### Adapter layer (`src/services/adapters/`)
+
+Library-server access (Plex, Jellyfin, Emby) is unified behind `MediaServerAdapter` (see `adapters/types.ts`). Each adapter implements the same surface: `getContinueWatching`, `getRecentlyAdded`, `getLibrary`, `getShowSeasons`, `getSeasonEpisodes`, `search`, `getPlaybackInfo`, `reportProgress`, `stopPlayback`, `markWatched`, `markUnwatched`.
+
+- `adapters/plex.ts` — thin wrapper over `plex.ts` and `users.ts`.
+- `adapters/jellyfin.ts` — wraps `jellyfin.ts` (which shares code with Emby via `embyLike.ts`).
+- `adapters/emby.ts` — wraps `emby.ts`.
+- `adapters/registry.ts` — `getAdapter(kind)`, `getAdapterForSource(source)`, `getConfiguredAdapters()`.
+
+The aggregator, every `library`/`scrobble`/`playback` route, and the `/search` flow all dispatch via `getAdapterForSource(source)`. Adding a fourth media server is a new adapter file + registry entry; no routes change. When multiple library servers are configured, shelves union items from every adapter (Continue Watching, On Deck, Recently Added) and search results merge with library hits taking precedence over Sonarr/Radarr on dedup.
+
+Plex-specific extensions (OAuth PIN flow, `/plex/connections`, Plex Home user switching, remote cast) live in `plex.ts` + `plexPlayback.ts` + `users.ts` and are exposed through `/plex/*` routes — intentionally outside the generic interface.
 
 ### Routes (`src/routes/`)
 
@@ -72,12 +90,15 @@ All mounted at `/api`. Notable endpoints:
 
 - `GET /home` — full home screen payload with all shelves
 - `GET /tv/{upcoming,recent,downloading}` and `/movies/{upcoming,recent,downloading}`
-- `GET /library/:type` + `/library/show/:ratingKey/seasons` + season episodes
-- `GET /search?q&type` — unified Plex + Sonarr/Radarr
+- `GET /library/:type?source={plex|jellyfin|emby}` + `/library/show/:id/seasons?source=` + season episodes
+- `GET /search?q&type` — unified across every configured library server + Sonarr/Radarr
 - `GET /discover/search` and `GET/POST/DELETE/PATCH /tracked` — TMDB watchlist
 - `GET /recommendations?tmdb={0|1}` — Plex hubs always; TMDB "Because you watched" when key set
-- `POST /scrobble`, `/unscrobble`, `/scrobble/all`, `/unscrobble/all`
-- `GET /playback/:ratingKey`, `POST /playback/progress`, `POST /playback/stop`
+- `POST /scrobble`, `/unscrobble`, `/scrobble/all`, `/unscrobble/all` — `source` in body routes via adapter
+- `GET /playback/:ratingKey?source={plex|jellyfin|emby}`, `POST /playback/progress`, `POST /playback/stop`
+- `GET /auth/providers` — `{ plex, jellyfin, emby, sonarr, radarr }` booleans for client-side flow control
+- `GET /live/channels`, `GET /live/now?channels=`, `GET /live/later?channels=&hours=` — "What's on TV" (TVmaze)
+- `GET /update/status`, `POST /update/check`, `POST /update/apply` — GitHub-Releases auto-update (Windows)
 - `GET /sonarr/{profiles,rootfolders}`, `POST /sonarr/add` (+ Radarr equivalents)
 - `GET /users`, `POST /users/select`
 - `GET /artwork?url=...` — server-side proxy + 24h cache
@@ -252,11 +273,13 @@ Set `EXPO_PUBLIC_API_URL` for the mobile app if the backend isn't on `localhost:
 
 ## Conventions that matter
 
-1. **Never eagerly read `process.env` in `config.ts`.** The lazy Proxy is load-bearing for the standalone build.
+1. **Never eagerly read `process.env` in `config.ts`.** The lazy Proxy is load-bearing for the standalone build. Call `reloadConfig()` after any dotenv load (index.ts already does).
 2. **Every API route goes through `userContext` middleware.** Don't bypass it — per-user watched state and Plex tokens depend on `req.user`.
-3. **Artwork URLs are always proxied via `/api/artwork`.** This keeps Plex tokens server-side and lets us disk-cache 24 h.
-4. **Empty results must not be cached.** Plex discovery can transiently return nothing on boot; the aggregator guards against this.
-5. **TV builds use `react-native-tvos`, not stock `react-native`.** Check `isTV` from `lib/tv.ts` before using TV-only APIs (`useTVEventHandler`, `hasTVPreferredFocus`).
-6. **WebSocket invalidation keys match TanStack Query keys exactly.** Add a new query → add the matching key to the server's broadcast list.
-7. **`X-Plex-Connection: local|remote`** lets Plex pick the best link; the app tracks this in Zustand (`plexConnectionType`) and sends it on every request.
-8. **Android detail sheets use `Modal`, not a custom portal.** Non-modal implementations render invisibly on Android.
+3. **Library-server access must go through the adapter registry.** Call `getAdapterForSource(source)` rather than importing `plex.ts` / `jellyfin.ts` / `emby.ts` directly from routes or the aggregator. New media servers plug in as a single registry entry with zero route changes.
+4. **Artwork URLs are always proxied via `/api/artwork`.** Route auto-detects Plex/Jellyfin/Emby and attaches the correct auth. Server-side 24 h disk cache.
+5. **Empty results must not be cached.** Plex discovery can transiently return nothing on boot; the aggregator guards against this.
+6. **TV builds use `react-native-tvos`, not stock `react-native`.** Check `isTV` from `lib/tv.ts` before using TV-only APIs (`useTVEventHandler`, `hasTVPreferredFocus`).
+7. **WebSocket invalidation keys match TanStack Query keys exactly.** Add a new query → add the matching key to the server's broadcast list.
+8. **`X-Plex-Connection: local|remote`** lets Plex pick the best link; the app tracks this in Zustand (`plexConnectionType`) and sends it on every request. Jellyfin/Emby use a single URL — header is ignored for those sources.
+9. **Client passes `source` with every library call** (`?source=plex|jellyfin|emby` on library/playback, `source` in scrobble bodies). Backends default to Plex when missing, for back-compat with pre-adapter clients.
+10. **Android detail sheets use `Modal`, not a custom portal.** Non-modal implementations render invisibly on Android.

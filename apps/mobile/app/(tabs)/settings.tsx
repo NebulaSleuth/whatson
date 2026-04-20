@@ -50,6 +50,8 @@ interface ServerConfigData {
   plex: { url: string; token: string; configured: boolean };
   sonarr: { url: string; apiKey: string; configured: boolean };
   radarr: { url: string; apiKey: string; configured: boolean };
+  jellyfin?: { url: string; username: string; password: string; configured: boolean };
+  emby?: { url: string; username: string; password: string; configured: boolean };
   epg: { provider: string; country: string; tmdbApiKey: string };
 }
 
@@ -73,6 +75,8 @@ export default function SettingsScreen() {
   const [serverConfig, setServerConfig] = useState<ServerConfigData | null>(null);
   const [services, setServices] = useState<Record<string, ServiceStatus>>({
     plex: { connected: false, loading: false, label: 'Plex' },
+    jellyfin: { connected: false, loading: false, label: 'Jellyfin' },
+    emby: { connected: false, loading: false, label: 'Emby' },
     sonarr: { connected: false, loading: false, label: 'Sonarr' },
     radarr: { connected: false, loading: false, label: 'Radarr' },
   });
@@ -96,16 +100,23 @@ export default function SettingsScreen() {
   async function checkHealth() {
     setCheckingHealth(true);
     try {
-      const health = await api.getHealth();
+      const [health, providers] = await Promise.all([
+        api.getHealth(),
+        api.getAuthProviders().catch(() => ({ plex: true, jellyfin: false, emby: false, sonarr: true, radarr: true })),
+      ]);
       const svcStatus = health.services;
       setServices({
         plex: { connected: svcStatus.plex === 'connected', loading: false, label: 'Plex' },
+        jellyfin: { connected: providers.jellyfin, loading: false, label: 'Jellyfin' },
+        emby: { connected: providers.emby, loading: false, label: 'Emby' },
         sonarr: { connected: svcStatus.sonarr === 'connected', loading: false, label: 'Sonarr' },
         radarr: { connected: svcStatus.radarr === 'connected', loading: false, label: 'Radarr' },
       });
     } catch {
       setServices({
         plex: { connected: false, loading: false, label: 'Plex' },
+        jellyfin: { connected: false, loading: false, label: 'Jellyfin' },
+        emby: { connected: false, loading: false, label: 'Emby' },
         sonarr: { connected: false, loading: false, label: 'Sonarr' },
         radarr: { connected: false, loading: false, label: 'Radarr' },
       });
@@ -394,6 +405,22 @@ export default function SettingsScreen() {
             <Text style={styles.configGroupTitle}>Plex</Text>
             <ConfigRow label="URL" value={serverConfig.plex.url} />
             <ConfigRow label="Token" value={serverConfig.plex.token} masked />
+
+            {serverConfig.jellyfin?.configured ? (
+              <>
+                <Text style={styles.configGroupTitle}>Jellyfin</Text>
+                <ConfigRow label="URL" value={serverConfig.jellyfin.url} />
+                <ConfigRow label="Username" value={serverConfig.jellyfin.username} />
+              </>
+            ) : null}
+
+            {serverConfig.emby?.configured ? (
+              <>
+                <Text style={styles.configGroupTitle}>Emby</Text>
+                <ConfigRow label="URL" value={serverConfig.emby.url} />
+                <ConfigRow label="Username" value={serverConfig.emby.username} />
+              </>
+            ) : null}
 
             <Text style={styles.configGroupTitle}>Sonarr</Text>
             <ConfigRow label="URL" value={serverConfig.sonarr.url} />

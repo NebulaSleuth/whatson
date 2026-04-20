@@ -133,9 +133,33 @@ export default function LibraryScreen() {
     return true;
   }, []));
 
+  // Discover which library-server sources are configured so we can fetch from each.
+  const { data: providers } = useQuery({
+    queryKey: ['auth', 'providers'],
+    queryFn: () => api.getAuthProviders(),
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const librarySources = useMemo(() => {
+    const list: string[] = [];
+    if (providers?.plex) list.push('plex');
+    if (providers?.jellyfin) list.push('jellyfin');
+    if (providers?.emby) list.push('emby');
+    // Default to plex-only when the endpoint hasn't responded yet (back-compat with older servers).
+    return list.length > 0 ? list : ['plex'];
+  }, [providers]);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['library', type],
-    queryFn: () => api.getLibrary(type),
+    queryKey: ['library', type, librarySources.join(',')],
+    queryFn: async () => {
+      const results = await Promise.all(
+        librarySources.map((src) =>
+          api.getLibrary(type, src).catch(() => [] as ContentItem[]),
+        ),
+      );
+      return results.flat();
+    },
+    enabled: librarySources.length > 0,
   });
 
   const items = useMemo(() => {
@@ -166,7 +190,7 @@ export default function LibraryScreen() {
 
   const handleItemPress = useCallback((item: ContentItem) => {
     if (type === 'show') {
-      console.log('[Library] navigating to show-detail: ratingKey=' + item.sourceId + ' title=' + (item.showTitle || item.title));
+      console.log('[Library] navigating to show-detail: ratingKey=' + item.sourceId + ' title=' + (item.showTitle || item.title) + ' source=' + item.source);
       router.navigate({
         pathname: '/show-detail',
         params: {
@@ -175,6 +199,7 @@ export default function LibraryScreen() {
           poster: item.artwork.poster,
           summary: item.summary || '',
           year: String(item.year || ''),
+          source: item.source,
         },
       } as any);
     } else {

@@ -258,7 +258,8 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
 
 // ── Main Player Screen ──
 export default function PlayerScreen() {
-  const { ratingKey } = useLocalSearchParams<{ ratingKey: string }>();
+  const { ratingKey, source: sourceParam } = useLocalSearchParams<{ ratingKey: string; source?: string }>();
+  const source = sourceParam || 'plex';
 
   // Suppress WebSocket updates while playing — prevents stale data overwriting play position
   useEffect(() => {
@@ -446,7 +447,7 @@ export default function PlayerScreen() {
       try {
         setLoading(true);
         setError(null);
-        const info = await api.getPlaybackInfo(ratingKey);
+        const info = await api.getPlaybackInfo(ratingKey, { source });
         if (cancelled) return;
 
         setPlaybackInfo({
@@ -474,7 +475,7 @@ export default function PlayerScreen() {
         resetControlsTimer();
 
         progressInterval.current = setInterval(async () => {
-          await api.reportProgress(ratingKey, currentPositionRef.current, info.duration, 'playing', info.sessionId).catch(() => {});
+          await api.reportProgress(ratingKey, currentPositionRef.current, info.duration, 'playing', info.sessionId, source).catch(() => {});
         }, 10000);
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); setLoading(false); }
@@ -489,8 +490,8 @@ export default function PlayerScreen() {
   const exitPlayer = useCallback(async () => {
     try { player.current?.pause(); } catch {}
     if (playbackInfo) {
-      await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId).catch(() => {});
-      await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
+      await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId, source).catch(() => {});
+      await api.stopPlayback(playbackInfo.sessionId, source).catch(() => {});
     }
     if (progressInterval.current) clearInterval(progressInterval.current);
     router.back();
@@ -564,21 +565,21 @@ export default function PlayerScreen() {
     player.current?.pause();
 
     console.log('[Player] stopping old session: ' + playbackInfo.sessionId);
-    await api.stopPlayback(playbackInfo.sessionId).catch((e) => console.log('[Player] stopPlayback error:', e));
+    await api.stopPlayback(playbackInfo.sessionId, source).catch((e) => console.log('[Player] stopPlayback error:', e));
 
     // Request new stream with specific bitrate — server handles transcode params
     const resolution = bitrate <= 2000 ? '720x480' : bitrate <= 4000 ? '1280x720' : '1920x1080';
     const isOriginal = bitrate === 0;
     console.log('[Player] requesting new stream: bitrate=' + bitrate + ', resolution=' + resolution + ', isOriginal=' + isOriginal);
     try {
-      const newInfo = await api.getPlaybackInfo(
-        ratingKey,
-        currentPositionRef.current,
-        isOriginal ? undefined : bitrate,
-        isOriginal ? undefined : resolution,
-        selectedSubtitleId === null ? undefined : selectedSubtitleId,
-        selectedAudioId ?? undefined,
-      );
+      const newInfo = await api.getPlaybackInfo(ratingKey, {
+        source,
+        offset: currentPositionRef.current,
+        maxBitrate: isOriginal ? undefined : bitrate,
+        resolution: isOriginal ? undefined : resolution,
+        subtitleStreamID: selectedSubtitleId === null ? undefined : selectedSubtitleId,
+        audioStreamID: selectedAudioId ?? undefined,
+      });
       console.log('[Player] got new stream URL (first 100 chars): ' + newInfo.streamUrl.slice(0, 100));
       console.log('[Player] new sessionId: ' + newInfo.sessionId);
 
@@ -606,7 +607,7 @@ export default function PlayerScreen() {
     const currentTime = player.current?.currentTime || 0;
     console.log('[Player] track change currentTime=' + currentTime);
     player.current?.pause();
-    await api.stopPlayback(playbackInfo.sessionId).catch(() => {});
+    await api.stopPlayback(playbackInfo.sessionId, source).catch(() => {});
 
     const resolution = selectedBitrate <= 2000 ? '720x480' : selectedBitrate <= 4000 ? '1280x720' : '1920x1080';
     const isOriginal = selectedBitrate === 0;
@@ -615,14 +616,14 @@ export default function PlayerScreen() {
     console.log('[Player] track request: subId=' + subId + ' audId=' + audId + ' bitrate=' + selectedBitrate);
 
     try {
-      const newInfo = await api.getPlaybackInfo(
-        ratingKey,
-        currentPositionRef.current,
-        isOriginal ? undefined : selectedBitrate,
-        isOriginal ? undefined : resolution,
-        subId === null ? 0 : subId,        // 0 = no subtitles
-        audId ?? undefined,
-      );
+      const newInfo = await api.getPlaybackInfo(ratingKey, {
+        source,
+        offset: currentPositionRef.current,
+        maxBitrate: isOriginal ? undefined : selectedBitrate,
+        resolution: isOriginal ? undefined : resolution,
+        subtitleStreamID: subId === null ? 0 : subId,
+        audioStreamID: audId ?? undefined,
+      });
       console.log('[Player] track change got new URL, sessionId=' + newInfo.sessionId);
 
       setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);

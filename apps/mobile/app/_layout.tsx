@@ -87,32 +87,46 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Test Plex connection — determine if client can reach Plex directly (local) or needs remote
+      // Discover which server providers are configured. If Plex isn't among them,
+      // skip the user-picker flow entirely — Jellyfin/Emby are single-account.
+      let plexConfigured = true;
       try {
-        const conns = await api.getPlexConnections();
-        let isLocal = false;
-        for (const url of conns.local) {
-          try {
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 3000);
-            await fetch(`${url}/identity`, { signal: ctrl.signal });
-            clearTimeout(timer);
-            isLocal = true;
-            break;
-          } catch {}
-        }
-        useAppStore.getState().setPlexConnectionType(isLocal ? 'local' : 'remote');
-        console.log(`[Init] Plex connection: ${isLocal ? 'local' : 'remote'}`);
+        const providers = await api.getAuthProviders();
+        plexConfigured = providers.plex;
+        console.log(`[Init] Providers: plex=${providers.plex} jellyfin=${providers.jellyfin} emby=${providers.emby}`);
       } catch {}
+
+      // Test Plex connection — determine if client can reach Plex directly (local) or needs remote.
+      if (plexConfigured) {
+        try {
+          const conns = await api.getPlexConnections();
+          let isLocal = false;
+          for (const url of conns.local) {
+            try {
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 3000);
+              await fetch(`${url}/identity`, { signal: ctrl.signal });
+              clearTimeout(timer);
+              isLocal = true;
+              break;
+            } catch {}
+          }
+          useAppStore.getState().setPlexConnectionType(isLocal ? 'local' : 'remote');
+          console.log(`[Init] Plex connection: ${isLocal ? 'local' : 'remote'}`);
+        } catch {}
+      }
 
       setReady(true);
 
-      // Navigate to user selection if no user is active (only on initial load)
-      if (!userRestored) {
+      // Only show the user picker when Plex is configured — it's the only
+      // source with a multi-user Home model on this backend.
+      if (!userRestored && plexConfigured) {
         console.log('[Init] No user restored, redirecting to select-user');
         setTimeout(() => {
           router.replace('/select-user' as any);
         }, 100);
+      } else if (!plexConfigured) {
+        console.log('[Init] Plex not configured — skipping user picker');
       } else {
         console.log('[Init] User restored: ' + useAppStore.getState().currentUser?.title);
       }

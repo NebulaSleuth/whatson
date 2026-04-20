@@ -22,9 +22,10 @@ interface Season {
 }
 
 export default function ShowDetailScreen() {
-  const { ratingKey, title, poster, summary, year } = useLocalSearchParams<{
-    ratingKey: string; title: string; poster: string; summary: string; year: string;
+  const { ratingKey, title, poster, summary, year, source: sourceParam } = useLocalSearchParams<{
+    ratingKey: string; title: string; poster: string; summary: string; year: string; source?: string;
   }>();
+  const source = sourceParam || 'plex';
 
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [focusedEpId, setFocusedEpId] = useState<string | null>(null);
@@ -42,8 +43,8 @@ export default function ShowDetailScreen() {
 
   // Fetch seasons
   const { data: seasons, isLoading: loadingSeasons } = useQuery({
-    queryKey: ['show-seasons', ratingKey],
-    queryFn: () => api.getShowSeasons(ratingKey!),
+    queryKey: ['show-seasons', ratingKey, source],
+    queryFn: () => api.getShowSeasons(ratingKey!, source),
     enabled: !!ratingKey,
   });
 
@@ -64,13 +65,13 @@ export default function ShowDetailScreen() {
 
   // Fetch episodes for selected season
   const { data: episodes, isLoading: loadingEpisodes } = useQuery({
-    queryKey: ['season-episodes', selectedSeason?.ratingKey],
-    queryFn: () => api.getSeasonEpisodes(selectedSeason!.ratingKey),
+    queryKey: ['season-episodes', selectedSeason?.ratingKey, source],
+    queryFn: () => api.getSeasonEpisodes(selectedSeason!.ratingKey, source),
     enabled: !!selectedSeason,
   });
 
   const handlePlayEpisode = useCallback((ep: ContentItem) => {
-    router.push({ pathname: '/player', params: { ratingKey: ep.sourceId } } as any);
+    router.push({ pathname: '/player', params: { ratingKey: ep.sourceId, source: ep.source } } as any);
   }, []);
 
   const queryClient = useQueryClient();
@@ -96,24 +97,24 @@ export default function ShowDetailScreen() {
   const toggleShowWatched = useCallback(async () => {
     if (!ratingKey) return;
     try {
-      if (showFullyWatched) await api.markUnwatched(ratingKey, 'plex');
-      else await api.markWatched(ratingKey, 'plex');
+      if (showFullyWatched) await api.markUnwatched(ratingKey, source);
+      else await api.markWatched(ratingKey, source);
       await invalidateShow();
     } catch (error) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [ratingKey, showFullyWatched, invalidateShow]);
+  }, [ratingKey, showFullyWatched, invalidateShow, source]);
 
   const toggleSeasonWatched = useCallback(async () => {
     if (!selectedSeason) return;
     try {
-      if (seasonFullyWatched) await api.markUnwatched(selectedSeason.ratingKey, 'plex');
-      else await api.markWatched(selectedSeason.ratingKey, 'plex');
+      if (seasonFullyWatched) await api.markUnwatched(selectedSeason.ratingKey, source);
+      else await api.markWatched(selectedSeason.ratingKey, source);
       await invalidateShow();
     } catch (error) {
       Alert.alert('Error', (error as Error).message);
     }
-  }, [selectedSeason, seasonFullyWatched, invalidateShow]);
+  }, [selectedSeason, seasonFullyWatched, invalidateShow, source]);
 
   const handleEpisodeLongPress = useCallback((ep: ContentItem) => {
     const label = ep.episodeNumber != null
@@ -124,8 +125,8 @@ export default function ShowDetailScreen() {
         text: ep.progress.watched ? 'Mark as Unwatched' : 'Mark as Watched',
         onPress: async () => {
           try {
-            if (ep.progress.watched) await api.markUnwatched(ep.sourceId, 'plex');
-            else await api.markWatched(ep.sourceId, 'plex');
+            if (ep.progress.watched) await api.markUnwatched(ep.sourceId, ep.source);
+            else await api.markWatched(ep.sourceId, ep.source);
             await invalidateShow();
           } catch (error) {
             Alert.alert('Error', (error as Error).message);

@@ -185,17 +185,20 @@ export const api = {
   },
 
   // Library
-  getLibrary: (type: 'movie' | 'show') => fetchApi<ContentItem[]>(`/library/${type}`),
+  getLibrary: (type: 'movie' | 'show', source: string = 'plex') =>
+    fetchApi<ContentItem[]>(`/library/${type}?source=${source}`),
 
-  getShowSeasons: (ratingKey: string) =>
-    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; watchedCount: number; thumb: string }>>(`/library/show/${ratingKey}/seasons`),
+  getShowSeasons: (ratingKey: string, source: string = 'plex') =>
+    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; watchedCount: number; thumb: string }>>(`/library/show/${ratingKey}/seasons?source=${source}`),
 
-  getSeasonEpisodes: (ratingKey: string) =>
-    fetchApi<ContentItem[]>(`/library/season/${ratingKey}/episodes`),
+  getSeasonEpisodes: (ratingKey: string, source: string = 'plex') =>
+    fetchApi<ContentItem[]>(`/library/season/${ratingKey}/episodes?source=${source}`),
 
   // Playback
-  getPlaybackInfo: (ratingKey: string, offset?: number, maxBitrate?: number, resolution?: string, subtitleStreamID?: number, audioStreamID?: number) => {
+  getPlaybackInfo: (ratingKey: string, opts?: { offset?: number; maxBitrate?: number; resolution?: string; subtitleStreamID?: number; audioStreamID?: number; source?: string }) => {
+    const { offset, maxBitrate, resolution, subtitleStreamID, audioStreamID, source = 'plex' } = opts || {};
     const params = new URLSearchParams();
+    params.set('source', source);
     if (offset) params.set('offset', String(Math.floor(offset / 1000)));
     if (maxBitrate) {
       params.set('maxBitrate', String(maxBitrate));
@@ -204,7 +207,6 @@ export const api = {
     if (resolution) params.set('resolution', resolution);
     if (subtitleStreamID != null) params.set('subtitleStreamID', String(subtitleStreamID));
     if (audioStreamID != null) params.set('audioStreamID', String(audioStreamID));
-    const qs = params.toString();
     return fetchApi<{
       streamUrl: string;
       directPlayUrl: string | null;
@@ -220,20 +222,24 @@ export const api = {
       audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       markers: Array<{ type: 'intro' | 'credits'; startMs: number; endMs: number }>;
       serverUrl: string;
-    }>(`/playback/${ratingKey}${qs ? `?${qs}` : ''}`);
+    }>(`/playback/${ratingKey}?${params.toString()}`);
   },
 
-  reportProgress: (ratingKey: string, time: number, duration: number, state: string, sessionId: string) =>
+  reportProgress: (ratingKey: string, time: number, duration: number, state: string, sessionId: string, source: string = 'plex') =>
     fetchApi<any>('/playback/progress', {
       method: 'POST',
-      body: JSON.stringify({ ratingKey, time, duration, state, sessionId }),
+      body: JSON.stringify({ ratingKey, time, duration, state, sessionId, source }),
     }),
 
-  stopPlayback: (sessionId: string) =>
+  stopPlayback: (sessionId: string, source: string = 'plex') =>
     fetchApi<any>('/playback/stop', {
       method: 'POST',
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({ sessionId, source }),
     }),
+
+  // Auth / server providers
+  getAuthProviders: () =>
+    fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean }>('/auth/providers'),
 
   testConnection: (service: string, url: string, token?: string, apiKey?: string) =>
     fetchApi<{ connected: boolean }>('/config/test', {
