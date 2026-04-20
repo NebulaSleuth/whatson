@@ -1,5 +1,5 @@
 export const APP_NAME = 'Whats On';
-export const APP_VERSION = '0.1.2';
+export const APP_VERSION = '0.1.3';
 
 export const PLEX_CLIENT_IDENTIFIER = 'com.whatson.app';
 export const PLEX_PRODUCT = APP_NAME;
@@ -9,6 +9,8 @@ export const ARTWORK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 export const SOURCE_COLORS = {
   plex: '#E5A00D',
+  jellyfin: '#AA5CC3',
+  emby: '#52B54B',
   sonarr: '#35C5F4',
   radarr: '#FFC230',
   live: '#4CAF50',
@@ -16,6 +18,8 @@ export const SOURCE_COLORS = {
 
 export const SOURCE_LABELS = {
   plex: 'Plex',
+  jellyfin: 'Jellyfin',
+  emby: 'Emby',
   sonarr: 'Sonarr',
   radarr: 'Radarr',
   live: 'Live TV',

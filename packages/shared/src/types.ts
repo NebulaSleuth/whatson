@@ -1,7 +1,7 @@
 // ── Content Models ──
 
 export type ContentType = 'movie' | 'episode' | 'show';
-export type ContentSource = 'plex' | 'sonarr' | 'radarr' | 'live';
+export type ContentSource = 'plex' | 'jellyfin' | 'emby' | 'sonarr' | 'radarr' | 'live';
 export type ContentStatus = 'watching' | 'ready' | 'coming_soon' | 'downloading' | 'live_now';
 export type SectionType = 'tv' | 'movie' | 'mixed';
 

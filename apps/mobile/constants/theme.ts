@@ -23,6 +23,8 @@ export const colors = {
   success: '#4CAF50',
   progressBar: '#E5A00D',
   sourcePlex: '#E5A00D',
+  sourceJellyfin: '#AA5CC3',
+  sourceEmby: '#52B54B',
   sourceSonarr: '#35C5F4',
   sourceRadarr: '#FFC230',
   sourceLive: '#4CAF50',

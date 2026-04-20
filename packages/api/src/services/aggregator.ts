@@ -7,6 +7,7 @@ import * as tracked from './tracked.js';
 import * as tvmaze from './tvmaze.js';
 import { config } from '../config.js';
 import { proxyArtwork } from '../utils.js';
+import { getConfiguredAdapters } from './adapters/registry.js';
 
 // ── Watch State Merging ──
 
@@ -253,12 +254,22 @@ function isPlexConfigured(): boolean {
 // ── Main Aggregation ──
 
 export async function getHomeData(userToken?: string): Promise<HomeResponse> {
-  // Fetch all data in parallel
-  const [continueWatching, onDeck, recentPlex, sonarrUpcoming, sonarrRecent, sonarrQueue, radarrRecent, radarrUpcoming, radarrQueue] =
+  // Pull library-server shelves from every configured adapter (Plex today; Jellyfin/Emby later).
+  // Each adapter call is isolated via safeCall so one bad server doesn't kill the home payload.
+  const mediaAdapters = getConfiguredAdapters();
+  const perAdapter = await Promise.all(
+    mediaAdapters.map(async (a) => ({
+      continueWatching: await safeCall(() => a.getContinueWatching(userToken), []),
+      onDeck: await safeCall(() => a.getOnDeck(userToken), []),
+      recent: await safeCall(() => a.getRecentlyAdded(50, userToken), []),
+    })),
+  );
+  const continueWatching = perAdapter.flatMap((x) => x.continueWatching);
+  const onDeck = perAdapter.flatMap((x) => x.onDeck);
+  const recentPlex = perAdapter.flatMap((x) => x.recent);
+
+  const [sonarrUpcoming, sonarrRecent, sonarrQueue, radarrRecent, radarrUpcoming, radarrQueue] =
     await Promise.all([
-      isPlexConfigured() ? safeCall(() => plex.getContinueWatching(userToken), []) : [],
-      isPlexConfigured() ? safeCall(() => plex.getOnDeck(userToken), []) : [],
-      isPlexConfigured() ? safeCall(() => plex.getRecentlyAdded(50, userToken), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getUpcoming(), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getRecentDownloads(), []) : [],
       config.sonarr.url ? safeCall(() => sonarr.getQueue(), []) : [],

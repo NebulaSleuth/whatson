@@ -13,6 +13,17 @@ export const playbackRouter = Router();
 playbackRouter.get('/playback/:ratingKey', async (req, res) => {
   try {
     const { ratingKey } = req.params;
+    // The rest of this handler assumes Plex semantics (HLS transcode, /library/metadata/*
+    // paths, Plex markers). Jellyfin/Emby adapters will implement their own playback
+    // pipelines in a later slice; for now, reject explicit non-Plex requests up front.
+    const source = (req.query.source as string) || 'plex';
+    if (source !== 'plex') {
+      res.status(400).json({
+        success: false,
+        error: `Playback for source "${source}" not yet supported on this endpoint`,
+      });
+      return;
+    }
     const offset = parseInt(req.query.offset as string) || 0;
     // Use remote Plex URL if client is remote
     let serverUrl = await getServerUrl();

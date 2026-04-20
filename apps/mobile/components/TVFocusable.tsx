@@ -25,10 +25,10 @@ export function TVPressable({
       onFocus={(e) => { setFocused(true); (props as any).onFocus?.(e); }}
       onBlur={(e) => { setFocused(false); (props as any).onBlur?.(e); }}
       focusable={true}
-      style={[
-        style,
-        focused && [styles.focused, customFocusStyle],
-      ]}
+      style={(state) => {
+        const base = typeof style === 'function' ? style(state) : style;
+        return [base, focused && [styles.focused, customFocusStyle]];
+      }}
     >
       {children}
     </Pressable>
@@ -43,7 +43,7 @@ export function TVTextInput({
   onSubmitEditing,
   inputRef: externalRef,
   ...props
-}: React.ComponentProps<typeof TextInput> & { inputRef?: React.RefObject<TextInput> }) {
+}: React.ComponentProps<typeof TextInput> & { inputRef?: React.RefObject<TextInput | null> }) {
   const [focused, setFocused] = useState(false);
   const internalRef = React.useRef<TextInput>(null);
   const inputRef = externalRef || internalRef;

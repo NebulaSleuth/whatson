@@ -11,6 +11,8 @@ interface SourceBadgeProps {
 
 const badgeColors: Record<ContentSource, string> = {
   plex: colors.sourcePlex,
+  jellyfin: colors.sourceJellyfin,
+  emby: colors.sourceEmby,
   sonarr: colors.sourceSonarr,
   radarr: colors.sourceRadarr,
   live: colors.sourceLive,
