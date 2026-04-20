@@ -112,7 +112,21 @@ export default function TVShowsScreen() {
 
   const readyItems = useMemo(() => recent?.filter((i) => !i.progress.watched) || [], [recent]);
   const comingSoonItems = useMemo(() => upcoming || [], [upcoming]);
-  const downloadingItems = useMemo(() => downloading || [], [downloading]);
+  // Collapse multiple downloading episodes of the same show to a single card with a count chip.
+  const downloadingItems = useMemo(() => {
+    if (!downloading || downloading.length === 0) return [];
+    const grouped = new Map<string, ContentItem>();
+    for (const item of downloading) {
+      const key = (item.showTitle || item.title).toLowerCase();
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, { ...item, groupCount: 1 });
+      } else {
+        grouped.set(key, { ...existing, groupCount: (existing.groupCount || 1) + 1 });
+      }
+    }
+    return [...grouped.values()];
+  }, [downloading]);
 
   // All tracked TV shows, sorted alphabetically
   const trackedItems = useMemo(() => (trackedTv || [])

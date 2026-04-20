@@ -198,6 +198,11 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
               <Text style={styles.airingBannerText}>RERUN</Text>
             </View>
           )}
+          {item.groupCount && item.groupCount > 1 ? (
+            <View style={styles.groupChip}>
+              <Text style={styles.groupChipText}>+{item.groupCount - 1}</Text>
+            </View>
+          ) : null}
           {item.status === 'downloading' && (
             <View style={styles.statusOverlay}>
               <Text style={styles.downloadingText}>Downloading</Text>
@@ -287,6 +292,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#fff',
     letterSpacing: 0.5,
+  },
+  groupChip: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#000',
   },
   statusOverlay: {
     position: 'absolute',

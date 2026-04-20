@@ -31,6 +31,7 @@ export default function ShowDetailScreen() {
   const episodeListRef = React.useRef<FlatList>(null);
   const [selectedSeasonNodeId, setSelectedSeasonNodeId] = useState<number | undefined>(undefined);
   const [firstEpisodeNodeId, setFirstEpisodeNodeId] = useState<number | undefined>(undefined);
+  const [markSeasonNodeId, setMarkSeasonNodeId] = useState<number | undefined>(undefined);
 
   console.log('[ShowDetail] render: ratingKey=' + ratingKey + ' title=' + title);
 
@@ -53,6 +54,14 @@ export default function ShowDetailScreen() {
     }
   }, [seasons, selectedSeason]);
 
+  // Re-sync the selected season to the freshly-fetched seasons by ratingKey,
+  // so the derived watched-state reflects refetched data after mark-watched actions.
+  React.useEffect(() => {
+    if (!seasons?.length || !selectedSeason) return;
+    const fresh = seasons.find((s) => s.ratingKey === selectedSeason.ratingKey);
+    if (fresh && fresh !== selectedSeason) setSelectedSeason(fresh);
+  }, [seasons, selectedSeason]);
+
   // Fetch episodes for selected season
   const { data: episodes, isLoading: loadingEpisodes } = useQuery({
     queryKey: ['season-episodes', selectedSeason?.ratingKey],
@@ -73,6 +82,9 @@ export default function ShowDetailScreen() {
     selectedSeason.watchedCount >= selectedSeason.episodeCount;
 
   const invalidateShow = useCallback(async () => {
+    // Plex's scrobble/unscrobble returns before leafCount/viewedLeafCount update internally.
+    // Wait a beat so the refetch sees the new counts.
+    await new Promise((resolve) => setTimeout(resolve, 600));
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['show-seasons', ratingKey] }),
       queryClient.invalidateQueries({ queryKey: ['season-episodes'] }),
@@ -102,6 +114,28 @@ export default function ShowDetailScreen() {
       Alert.alert('Error', (error as Error).message);
     }
   }, [selectedSeason, seasonFullyWatched, invalidateShow]);
+
+  const handleEpisodeLongPress = useCallback((ep: ContentItem) => {
+    const label = ep.episodeNumber != null
+      ? `S${ep.seasonNumber ?? '?'}E${ep.episodeNumber} · ${ep.title}`
+      : ep.title;
+    Alert.alert(label, undefined, [
+      {
+        text: ep.progress.watched ? 'Mark as Unwatched' : 'Mark as Watched',
+        onPress: async () => {
+          try {
+            if (ep.progress.watched) await api.markUnwatched(ep.sourceId, 'plex');
+            else await api.markWatched(ep.sourceId, 'plex');
+            await invalidateShow();
+          } catch (error) {
+            Alert.alert('Error', (error as Error).message);
+          }
+        },
+      },
+      { text: 'Play', onPress: () => handlePlayEpisode(ep) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [handlePlayEpisode, invalidateShow]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -153,7 +187,9 @@ export default function ShowDetailScreen() {
                 onFocus={() => { if (isTV) setSelectedSeason(season); }}
                 focusable
                 {...(idx === 0 && isTV ? { hasTVPreferredFocus: true } : {})}
-                {...(isTV && firstEpisodeNodeId ? { nextFocusDown: firstEpisodeNodeId } : {})}
+                {...(isTV && (markSeasonNodeId || firstEpisodeNodeId)
+                  ? { nextFocusDown: markSeasonNodeId || firstEpisodeNodeId }
+                  : {})}
               >
                 <Text style={[
                   styles.seasonTabText,
@@ -172,9 +208,17 @@ export default function ShowDetailScreen() {
       {selectedSeason && !loadingSeasons && (
         <View style={styles.seasonActionRow}>
           <Pressable
+            ref={(ref) => {
+              if (isTV && ref) {
+                const nodeId = findNodeHandle(ref);
+                if (nodeId && nodeId !== markSeasonNodeId) setMarkSeasonNodeId(nodeId);
+              }
+            }}
             style={({ focused }) => [styles.markButton, isTV && focused && styles.markButtonFocused]}
             onPress={toggleSeasonWatched}
             focusable
+            {...(isTV && selectedSeasonNodeId ? { nextFocusUp: selectedSeasonNodeId } : {})}
+            {...(isTV && firstEpisodeNodeId ? { nextFocusDown: firstEpisodeNodeId } : {})}
           >
             <Text style={styles.markButtonText}>
               {seasonFullyWatched ? 'Mark Season as Unwatched' : 'Mark Season as Watched'}
@@ -206,6 +250,7 @@ export default function ShowDetailScreen() {
               episode={item}
               focused={focusedEpId === item.id}
               onPress={() => handlePlayEpisode(item)}
+              onLongPress={() => handleEpisodeLongPress(item)}
               onFocus={() => {
                 setFocusedEpId(item.id);
                 if (isTV && episodeListRef.current) {
@@ -216,7 +261,7 @@ export default function ShowDetailScreen() {
                   });
                 }
               }}
-              nextFocusUp={index === 0 ? selectedSeasonNodeId : undefined}
+              nextFocusUp={index === 0 ? (markSeasonNodeId || selectedSeasonNodeId) : undefined}
               tvRef={index === 0 ? (ref: any) => {
                 if (isTV && ref) {
                   const nodeId = findNodeHandle(ref);
@@ -243,9 +288,9 @@ export default function ShowDetailScreen() {
 }
 
 const EpisodeRow = React.memo(function EpisodeRow({
-  episode, focused, onPress, onFocus, nextFocusUp, tvRef,
+  episode, focused, onPress, onLongPress, onFocus, nextFocusUp, tvRef,
 }: {
-  episode: ContentItem; focused: boolean; onPress: () => void; onFocus: () => void;
+  episode: ContentItem; focused: boolean; onPress: () => void; onLongPress?: () => void; onFocus: () => void;
   nextFocusUp?: number; tvRef?: (ref: any) => void;
 }) {
   const [isFocused, setIsFocused] = useState(false);
@@ -261,6 +306,7 @@ const EpisodeRow = React.memo(function EpisodeRow({
       ref={tvRef}
       style={[styles.episodeRow, isTV && isFocused && styles.episodeRowFocused]}
       onPress={onPress}
+      onLongPress={onLongPress}
       onFocus={() => { setIsFocused(true); onFocus(); }}
       onBlur={() => setIsFocused(false)}
       focusable

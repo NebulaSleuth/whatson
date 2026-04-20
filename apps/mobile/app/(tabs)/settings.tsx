@@ -8,6 +8,8 @@ import {
   Alert,
   Switch,
   TextInput,
+  Modal,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -61,6 +63,7 @@ export default function SettingsScreen() {
     staleTime: 24 * 60 * 60 * 1000,
     retry: 1,
   });
+  const [channelPickerOpen, setChannelPickerOpen] = useState(false);
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -294,52 +297,31 @@ export default function SettingsScreen() {
           <Text style={styles.sectionDescription}>
             Pick the channels you watch. The home screen shows what's on now and coming up later on these channels.
           </Text>
-          {channelsLoading ? (
-            <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
-              Loading channels...
+          <View style={[styles.serviceRow, { borderBottomWidth: 0 }]}>
+            <Text style={styles.serviceLabel}>
+              {liveTvChannels.length === 0
+                ? 'No channels selected'
+                : `${liveTvChannels.length} channel${liveTvChannels.length === 1 ? '' : 's'} selected`}
             </Text>
-          ) : channelsError ? (
-            <View>
-              <Text style={[styles.sectionDescription, { color: colors.error }]}>
-                Couldn't load channels: {(channelsError as Error).message}
-              </Text>
-              <TVPressable
-                style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.sm }]}
-                onPress={() => refetchChannels()}
-              >
-                <Text style={[styles.primaryButtonText, { color: colors.text }]}>Retry</Text>
-              </TVPressable>
-            </View>
-          ) : availableChannels.length === 0 ? (
-            <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
-              No channels available.
-            </Text>
-          ) : (
-            availableChannels.map((channel) => {
-              const enabled = liveTvChannels.includes(channel);
-              const toggle = async () => {
-                const next = enabled
-                  ? liveTvChannels.filter((x) => x !== channel)
-                  : [...liveTvChannels, channel];
-                setLiveTvChannels(next);
-                await saveLiveTvChannels(next);
-              };
-              return (
-                <TVPressable key={channel} style={styles.serviceRow} onPress={toggle}>
-                  <Text style={styles.serviceLabel}>{channel}</Text>
-                  {isTV ? <TVToggle value={enabled} /> : (
-                    <Switch
-                      value={enabled}
-                      onValueChange={toggle}
-                      trackColor={{ false: '#333', true: colors.primary }}
-                      thumbColor="#fff"
-                    />
-                  )}
-                </TVPressable>
-              );
-            })
-          )}
+          </View>
+          <TVPressable
+            style={styles.primaryButton}
+            onPress={() => setChannelPickerOpen(true)}
+          >
+            <Text style={styles.primaryButtonText}>Configure Channels</Text>
+          </TVPressable>
         </View>
+
+        <ChannelPickerModal
+          visible={channelPickerOpen}
+          onClose={() => setChannelPickerOpen(false)}
+          availableChannels={availableChannels}
+          liveTvChannels={liveTvChannels}
+          setLiveTvChannels={setLiveTvChannels}
+          channelsLoading={channelsLoading}
+          channelsError={channelsError as Error | null}
+          refetchChannels={refetchChannels}
+        />
 
         {/* Apple TV Remote */}
         {isTVOS && (
@@ -448,6 +430,138 @@ export default function SettingsScreen() {
     </SafeAreaView>
   );
 }
+
+function ChannelPickerModal({
+  visible,
+  onClose,
+  availableChannels,
+  liveTvChannels,
+  setLiveTvChannels,
+  channelsLoading,
+  channelsError,
+  refetchChannels,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  availableChannels: string[];
+  liveTvChannels: string[];
+  setLiveTvChannels: (c: string[]) => void;
+  channelsLoading: boolean;
+  channelsError: Error | null;
+  refetchChannels: () => void;
+}) {
+  useEffect(() => {
+    if (!visible || !isTV) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
+    return () => sub.remove();
+  }, [visible, onClose]);
+
+  const toggle = async (channel: string) => {
+    const enabled = liveTvChannels.includes(channel);
+    const next = enabled ? liveTvChannels.filter((x) => x !== channel) : [...liveTvChannels, channel];
+    setLiveTvChannels(next);
+    await saveLiveTvChannels(next);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={modalStyles.container}>
+        <View style={modalStyles.sheet}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.title}>Configure Channels</Text>
+            <Text style={modalStyles.subtitle}>
+              {liveTvChannels.length} of {availableChannels.length} selected
+            </Text>
+          </View>
+          <ScrollView style={modalStyles.list} contentContainerStyle={modalStyles.listContent}>
+            {channelsLoading ? (
+              <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
+                Loading channels...
+              </Text>
+            ) : channelsError ? (
+              <View>
+                <Text style={[styles.sectionDescription, { color: colors.error }]}>
+                  Couldn't load channels: {channelsError.message}
+                </Text>
+                <TVPressable
+                  style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.sm }]}
+                  onPress={() => refetchChannels()}
+                >
+                  <Text style={[styles.primaryButtonText, { color: colors.text }]}>Retry</Text>
+                </TVPressable>
+              </View>
+            ) : availableChannels.length === 0 ? (
+              <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
+                No channels available.
+              </Text>
+            ) : (
+              availableChannels.map((channel) => {
+                const enabled = liveTvChannels.includes(channel);
+                return (
+                  <TVPressable key={channel} style={styles.serviceRow} onPress={() => toggle(channel)}>
+                    <Text style={styles.serviceLabel}>{channel}</Text>
+                    {isTV ? <TVToggle value={enabled} /> : (
+                      <Switch
+                        value={enabled}
+                        onValueChange={() => toggle(channel)}
+                        trackColor={{ false: '#333', true: colors.primary }}
+                        thumbColor="#fff"
+                      />
+                    )}
+                  </TVPressable>
+                );
+              })
+            )}
+          </ScrollView>
+          <TVPressable
+            style={[styles.primaryButton, { margin: spacing.lg, marginTop: 0 }]}
+            onPress={onClose}
+            hasTVPreferredFocus={isTV}
+          >
+            <Text style={styles.primaryButtonText}>Done</Text>
+          </TVPressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sheet: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    width: '90%',
+    maxWidth: 520,
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  header: {
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  title: {
+    ...typography.title,
+    fontSize: 20,
+  },
+  subtitle: {
+    ...typography.caption,
+    marginTop: 4,
+  },
+  list: {
+    flexGrow: 0,
+  },
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+});
 
 function ServerUpdatesSection() {
   const [status, setStatus] = useState<{

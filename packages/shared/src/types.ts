@@ -47,6 +47,8 @@ export interface ContentItem {
   isNew?: boolean;
   isRerun?: boolean;
   showRatingKey?: string;
+  /** When multiple items are collapsed into one card (e.g., multiple downloading episodes of the same show). */
+  groupCount?: number;
 }
 
 export interface ContentSection {
