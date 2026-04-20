@@ -30,6 +30,16 @@ function loadConfig(): AppConfig {
       url: trimUrl(process.env.PLEX_URL),
       token: (process.env.PLEX_TOKEN || '').trim(),
     },
+    jellyfin: {
+      url: trimUrl(process.env.JELLYFIN_URL),
+      username: (process.env.JELLYFIN_USERNAME || '').trim(),
+      password: process.env.JELLYFIN_PASSWORD || '',
+    },
+    emby: {
+      url: trimUrl(process.env.EMBY_URL),
+      username: (process.env.EMBY_USERNAME || '').trim(),
+      password: process.env.EMBY_PASSWORD || '',
+    },
     sonarr: {
       url: trimUrl(process.env.SONARR_URL),
       apiKey: (process.env.SONARR_API_KEY || '').trim(),

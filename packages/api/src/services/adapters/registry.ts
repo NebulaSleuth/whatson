@@ -1,17 +1,18 @@
 import type { ContentSource } from '@whatson/shared';
 import { plexAdapter } from './plex.js';
+import { jellyfinAdapter } from './jellyfin.js';
+import { embyAdapter } from './emby.js';
 import type { MediaServerAdapter, MediaServerKind } from './types.js';
 
 /**
- * All known media-server adapters. Jellyfin and Emby entries will land here as
- * they come online. Order matters only for logging/debugging — shelf ordering
- * is decided by the aggregator.
+ * All known media-server adapters. Order matters only for logging/debugging —
+ * shelf ordering is decided by the aggregator.
  */
 const adapters: Record<MediaServerKind, MediaServerAdapter> = {
   plex: plexAdapter,
-  // jellyfin: jellyfinAdapter,   // PR 2
-  // emby: embyAdapter,           // PR 3
-} as Record<MediaServerKind, MediaServerAdapter>;
+  jellyfin: jellyfinAdapter,
+  emby: embyAdapter,
+};
 
 export function getAdapter(kind: MediaServerKind): MediaServerAdapter | undefined {
   return adapters[kind];

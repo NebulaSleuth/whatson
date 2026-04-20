@@ -173,6 +173,23 @@ export interface PlexConfig {
   token: string;
 }
 
+/**
+ * Jellyfin is configured with URL + credentials (no OAuth). The backend
+ * authenticates on startup, caches the access token, and re-auths on 401.
+ * Passwords stay server-side — they never leave the .env file.
+ */
+export interface JellyfinConfig {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface EmbyConfig {
+  url: string;
+  username: string;
+  password: string;
+}
+
 export interface SonarrConfig {
   url: string;
   apiKey: string;
@@ -198,6 +215,8 @@ export interface UpdateConfig {
 
 export interface ServerConfig {
   plex: PlexConfig;
+  jellyfin: JellyfinConfig;
+  emby: EmbyConfig;
   sonarr: SonarrConfig;
   radarr: RadarrConfig;
   epg: EpgConfig;

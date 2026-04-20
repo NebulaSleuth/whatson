@@ -298,6 +298,56 @@
       </div>
     </div>
 
+    <!-- Jellyfin -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Jellyfin <span style="color:#888;font-size:13px;font-weight:400">(alternative media server)</span></h2>
+        <div><span class="status-dot unconfigured" id="jellyfin-status"></span><span class="status-label" id="jellyfin-status-label">not configured</span></div>
+      </div>
+      <div class="field">
+        <label>URL</label>
+        <input type="text" id="jellyfin-url" placeholder="http://192.168.1.100:8096" />
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="jellyfin-username" placeholder="Your Jellyfin account" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="jellyfin-password" placeholder="Your Jellyfin password" autocomplete="current-password" />
+        <div class="hint">Stored in the server's .env file. The backend authenticates on startup and caches the access token.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="testService('jellyfin')">Test Connection</button>
+        <button class="btn btn-primary" onclick="saveService('jellyfin')">Save</button>
+      </div>
+    </div>
+
+    <!-- Emby -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Emby <span style="color:#888;font-size:13px;font-weight:400">(alternative media server)</span></h2>
+        <div><span class="status-dot unconfigured" id="emby-status"></span><span class="status-label" id="emby-status-label">not configured</span></div>
+      </div>
+      <div class="field">
+        <label>URL</label>
+        <input type="text" id="emby-url" placeholder="http://192.168.1.100:8096" />
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="emby-username" placeholder="Your Emby account" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="emby-password" placeholder="Your Emby password" autocomplete="current-password" />
+        <div class="hint">Stored in the server's .env file. The backend authenticates on startup and caches the access token.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="testService('emby')">Test Connection</button>
+        <button class="btn btn-primary" onclick="saveService('emby')">Save</button>
+      </div>
+    </div>
+
     <!-- Radarr -->
     <div class="card">
       <div class="card-header">
@@ -427,6 +477,22 @@
         if (cfg.radarr.apiKey) {
           document.getElementById('radarr-apikey').placeholder = 'Configured (' + cfg.radarr.apiKey + ')';
         }
+        if (cfg.jellyfin) {
+          if (cfg.jellyfin.url) document.getElementById('jellyfin-url').value = cfg.jellyfin.url;
+          if (cfg.jellyfin.username) document.getElementById('jellyfin-username').value = cfg.jellyfin.username;
+          if (cfg.jellyfin.password) {
+            document.getElementById('jellyfin-password').placeholder = 'Configured (saved)';
+          }
+          updateStatusDot('jellyfin', cfg.jellyfin.configured ? 'connected' : 'unconfigured');
+        }
+        if (cfg.emby) {
+          if (cfg.emby.url) document.getElementById('emby-url').value = cfg.emby.url;
+          if (cfg.emby.username) document.getElementById('emby-username').value = cfg.emby.username;
+          if (cfg.emby.password) {
+            document.getElementById('emby-password').placeholder = 'Configured (saved)';
+          }
+          updateStatusDot('emby', cfg.emby.configured ? 'connected' : 'unconfigured');
+        }
         if (cfg.epg.tmdbApiKey) {
           document.getElementById('tmdb-apikey').placeholder = 'Configured (' + cfg.epg.tmdbApiKey + ')';
         }
@@ -473,6 +539,14 @@
       } else if (service === 'radarr') {
         body.url = document.getElementById('radarr-url').value;
         body.apiKey = document.getElementById('radarr-apikey').value || undefined;
+      } else if (service === 'jellyfin') {
+        body.url = document.getElementById('jellyfin-url').value;
+        body.username = document.getElementById('jellyfin-username').value;
+        body.password = document.getElementById('jellyfin-password').value || undefined;
+      } else if (service === 'emby') {
+        body.url = document.getElementById('emby-url').value;
+        body.username = document.getElementById('emby-username').value;
+        body.password = document.getElementById('emby-password').value || undefined;
       }
 
       try {
@@ -517,6 +591,20 @@
         };
         const key = document.getElementById('radarr-apikey').value;
         if (key) body.radarr.apiKey = key;
+      } else if (service === 'jellyfin') {
+        body.jellyfin = {
+          url: document.getElementById('jellyfin-url').value,
+          username: document.getElementById('jellyfin-username').value,
+        };
+        const pw = document.getElementById('jellyfin-password').value;
+        if (pw) body.jellyfin.password = pw;
+      } else if (service === 'emby') {
+        body.emby = {
+          url: document.getElementById('emby-url').value,
+          username: document.getElementById('emby-username').value,
+        };
+        const pw = document.getElementById('emby-password').value;
+        if (pw) body.emby.password = pw;
       }
 
       try {

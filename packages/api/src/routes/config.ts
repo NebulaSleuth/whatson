@@ -6,6 +6,8 @@ import * as plex from '../services/plex.js';
 import * as plexPlayback from '../services/plexPlayback.js';
 import * as sonarr from '../services/sonarr.js';
 import * as radarr from '../services/radarr.js';
+import * as jellyfin from '../services/jellyfin.js';
+import * as emby from '../services/emby.js';
 import { startUpdateScheduler } from '../services/updater.js';
 import { getCached, setCached } from '../cache.js';
 import type { ApiResponse } from '@whatson/shared';
@@ -31,6 +33,18 @@ configRouter.get('/config', async (_req, res) => {
       url: config.radarr.url,
       apiKey: config.radarr.apiKey ? '••••' + config.radarr.apiKey.slice(-4) : '',
       configured: Boolean(config.radarr.url && config.radarr.apiKey),
+    },
+    jellyfin: {
+      url: config.jellyfin.url,
+      username: config.jellyfin.username,
+      password: config.jellyfin.password ? '••••' : '',
+      configured: Boolean(config.jellyfin.url && config.jellyfin.username),
+    },
+    emby: {
+      url: config.emby.url,
+      username: config.emby.username,
+      password: config.emby.password ? '••••' : '',
+      configured: Boolean(config.emby.url && config.emby.username),
     },
     epg: {
       provider: config.epg.provider,
@@ -106,6 +120,34 @@ configRouter.post('/config/test', async (req, res) => {
       config.radarr.url = origUrl;
       config.radarr.apiKey = origKey;
       radarr.resetClient();
+    } else if (service === 'jellyfin') {
+      const { username, password } = req.body;
+      const origUrl = config.jellyfin.url;
+      const origUser = config.jellyfin.username;
+      const origPass = config.jellyfin.password;
+      config.jellyfin.url = url;
+      if (username) config.jellyfin.username = username;
+      if (password) config.jellyfin.password = password;
+      jellyfin.resetClient();
+      connected = await jellyfin.testConnection();
+      config.jellyfin.url = origUrl;
+      config.jellyfin.username = origUser;
+      config.jellyfin.password = origPass;
+      jellyfin.resetClient();
+    } else if (service === 'emby') {
+      const { username, password } = req.body;
+      const origUrl = config.emby.url;
+      const origUser = config.emby.username;
+      const origPass = config.emby.password;
+      config.emby.url = url;
+      if (username) config.emby.username = username;
+      if (password) config.emby.password = password;
+      emby.resetClient();
+      connected = await emby.testConnection();
+      config.emby.url = origUrl;
+      config.emby.username = origUser;
+      config.emby.password = origPass;
+      emby.resetClient();
     }
   } catch {
     connected = false;
@@ -121,7 +163,7 @@ configRouter.post('/config/test', async (req, res) => {
 /** Save config to .env and hot-reload */
 configRouter.post('/config/save', async (req, res) => {
   try {
-    const { plex: plexCfg, sonarr: sonarrCfg, radarr: radarrCfg, epg: epgCfg, update: updateCfg, port } = req.body;
+    const { plex: plexCfg, sonarr: sonarrCfg, radarr: radarrCfg, jellyfin: jellyfinCfg, emby: embyCfg, epg: epgCfg, update: updateCfg, port } = req.body;
     const values: Record<string, string> = {};
 
     if (port != null) {
@@ -139,6 +181,16 @@ configRouter.post('/config/save', async (req, res) => {
     if (radarrCfg) {
       if ('url' in radarrCfg) values.RADARR_URL = radarrCfg.url || '';
       if ('apiKey' in radarrCfg) values.RADARR_API_KEY = radarrCfg.apiKey || '';
+    }
+    if (jellyfinCfg) {
+      if ('url' in jellyfinCfg) values.JELLYFIN_URL = jellyfinCfg.url || '';
+      if ('username' in jellyfinCfg) values.JELLYFIN_USERNAME = jellyfinCfg.username || '';
+      if ('password' in jellyfinCfg && jellyfinCfg.password) values.JELLYFIN_PASSWORD = jellyfinCfg.password;
+    }
+    if (embyCfg) {
+      if ('url' in embyCfg) values.EMBY_URL = embyCfg.url || '';
+      if ('username' in embyCfg) values.EMBY_USERNAME = embyCfg.username || '';
+      if ('password' in embyCfg && embyCfg.password) values.EMBY_PASSWORD = embyCfg.password;
     }
     if (epgCfg) {
       if ('provider' in epgCfg) values.EPG_PROVIDER = epgCfg.provider || 'tvmaze';
@@ -169,6 +221,8 @@ configRouter.post('/config/save', async (req, res) => {
     plex.resetClient();
     sonarr.resetClient();
     radarr.resetClient();
+    jellyfin.resetClient();
+    emby.resetClient();
 
     // Re-arm the update scheduler in case AUTO_UPDATE was toggled
     if (updateCfg) startUpdateScheduler();
