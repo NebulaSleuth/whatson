@@ -1,8 +1,8 @@
 # "Whats On" — Implementation Plan
 
-> **Last Updated**: 2026-04-05
-> **Current Phase**: Phase 2 complete, Phase 4 partially complete
-> **Overall Progress**: Phases 1, 1.5, 2 complete; Phase 4 multi-user done
+> **Last Updated**: 2026-04-19
+> **Current Phase**: Phases 1, 1.5, 2 complete; Phase 4 partially complete; Phase 3 groundwork in place
+> **Overall Progress**: Phases 1, 1.5, 2 complete; Phase 4 multi-user, recommendations, Add-to-Arr complete
 
 ---
 
@@ -13,8 +13,8 @@
 | **Phase 1**: Foundation (Backend + Mobile) | **Complete** | ██████████████ 100% |
 | **Phase 1.5**: Discovery & Tracking | **Complete** | ██████████████ 100% |
 | **Phase 2**: TV Platforms + Video Player + Infrastructure | **Complete** | ██████████████ 100% |
-| **Phase 3**: Windows + Live TV | Not Started | ░░░░░░░░░░░░░░ 0% |
-| **Phase 4**: Enhanced Features | **In Progress** | ████░░░░░░░░░░ 25% |
+| **Phase 3**: Windows + Live TV | **Groundwork** | █░░░░░░░░░░░░░ 10% |
+| **Phase 4**: Enhanced Features | **In Progress** | ██████░░░░░░░░ 40% |
 | **Phase 5**: Roku + Polish | Not Started | ░░░░░░░░░░░░░░ 0% |
 
 ---
@@ -470,12 +470,20 @@ interface ServerConfig {
 - [x] Coming Soon shelves sorted by availability date
 - [x] Eager Plex discovery on startup for artwork URLs
 
-#### 2.19 — Remaining Items
+#### 2.19 — Add-to-Arr Picker ✅ COMPLETE
+- [x] Shared `ArrAddPicker` modal for Sonarr/Radarr adds
+- [x] Quality profile, root folder, and monitor selection with TV focus support
+- [x] Remembers last-used profile/folder/monitor per service via secure storage
+- [x] Used from Discover search results and Recommendations shelves
+- [x] Backend endpoints: `/sonarr/profiles`, `/sonarr/rootfolders`, `POST /sonarr/add` (+ Radarr equivalents)
+
+#### 2.20 — Remaining Items
 - [ ] Card focus expansion on TV: show summary snippet, episode info on focus
+- [ ] Sonarr/Radarr ↔ Plex watch-state cross-source merging (matching by series/episode)
 
 ---
 
-### Phase 3: Windows + Live TV ⬜ NOT STARTED
+### Phase 3: Windows + Live TV ⬜ GROUNDWORK IN PLACE
 
 **Goal**: Add Windows desktop support and live TV guide integration.
 
@@ -487,16 +495,13 @@ interface ServerConfig {
 - [ ] System tray / taskbar integration (optional)
 - [ ] Windows installer (MSIX or electron-style)
 
-#### 3.2 — Live TV / EPG Integration
-- [ ] Backend: TVmaze service
-  - Fetch `/schedule?country={cc}&date={today}` for tonight's broadcasts
-  - Cache schedule data (60-min TTL matching TVmaze CDN cache)
-  - Match TVmaze shows against Sonarr tracked series
-- [ ] Backend: TMDB metadata enrichment
-  - Fetch additional artwork and metadata for shows/movies
-  - Supplement TVmaze data with high-quality posters
-- [ ] Endpoint: `GET /api/live/tonight` — what's on TV tonight
+#### 3.2 — Live TV / EPG Integration (Partial)
+- [x] Backend: TVmaze service (`services/tvmaze.ts`) — show search by name, episode lookup by TVmaze ID
+- [x] Backend: TMDB service (`services/tmdb.ts`) — multi-search + image URL generation, used for discover + recommendations
+- [ ] Endpoint: `GET /api/live/tonight` — what's on TV tonight (aggregated schedule)
 - [ ] Endpoint: `GET /api/live/now` — currently airing
+- [ ] Schedule cache (60-min TTL)
+- [ ] Match TVmaze shows against Sonarr tracked series
 - [ ] **Live TV Tab** in app:
   - "On Now" shelf — currently airing shows from tracked channels
   - "Tonight" shelf — upcoming broadcasts tonight, sorted by time
@@ -512,7 +517,7 @@ interface ServerConfig {
 
 ---
 
-### Phase 4: Enhanced Features ⬜ NOT STARTED
+### Phase 4: Enhanced Features ⬜ IN PROGRESS
 
 **Goal**: Add calendar, notifications, Trakt sync, content requests, and multi-user support.
 
@@ -550,18 +555,23 @@ interface ServerConfig {
 - [ ] Request status tracking: show pending requests in a "Requested" section
 - [ ] Notification when request is approved/available
 
-#### 4.5 — Multi-User Profiles
-- [ ] Backend: user/profile management (link to Plex managed users)
-- [ ] Profile selection screen on app launch (or auto-login)
-- [ ] Per-profile watch state, preferences, and notification settings
-- [ ] Profile avatars (from Plex or custom)
+#### 4.5 — Multi-User Profiles ✅ COMPLETE (delivered in Phase 2.17)
+- [x] Backend: user/profile management linked to Plex Home users
+- [x] Profile selection screen on app launch with PIN entry for restricted users
+- [x] Per-profile watch state (per-user `watched.json` under `data/users/{id}/`)
+- [x] Profile avatars from Plex
+- [x] "Remember login" auto-restore on startup
 
-#### 4.6 — Recommendations Engine
-- [ ] Backend: `GET /api/recommendations` — generate suggestions
-  - Based on: watch history genres, TMDB "similar" API, Trakt recommendations
-  - Filter out already-watched content
-- [ ] "Recommended for You" shelf on Home screen
-- [ ] "Because you watched [X]" row labels
+#### 4.6 — Recommendations Engine ✅ COMPLETE
+- [x] Backend: `GET /api/recommendations?tmdb={0|1}` — generates suggestions from:
+  - Plex recommendation hubs (genre-based, "Similar to X") — always on
+  - TMDB "Because you watched X" — when TMDB key configured
+- [x] Sources: Continue Watching + last 90 days of watch history, randomized with hourly rotation, 30-minute cache
+- [x] Filter out already-watched / in-library content
+- [x] "Recommended for You" shelf on Home screen
+- [x] "Because you watched [X]" row labels
+- [x] Plex items → Play Here / Mark Watched; non-Plex items → Add to Sonarr/Radarr
+- [x] Settings toggle to show/hide TMDB recommendations
 
 #### 4.7 — Home Screen Widgets
 - [ ] Android widget: "Up Next" showing next unwatched episode (react-native widget or native module)
@@ -711,17 +721,22 @@ interface ServerConfig {
 | Library sort (A-Z, added, release, watched) | 2 | All | Core | ✅ Done |
 | Library pagination (all items) | 2 | Backend | Core | ✅ Done |
 | Content intelligence (auto-expire, sort) | 2 | Backend | Core | ✅ Done |
+| Add-to-Arr picker (profile/folder/monitor) | 2 | All | Core | ✅ Done |
+| TMDB service (multi-search + images) | 2 | Backend | Core | ✅ Done |
+| TVmaze service (schedule lookup) | 3 | Backend | Core | ✅ Done |
+| Recommendations engine (Plex hubs + TMDB) | 4 | All | High | ✅ Done |
+| "Because you watched" shelf | 4 | All | High | ✅ Done |
+| Per-user X-Plex-User middleware | 2 | Backend | Core | ✅ Done |
 | Card focus expansion (summary on focus) | 2 | TV | Medium | ⬜ Todo |
 | Sonarr/Radarr ↔ Plex watch state merge | 1 | All | Medium | ⬜ Todo |
 | Windows desktop app | 3 | Windows | Core | ⬜ Todo |
-| Live TV schedule (TVmaze) | 3 | All | Core | ⬜ Todo |
+| Live TV tonight/now endpoints + shelves | 3 | All | Core | ⬜ Todo |
 | Favorite channels | 3 | All | Core | ⬜ Todo |
 | Calendar view | 4 | All | High | ⬜ Todo |
 | Push notifications | 4 | Mobile + TV | High | ⬜ Todo |
 | Trakt.tv sync | 4 | All | High | ⬜ Todo |
 | Content requests (Overseerr) | 4 | All | High | ⬜ Todo |
 | Multi-user profiles | 2 | All | Core | ✅ Done |
-| Recommendations engine | 4 | All | Medium | ⬜ Todo |
 | Home screen widgets | 4 | Android + iOS | Medium | ⬜ Todo |
 | Quick actions (swipe, remote buttons) | 4 | All | Medium | ⬜ Todo |
 | Roku channel | 5 | Roku | Core | ⬜ Todo |
@@ -773,20 +788,24 @@ whatson/
 ├── icon.ico                              # App icon
 ├── scripts/
 │   ├── build-standalone.js              # esbuild + Node.js SEA builder
-│   └── patch-signing.py                 # Gradle signing patch for CI
+│   ├── create-installer.js              # Linux .deb / .rpm packaging via fpm
+│   ├── patch-signing.py                 # Gradle signing patch for CI
+│   └── generate-tv-icons.py             # TV icon / Top Shelf asset generator
 ├── apps/
 │   └── mobile/
 │       ├── package.json
 │       ├── tsconfig.json
 │       ├── app.json                      # Expo config (static)
-│       ├── app.config.ts                 # Dynamic Expo config (phone vs TV)
+│       ├── app.config.ts                 # Dynamic Expo config (phone vs TV via WHATSON_TV)
 │       ├── assets/
 │       │   └── tv-banner.png            # Android TV banner (320x180)
 │       ├── constants/
 │       │   └── theme.ts                  # Dark theme, colors, typography, card sizes (phone + TV)
 │       ├── lib/
-│       │   ├── api.ts                    # API client (fetch wrapper + artwork URL resolver)
-│       │   ├── store.ts                  # Zustand store
+│       │   ├── api.ts                    # API client (fetch wrapper, artwork URL resolver, X-Plex-User header)
+│       │   ├── store.ts                  # Zustand store (apiUrl, user, prefs, plexConnectionType)
+│       │   ├── storage.ts                # Secure persisted settings (api url, user, prefs, arr defaults)
+│       │   ├── videoPlayer.ts            # expo-video native module availability check
 │       │   ├── tv.ts                     # TV detection (isTV, isTVOS, isAndroidTV)
 │       │   ├── useBackHandler.ts         # TV back button handler (tab-scoped via useIsFocused)
 │       │   └── useRealtimeUpdates.ts     # WebSocket client (auto-reconnect, suppression, queue)
@@ -795,6 +814,7 @@ whatson/
 │       │   ├── ContentShelf.tsx          # Horizontal scrolling row with cross-shelf focus
 │       │   ├── ShelfList.tsx             # Multi-shelf container with focusFirst() imperative handle
 │       │   ├── DetailSheet.tsx           # Modal with full metadata + actions
+│       │   ├── ArrAddPicker.tsx          # Shared Sonarr/Radarr add modal (profile/folder/monitor)
 │       │   ├── ProgressBar.tsx           # Thin progress indicator
 │       │   ├── SourceBadge.tsx           # Color-coded source pill
 │       │   ├── SkeletonCard.tsx          # Loading skeleton shimmer
@@ -802,55 +822,75 @@ whatson/
 │       │   ├── Clock.tsx                 # Real-time clock overlay (TV)
 │       │   └── TVFocusable.tsx           # TVPressable + TVTextInput wrappers
 │       └── app/
-│           ├── _layout.tsx               # Root layout (QueryClientProvider, realtime updates)
-│           ├── player.tsx                # Built-in video player (expo-video, TV controls)
+│           ├── _layout.tsx               # Root layout (QueryClientProvider, realtime updates, auth gate)
+│           ├── player.tsx                # Built-in video player (expo-video, TV controls, markers)
+│           ├── show-detail.tsx           # Full-screen show/movie detail with seasons + episodes
+│           ├── select-user.tsx           # "Who's Watching?" user picker + PIN entry
 │           └── (tabs)/
 │               ├── _layout.tsx           # Tab navigator (TV top bar, clock, TVTabButton)
-│               ├── index.tsx             # Home screen
+│               ├── index.tsx             # Home screen (+ Recommendations shelves)
 │               ├── tv.tsx                # TV Shows screen
 │               ├── movies.tsx            # Movies screen
 │               ├── library.tsx           # Library browser (grid, TV 2-row layout)
 │               ├── search.tsx            # Search (Library + Discover modes)
-│               └── settings.tsx          # Settings (server config, connection status)
+│               └── settings.tsx          # Settings (server config, user, playback + TMDB prefs)
 ├── packages/
 │   ├── shared/
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/
 │   │       ├── index.ts
-│   │       ├── types.ts                  # ContentItem, ServerConfig, API types
-│   │       └── constants.ts              # App name, streaming providers, API base URLs
+│   │       ├── types.ts                  # ContentItem, ServerConfig, Tracked/Tmdb types, API types
+│   │       └── constants.ts              # App name, Plex client identifiers, streaming providers, TMDB/TVmaze URLs
 │   └── api/
 │       ├── package.json
 │       ├── tsconfig.json
 │       ├── nssm.exe                      # NSSM binary for Windows service management
 │       ├── .env.example                  # Documented config with local/remote options
+│       ├── admin/
+│       │   └── index.html                # Static admin UI (Plex OAuth PIN + service config)
+│       ├── data/
+│       │   ├── tracked.json              # Shared watchlist (TMDB items + streaming provider)
+│       │   ├── watched.json              # Legacy shared watched state (pre multi-user)
+│       │   └── users/{userId}/watched.json # Per-Plex-user watched state
 │       └── src/
-│           ├── index.ts                  # Express server entry (dotenv multi-path, WS init)
-│           ├── config.ts                 # Lazy config via Proxy (for esbuild compatibility)
+│           ├── index.ts                  # Express entry (dotenv multi-path, middleware, routes, WS, static admin)
+│           ├── config.ts                 # Lazy config via Proxy + saveConfigToEnv / reloadConfig
 │           ├── cache.ts                  # In-memory cache (node-cache)
 │           ├── ws.ts                     # WebSocket server (60s polling, data hash, broadcast)
 │           ├── logger.ts                 # File logger (platform-aware paths, fallbacks)
 │           ├── service.ts                # Cross-platform service installer (NSSM/systemd/launchd)
+│           ├── utils.ts                  # Shared helpers (toArray, date formatting, etc.)
+│           ├── middleware/
+│           │   └── userContext.ts        # X-Plex-User + X-Plex-Connection → per-request user + token
 │           ├── services/
-│           │   ├── plex.ts               # Plex service (plex.tv discovery, local-first, lock)
-│           │   ├── sonarr.ts             # Sonarr service (calendar, history, queue, toArray)
-│           │   ├── radarr.ts             # Radarr service (movies, history, queue)
-│           │   └── aggregator.ts         # Merges all sources into home/search responses
+│           │   ├── plex.ts               # Plex discovery, library, watch state, hubs, search
+│           │   ├── plexPlayback.ts       # Plex client enumeration ("play on this device")
+│           │   ├── sonarr.ts             # Sonarr (calendar, history, queue, add, profiles, root folders)
+│           │   ├── radarr.ts             # Radarr (movies, history, queue, add, profiles, root folders)
+│           │   ├── tmdb.ts               # TMDB multi-search + image URL generation
+│           │   ├── tvmaze.ts             # TVmaze show + episode lookup
+│           │   ├── tracked.ts            # Watchlist + per-user watched state persistence
+│           │   ├── users.ts              # Plex Home users + per-user server tokens
+│           │   ├── discover.ts           # TMDB search with Sonarr/Radarr lookup fallback
+│           │   └── aggregator.ts         # Home/search aggregation + cross-source merging
 │           └── routes/
 │               ├── health.ts             # GET /api/health
 │               ├── home.ts               # GET /api/home
-│               ├── tv.ts                 # GET /api/tv/*
-│               ├── movies.ts             # GET /api/movies/*
-│               ├── library.ts            # GET /api/library/:type
+│               ├── tv.ts                 # GET /api/tv/{upcoming,recent,downloading}
+│               ├── movies.ts             # GET /api/movies/{upcoming,recent,downloading}
+│               ├── library.ts            # GET /api/library/:type, /library/show/:ratingKey/seasons, season episodes
 │               ├── search.ts             # GET /api/search
-│               ├── discover.ts           # GET /api/discover/search
-│               ├── artwork.ts            # GET /api/artwork (proxy + cache)
+│               ├── discover.ts           # GET /api/discover/search + tracked CRUD
+│               ├── artwork.ts            # GET /api/artwork (proxy + 24h cache)
 │               ├── playback.ts           # GET/POST /api/playback/* (stream, progress, stop)
-│               ├── scrobble.ts           # POST /api/scrobble, /api/unscrobble
-│               ├── add.ts                # POST /api/add (tracked items)
-│               ├── config.ts             # GET/POST /api/config
-│               └── debug.ts              # GET /api/debug
+│               ├── scrobble.ts           # POST /api/scrobble(/all), /api/unscrobble(/all)
+│               ├── add.ts                # Sonarr/Radarr profiles, root folders, POST add
+│               ├── recommendations.ts    # GET /api/recommendations (Plex hubs + TMDB "Because you watched")
+│               ├── users.ts              # GET /api/users, POST /api/users/select
+│               ├── config.ts             # /api/config*, Plex PIN flow, connections, clients
+│               ├── setup.ts              # Fallback HTML at /setup when admin/ is missing
+│               └── debug.ts              # GET /api/debug/sonarr/*path
 ```
 
 ---
@@ -897,9 +937,10 @@ Set `EXPO_PUBLIC_API_URL` in the mobile app environment to point to your backend
 ### From Phase 2 (remaining):
 2. **Card focus expansion** — show summary snippet / episode info when card is focused on TV
 
-### Phase 3 (not started):
+### Phase 3 (groundwork in place):
 3. **Windows desktop app** — react-native-windows build target
-4. **Live TV / EPG integration** — TVmaze schedule, "On Now" / "Tonight" shelves
+4. **Live TV endpoints + UI** — `/api/live/tonight`, `/api/live/now`, Live TV tab
+   (TVmaze + TMDB services already wired up — remaining work is aggregation + shelves)
 5. **Favorite channels** — filter live TV to preferred channels
 
 ### Phase 4 (remaining):
@@ -907,16 +948,15 @@ Set `EXPO_PUBLIC_API_URL` in the mobile app environment to point to your backend
 7. **Push notifications** — FCM/APNs for new downloads, show returns
 8. **Trakt.tv sync** — bidirectional watch history, recommendations
 9. **Overseerr/Ombi content requests** — request missing content
-10. **Recommendations engine** — "Because you watched X" shelves
-11. **Home screen widgets** — Android/iOS "Up Next" widgets
-12. **Quick actions** — swipe gestures, remote button mappings
+10. **Home screen widgets** — Android/iOS "Up Next" widgets
+11. **Quick actions** — swipe gestures, remote button mappings
 
 ### Phase 5 (not started):
-13. **Roku channel** — BrightScript/SceneGraph native app
-14. **Smart collections** — auto-generated "Quick Watch", "Binge-worthy", etc.
-15. **Statistics dashboard** — watch time charts, top content
-16. **Companion mode** — phone as TV remote
-17. **Watch party** — synchronized playback
-18. **Full EPG grid** — traditional cable-style grid view
-19. **Deep linking** — universal links, URL scheme `whatson://content/{id}`
-20. **Performance & polish** — offline cache, accessibility, i18n, animations
+12. **Roku channel** — BrightScript/SceneGraph native app
+13. **Smart collections** — auto-generated "Quick Watch", "Binge-worthy", etc.
+14. **Statistics dashboard** — watch time charts, top content
+15. **Companion mode** — phone as TV remote
+16. **Watch party** — synchronized playback
+17. **Full EPG grid** — traditional cable-style grid view
+18. **Deep linking** — universal links, URL scheme `whatson://content/{id}`
+19. **Performance & polish** — offline cache, accessibility, i18n, animations

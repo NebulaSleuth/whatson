@@ -314,13 +314,14 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
     ),
   ));
 
-  // TV: coming soon = Sonarr calendar + downloading queue + tracked TV upcoming episodes
-  // Only show one card per show, sorted by availability date (soonest first)
+  // TV: coming soon = Sonarr calendar + downloading queue + tracked TV upcoming episodes.
+  // Filter out items that mergeWithPlexState upgraded to 'ready'/'watching' — those are in the library now.
+  // Only show one card per show, sorted by availability date (soonest first).
   const tvComingSoon = sortByDate(oneEpisodePerShow(filterWatched(deduplicateById([
     ...sonarrQueue,
     ...enrichedSonarrUpcoming,
     ...trackedTvComingSoon,
-  ]))));
+  ].filter((i) => i.status === 'coming_soon' || i.status === 'downloading')))));
 
   // Movies: ready to watch = Plex movies (not in Continue Watching) + Radarr downloads + tracked movies
   const moviesReady = deduplicateById(
@@ -333,8 +334,10 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
     ),
   );
 
-  // Movies: coming soon = Radarr calendar + downloading queue
-  const moviesComingSoon = sortByDate(filterWatched(deduplicateById([...radarrQueue, ...enrichedRadarrUpcoming])));
+  // Movies: coming soon = Radarr calendar + downloading queue. Drop any item mergeWithPlexState upgraded.
+  const moviesComingSoon = sortByDate(filterWatched(deduplicateById(
+    [...radarrQueue, ...enrichedRadarrUpcoming].filter((i) => i.status === 'coming_soon' || i.status === 'downloading'),
+  )));
 
   const sections: ContentSection[] = [];
   let order = 0;

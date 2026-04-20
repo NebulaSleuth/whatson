@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ActivityIndicator,
-  FlatList, ScrollView, findNodeHandle,
+  FlatList, ScrollView, findNodeHandle, Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
 import { api, resolveArtworkUrl } from '@/lib/api';
@@ -17,6 +17,7 @@ interface Season {
   index: number;
   title: string;
   episodeCount: number;
+  watchedCount: number;
   thumb: string;
 }
 
@@ -63,6 +64,45 @@ export default function ShowDetailScreen() {
     router.push({ pathname: '/player', params: { ratingKey: ep.sourceId } } as any);
   }, []);
 
+  const queryClient = useQueryClient();
+
+  const showFullyWatched = !!seasons && seasons.length > 0 &&
+    seasons.every((s) => s.episodeCount > 0 && s.watchedCount >= s.episodeCount);
+  const seasonFullyWatched = !!selectedSeason &&
+    selectedSeason.episodeCount > 0 &&
+    selectedSeason.watchedCount >= selectedSeason.episodeCount;
+
+  const invalidateShow = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['show-seasons', ratingKey] }),
+      queryClient.invalidateQueries({ queryKey: ['season-episodes'] }),
+      queryClient.invalidateQueries({ queryKey: ['home'] }),
+      queryClient.invalidateQueries({ queryKey: ['tv'] }),
+    ]);
+  }, [queryClient, ratingKey]);
+
+  const toggleShowWatched = useCallback(async () => {
+    if (!ratingKey) return;
+    try {
+      if (showFullyWatched) await api.markUnwatched(ratingKey, 'plex');
+      else await api.markWatched(ratingKey, 'plex');
+      await invalidateShow();
+    } catch (error) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  }, [ratingKey, showFullyWatched, invalidateShow]);
+
+  const toggleSeasonWatched = useCallback(async () => {
+    if (!selectedSeason) return;
+    try {
+      if (seasonFullyWatched) await api.markUnwatched(selectedSeason.ratingKey, 'plex');
+      else await api.markWatched(selectedSeason.ratingKey, 'plex');
+      await invalidateShow();
+    } catch (error) {
+      Alert.alert('Error', (error as Error).message);
+    }
+  }, [selectedSeason, seasonFullyWatched, invalidateShow]);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header with show info */}
@@ -77,6 +117,17 @@ export default function ShowDetailScreen() {
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
           {year ? <Text style={styles.year}>{year}</Text> : null}
           {summary ? <Text style={styles.summary} numberOfLines={isTV ? 3 : 4}>{summary}</Text> : null}
+          {seasons && seasons.length > 0 && (
+            <Pressable
+              style={({ focused }) => [styles.markButton, isTV && focused && styles.markButtonFocused]}
+              onPress={toggleShowWatched}
+              focusable
+            >
+              <Text style={styles.markButtonText}>
+                {showFullyWatched ? 'Mark All as Unwatched' : 'Mark Show as Watched'}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -114,6 +165,21 @@ export default function ShowDetailScreen() {
               </Pressable>
             ))}
           </ScrollView>
+        </View>
+      )}
+
+      {/* Season-level mark button */}
+      {selectedSeason && !loadingSeasons && (
+        <View style={styles.seasonActionRow}>
+          <Pressable
+            style={({ focused }) => [styles.markButton, isTV && focused && styles.markButtonFocused]}
+            onPress={toggleSeasonWatched}
+            focusable
+          >
+            <Text style={styles.markButtonText}>
+              {seasonFullyWatched ? 'Mark Season as Unwatched' : 'Mark Season as Watched'}
+            </Text>
+          </Pressable>
         </View>
       )}
 
@@ -424,5 +490,27 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     fontWeight: '600',
+  },
+  markButton: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  markButtonFocused: {
+    borderColor: colors.focus,
+  },
+  markButtonText: {
+    color: colors.text,
+    fontSize: isTV ? 14 : 13,
+    fontWeight: '600',
+  },
+  seasonActionRow: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
   },
 });

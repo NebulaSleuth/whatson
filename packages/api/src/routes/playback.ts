@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { config } from '../config.js';
-import { getServerUrl, getMachineIdentifier } from '../services/plex.js';
+import { getServerUrl, getMachineIdentifier, getDiscoveredConnections } from '../services/plex.js';
 import { notifyDataChanged } from '../ws.js';
 import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
 
@@ -14,7 +14,12 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
   try {
     const { ratingKey } = req.params;
     const offset = parseInt(req.query.offset as string) || 0;
-    const serverUrl = await getServerUrl();
+    // Use remote Plex URL if client is remote
+    let serverUrl = await getServerUrl();
+    if (req.plexConnectionType === 'remote') {
+      const conns = getDiscoveredConnections();
+      if (conns.remote.length > 0) serverUrl = conns.remote[0];
+    }
 
     if (!serverUrl) {
       res.status(500).json({ success: false, error: 'Plex server not available' });

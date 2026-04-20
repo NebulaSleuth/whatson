@@ -47,6 +47,7 @@ import { playbackRouter } from './routes/playback.js';
 import { libraryRouter } from './routes/library.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 import { usersRouter } from './routes/users.js';
+import { liveRouter } from './routes/live.js';
 import { userContext } from './middleware/userContext.js';
 import { initWebSocket } from './ws.js';
 
@@ -92,6 +93,7 @@ app.use('/api', addRouter);
 app.use('/api', playbackRouter);
 app.use('/api', libraryRouter);
 app.use('/api', recommendationsRouter);
+app.use('/api', liveRouter);
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);

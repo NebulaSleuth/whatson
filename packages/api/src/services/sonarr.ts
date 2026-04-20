@@ -93,9 +93,10 @@ export async function getUpcoming(days: number = 7): Promise<ContentItem[]> {
   });
 
   const items = toArray(data);
-  console.log(`[Sonarr] Calendar: ${items.length} upcoming`);
+  const unaired = items.filter((ep: any) => !ep.hasFile);
+  console.log(`[Sonarr] Calendar: ${items.length} upcoming, ${unaired.length} after hasFile filter`);
 
-  const result = items
+  const result = unaired
     .map((ep: any) => sonarrEpisodeToContentItem(ep, ep.series, 'coming_soon'))
     .sort(
       (a: ContentItem, b: ContentItem) =>

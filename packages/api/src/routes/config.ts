@@ -222,6 +222,26 @@ configRouter.get('/plex/pin/:pinId', async (req, res) => {
   }
 });
 
+/** Get Plex connection info for client-side testing */
+configRouter.get('/plex/connections', async (_req, res) => {
+  try {
+    const { getDiscoveredConnections, getServerUrl } = await import('../services/plex.js');
+    // Ensure discovery has run
+    await getServerUrl();
+    const conns = getDiscoveredConnections();
+    res.json({
+      success: true,
+      data: {
+        local: conns.local,
+        remote: conns.remote,
+        serverUrl: conns.serverUrl,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 /** Get Plex deep link for playback */
 configRouter.get('/plex/play/:ratingKey', async (req, res) => {
   try {

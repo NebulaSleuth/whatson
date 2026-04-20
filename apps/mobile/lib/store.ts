@@ -24,6 +24,8 @@ interface AppState {
   autoSkipCredits: boolean;
   disableTouchSurface: boolean;
   showBecauseYouWatched: boolean;
+  plexConnectionType: 'local' | 'remote';
+  liveTvChannels: string[];
   setApiUrl: (url: string) => void;
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
@@ -33,6 +35,8 @@ interface AppState {
   setAutoSkipCredits: (skip: boolean) => void;
   setDisableTouchSurface: (disable: boolean) => void;
   setShowBecauseYouWatched: (show: boolean) => void;
+  setPlexConnectionType: (type: 'local' | 'remote') => void;
+  setLiveTvChannels: (channels: string[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -45,6 +49,8 @@ export const useAppStore = create<AppState>((set) => ({
   autoSkipCredits: false,
   disableTouchSurface: false,
   showBecauseYouWatched: true,
+  plexConnectionType: 'local',
+  liveTvChannels: [],
   setApiUrl: (apiUrl) => set({ apiUrl }),
   setConfigured: (isConfigured) => set({ isConfigured }),
   setReady: (isReady) => set({ isReady }),
@@ -54,4 +60,6 @@ export const useAppStore = create<AppState>((set) => ({
   setAutoSkipCredits: (autoSkipCredits) => set({ autoSkipCredits }),
   setDisableTouchSurface: (disableTouchSurface) => set({ disableTouchSurface }),
   setShowBecauseYouWatched: (showBecauseYouWatched) => set({ showBecauseYouWatched }),
+  setPlexConnectionType: (plexConnectionType) => set({ plexConnectionType }),
+  setLiveTvChannels: (liveTvChannels) => set({ liveTvChannels }),
 }));

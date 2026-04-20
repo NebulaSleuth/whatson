@@ -139,7 +139,8 @@ export async function getUpcoming(days: number = 30): Promise<ContentItem[]> {
   });
 
   const items = toArray(data);
-  const result = items
+  const unaired = items.filter((movie: any) => !movie.hasFile);
+  const result = unaired
     .map((movie: any) => radarrToContentItem(movie, 'coming_soon'))
     .sort(
       (a: ContentItem, b: ContentItem) =>

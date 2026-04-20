@@ -133,7 +133,7 @@ export function notifyDataChanged(reason: string, ...keys: string[]): void {
   // Then tell all clients to refetch
   broadcast({
     type: 'invalidate',
-    keys: keys.length > 0 ? keys : ['home', 'tv', 'movies', 'tracked'],
+    keys: keys.length > 0 ? keys : ['home', 'tv', 'movies', 'tracked', 'live'],
     reason,
   });
 }

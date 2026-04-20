@@ -14,6 +14,7 @@ const KEYS = {
   RADARR_FOLDER: 'whatson_radarrFolder',
   DISABLE_TOUCH_SURFACE: 'whatson_disableTouchSurface',
   SHOW_BECAUSE_YOU_WATCHED: 'whatson_showBecauseYouWatched',
+  LIVE_TV_CHANNELS: 'whatson_liveTvChannels',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -122,6 +123,19 @@ export async function getShowBecauseYouWatched(): Promise<boolean> {
 
 export async function setShowBecauseYouWatched(show: boolean): Promise<void> {
   try { await SecureStore.setItemAsync(KEYS.SHOW_BECAUSE_YOU_WATCHED, String(show)); } catch {}
+}
+
+// ── Live TV Channels ──
+
+export async function getLiveTvChannels(): Promise<string[]> {
+  try {
+    const json = await SecureStore.getItemAsync(KEYS.LIVE_TV_CHANNELS);
+    return json ? JSON.parse(json) : [];
+  } catch { return []; }
+}
+
+export async function setLiveTvChannels(channels: string[]): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.LIVE_TV_CHANNELS, JSON.stringify(channels)); } catch {}
 }
 
 // ── Arr Preferences ──

@@ -13,7 +13,7 @@
     "service:status": "tsx src/service.ts status",
     "build:standalone": "node scripts/build-standalone.js",
     "build:standalone:bundle-only": "node scripts/build-standalone.js --skip-sea",
-    "build:installer": "node scripts/create-installer.js"
+    "build:installer": "node scripts/build-standalone.js && node scripts/create-installer.js"
   },
   "dependencies": {
     "@whatson/shared": "*",

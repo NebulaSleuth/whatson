@@ -8,6 +8,11 @@ let client: AxiosInstance | null = null;
 let resolvedServerUrl: string | null = null;
 let discoveryPromise: Promise<string> | null = null;
 
+// All discovered connections — stored during discovery for client connection testing
+let discoveredConnections: { local: string[]; remote: string[] } = { local: [], remote: [] };
+// The local Plex URL for artwork — always prefer local even if resolvedServerUrl is remote
+let localPlexUrl: string | null = null;
+
 // ── Plex.tv Server Discovery ──
 
 interface PlexConnection {
@@ -43,10 +48,37 @@ async function testPlexConnection(uri: string): Promise<boolean> {
 async function discoverServerUrl(): Promise<string> {
   if (resolvedServerUrl) return resolvedServerUrl;
 
-  // If a direct URL is provided, use it as-is
+  // If a direct URL is provided, test it first
   if (config.plex.url) {
-    resolvedServerUrl = config.plex.url.replace(/\/$/, '');
-    console.log(`[Plex] Using configured URL: ${resolvedServerUrl}`);
+    const configuredUrl = config.plex.url.replace(/\/$/, '');
+    console.log(`[Plex] Testing configured URL: ${configuredUrl}`);
+
+    // Discover remote connections regardless (for remote clients)
+    if (config.plex.token) {
+      await discoverRemoteConnections().catch(() => {});
+    }
+
+    // Test if the configured URL is reachable
+    if (await testPlexConnection(configuredUrl)) {
+      resolvedServerUrl = configuredUrl;
+      localPlexUrl = configuredUrl; // Only set local URL if actually reachable
+      console.log(`[Plex] Using configured URL: ${resolvedServerUrl}`);
+      return resolvedServerUrl;
+    }
+
+    // Configured URL unreachable — try remote connections
+    console.log(`[Plex] Configured URL not reachable, trying remote connections...`);
+    for (const remoteUrl of discoveredConnections.remote) {
+      if (await testPlexConnection(remoteUrl)) {
+        resolvedServerUrl = remoteUrl;
+        console.log(`[Plex] Falling back to remote: ${resolvedServerUrl}`);
+        return resolvedServerUrl;
+      }
+    }
+
+    // Nothing reachable — use configured URL anyway (might work later)
+    resolvedServerUrl = configuredUrl;
+    console.warn(`[Plex] No reachable connections, using configured URL: ${resolvedServerUrl}`);
     return resolvedServerUrl;
   }
 
@@ -93,11 +125,18 @@ async function discoverServerUrl(): Promise<string> {
     ...server.connections.filter((c) => !c.local && c.protocol === 'http'),
   ];
 
+  // Store all connections for client connection testing
+  discoveredConnections = {
+    local: server.connections.filter((c) => c.local).map((c) => c.uri),
+    remote: server.connections.filter((c) => !c.local).map((c) => c.uri),
+  };
+
   for (const conn of ordered) {
     console.log(`[Plex] Testing ${conn.local ? 'local' : 'remote'} ${conn.protocol}: ${conn.uri}...`);
     const reachable = await testPlexConnection(conn.uri);
     if (reachable) {
       resolvedServerUrl = conn.uri;
+      if (conn.local && !localPlexUrl) localPlexUrl = conn.uri;
       console.log(`[Plex] Connected via ${conn.local ? 'local' : 'remote'} ${conn.protocol}: ${resolvedServerUrl}`);
       return resolvedServerUrl;
     }
@@ -105,6 +144,36 @@ async function discoverServerUrl(): Promise<string> {
   }
 
   throw new Error(`Plex server "${server.name}" found but no connections are reachable. Check your network/firewall.`);
+}
+
+/** Discover remote connections without changing the resolved server URL */
+async function discoverRemoteConnections(): Promise<void> {
+  try {
+    const { data } = await axios.get<PlexResource[]>(
+      'https://plex.tv/api/v2/resources',
+      {
+        params: { includeHttps: 1, includeRelay: 1 },
+        headers: {
+          Accept: 'application/json',
+          'X-Plex-Token': config.plex.token,
+          'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+        },
+        timeout: 10000,
+      },
+    );
+
+    const servers = data.filter((r) => r.provides.includes('server') && r.owned);
+    if (servers.length > 0) {
+      const server = servers[0];
+      discoveredConnections = {
+        local: server.connections.filter((c) => c.local).map((c) => c.uri),
+        remote: server.connections.filter((c) => !c.local).map((c) => c.uri),
+      };
+      console.log(`[Plex] Discovered ${discoveredConnections.local.length} local, ${discoveredConnections.remote.length} remote connections`);
+    }
+  } catch (e) {
+    console.warn('[Plex] Remote connection discovery failed:', (e as Error).message);
+  }
 }
 
 // ── HTTP Client ──
@@ -163,8 +232,15 @@ async function getClient(userToken?: string): Promise<AxiosInstance> {
 
 function artworkUrl(path: string | undefined, userToken?: string): string {
   if (!path) return '';
-  if (!resolvedServerUrl) return '';
-  return `${resolvedServerUrl}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
+  // Prefer local URL for artwork — the backend proxy fetches it, so it must be reachable from the backend
+  const base = localPlexUrl || resolvedServerUrl;
+  if (!base) return '';
+  return `${base}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
+}
+
+/** Get all discovered Plex connections for client-side testing */
+export function getDiscoveredConnections(): { local: string[]; remote: string[]; serverUrl: string | null } {
+  return { ...discoveredConnections, serverUrl: resolvedServerUrl };
 }
 
 /** Get the resolved server URL (triggers discovery if needed) */
@@ -229,6 +305,7 @@ function plexToContentItem(item: any, status: ContentItem['status'], userToken?:
     year: item.year || 0,
     rating: item.rating,
     genres: item.Genre?.map((g: any) => g.tag) || [],
+    showRatingKey: isEpisode && item.grandparentRatingKey ? String(item.grandparentRatingKey) : undefined,
   };
 }
 
@@ -420,6 +497,7 @@ export interface PlexSeason {
   index: number;
   title: string;
   episodeCount: number;
+  watchedCount: number;
   thumb: string;
 }
 
@@ -434,6 +512,7 @@ export async function getShowSeasons(showRatingKey: string, userToken?: string):
       index: s.index,
       title: s.title || `Season ${s.index}`,
       episodeCount: s.leafCount || 0,
+      watchedCount: s.viewedLeafCount || 0,
       thumb: artworkUrl(s.thumb, userToken),
     }));
 }

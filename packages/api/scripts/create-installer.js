@@ -134,9 +134,14 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "English"
 
 Section "Install"
-  ; Stop existing service before overwriting files
+  ; Stop existing service before overwriting files.
+  ; 'net stop' can return before NSSM's child process fully exits, leaving a file
+  ; lock on whatson-api.exe. Follow up with taskkill to guarantee the handle is released.
+  DetailPrint "Stopping Whats On API service if running..."
   nsExec::ExecToLog 'net stop whatson-api'
-  Sleep 2000
+  Sleep 3000
+  nsExec::ExecToLog 'taskkill /F /IM ${exeName}'
+  Sleep 1000
 
   SetOutPath "$INSTDIR"
   File "${EXE.replace(/\\/g, '\\\\')}"

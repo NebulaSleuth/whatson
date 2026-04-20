@@ -7,7 +7,12 @@ export interface AppConfig extends ServerConfig {
 }
 
 function trimUrl(url: string | undefined): string {
-  return (url || '').replace(/\/+$/, '');
+  let u = (url || '').replace(/\/+$/, '').trim();
+  // Add http:// if no protocol specified
+  if (u && !u.startsWith('http://') && !u.startsWith('https://')) {
+    u = `http://${u}`;
+  }
+  return u;
 }
 
 /**

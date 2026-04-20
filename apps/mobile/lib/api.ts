@@ -20,15 +20,21 @@ function getUserId(): string | undefined {
   return user ? String(user.id) : undefined;
 }
 
+function getPlexConnectionType(): string {
+  return useAppStore.getState().plexConnectionType;
+}
+
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
   const userId = getUserId();
+  const connType = getPlexConnectionType();
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...(userId ? { 'X-Plex-User': userId } : {}),
+      'X-Plex-Connection': connType,
       ...options?.headers,
     },
     ...options,
@@ -121,6 +127,9 @@ export const api = {
   getPlexPlayLink: (ratingKey: string) =>
     fetchApi<{ appLink: string; webLink: string; serverLink: string | null; machineId: string; ratingKey: string }>(`/plex/play/${ratingKey}`),
 
+  getPlexConnections: () =>
+    fetchApi<{ local: string[]; remote: string[]; serverUrl: string | null }>('/plex/connections'),
+
   getPlexClients: () =>
     fetchApi<Array<{ name: string; machineIdentifier: string; product: string; platform: string }>>('/plex/clients'),
 
@@ -134,11 +143,26 @@ export const api = {
   getRecommendations: (showTmdb: boolean = true) =>
     fetchApi<{ sections: ContentSection[] }>(`/recommendations${showTmdb ? '' : '?tmdb=0'}`),
 
+  // Live TV
+  getLiveChannels: () => fetchApi<string[]>('/live/channels'),
+  getLiveNow: (channels: string[]) => {
+    const params = new URLSearchParams();
+    if (channels.length > 0) params.set('channels', channels.join(','));
+    const qs = params.toString();
+    return fetchApi<ContentItem[]>(`/live/now${qs ? `?${qs}` : ''}`);
+  },
+  getLiveLater: (channels: string[], hours = 6) => {
+    const params = new URLSearchParams();
+    if (channels.length > 0) params.set('channels', channels.join(','));
+    params.set('hours', String(hours));
+    return fetchApi<ContentItem[]>(`/live/later?${params.toString()}`);
+  },
+
   // Library
   getLibrary: (type: 'movie' | 'show') => fetchApi<ContentItem[]>(`/library/${type}`),
 
   getShowSeasons: (ratingKey: string) =>
-    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; thumb: string }>>(`/library/show/${ratingKey}/seasons`),
+    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; watchedCount: number; thumb: string }>>(`/library/show/${ratingKey}/seasons`),
 
   getSeasonEpisodes: (ratingKey: string) =>
     fetchApi<ContentItem[]>(`/library/season/${ratingKey}/episodes`),

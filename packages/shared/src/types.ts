@@ -44,6 +44,9 @@ export interface ContentItem {
   year: number;
   rating?: number;
   genres?: string[];
+  isNew?: boolean;
+  isRerun?: boolean;
+  showRatingKey?: string;
 }
 
 export interface ContentSection {

@@ -193,6 +193,11 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
               label={item.source === 'live' ? item.availability.network : undefined}
             />
           </View>
+          {item.source === 'live' && item.isRerun && (
+            <View style={[styles.airingBanner, styles.airingRerun]}>
+              <Text style={styles.airingBannerText}>RERUN</Text>
+            </View>
+          )}
           {item.status === 'downloading' && (
             <View style={styles.statusOverlay}>
               <Text style={styles.downloadingText}>Downloading</Text>
@@ -265,6 +270,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     left: spacing.sm,
+  },
+  airingBanner: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  airingRerun: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  airingBannerText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
   statusOverlay: {
     position: 'absolute',

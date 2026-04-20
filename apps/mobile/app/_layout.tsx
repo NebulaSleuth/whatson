@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels } from '@/lib/storage';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
@@ -39,7 +39,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       if (initDone.current) return;
       initDone.current = true;
-      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw] = await Promise.all([
+      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw, liveChannels] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
         getSavedUser(),
@@ -48,6 +48,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         getAutoSkipCredits(),
         getDisableTouchSurface(),
         getShowBecauseYouWatched(),
+        getLiveTvChannels(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
@@ -58,6 +59,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       useAppStore.getState().setAutoSkipCredits(skipCredits);
       useAppStore.getState().setDisableTouchSurface(disableTouch);
       useAppStore.getState().setShowBecauseYouWatched(showByw);
+      useAppStore.getState().setLiveTvChannels(liveChannels);
 
       // Apply touch surface setting on Apple TV
       if (isTVOS && disableTouch) {
@@ -84,6 +86,24 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           await setSavedUser(null);
         }
       }
+
+      // Test Plex connection — determine if client can reach Plex directly (local) or needs remote
+      try {
+        const conns = await api.getPlexConnections();
+        let isLocal = false;
+        for (const url of conns.local) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 3000);
+            await fetch(`${url}/identity`, { signal: ctrl.signal });
+            clearTimeout(timer);
+            isLocal = true;
+            break;
+          } catch {}
+        }
+        useAppStore.getState().setPlexConnectionType(isLocal ? 'local' : 'remote');
+        console.log(`[Init] Plex connection: ${isLocal ? 'local' : 'remote'}`);
+      } catch {}
 
       setReady(true);
 

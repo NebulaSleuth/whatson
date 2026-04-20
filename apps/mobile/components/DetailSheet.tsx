@@ -10,7 +10,6 @@ import {
   TouchableWithoutFeedback,
   Dimensions,
   BackHandler,
-  Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import type { ContentItem } from '@whatson/shared';
@@ -67,6 +66,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
   const isTrackedItem = item.id.startsWith('tracked-');
   const isDiscoveryItem = item.id.startsWith('tmdb-');
+  const isLiveItem = item.source === 'live' && !isTrackedItem;
   const isTvShow = item.type === 'episode' || item.type === 'show';
   const [arrPickerType, setArrPickerType] = useState<'sonarr' | 'radarr' | null>(null);
 
@@ -139,23 +139,30 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
   };
 
   const isPlexItem = item.source === 'plex';
+  const showKey =
+    item.type === 'show' ? item.sourceId :
+    item.type === 'episode' ? item.showRatingKey :
+    undefined;
+  const canGoToShow = isPlexItem && !!showKey;
 
   const handlePlay = () => {
     onClose();
     router.push({ pathname: '/player', params: { ratingKey: item.sourceId } });
   };
 
-  const handleOpenInPlex = async () => {
-    try {
-      const intentUrl = 'intent:#Intent;package=com.plexapp.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end';
-      await Linking.openURL(intentUrl);
-    } catch {
-      try {
-        await Linking.openURL('plex://');
-      } catch {
-        Alert.alert('Error', 'Could not open Plex. Is it installed?');
-      }
-    }
+  const handleGoToShow = () => {
+    if (!showKey) return;
+    onClose();
+    router.navigate({
+      pathname: '/show-detail',
+      params: {
+        ratingKey: showKey,
+        title: item.showTitle || item.title,
+        poster: item.artwork.poster,
+        summary: item.summary || '',
+        year: String(item.year || ''),
+      },
+    } as any);
   };
 
   const handleRemoveTracked = () => {
@@ -230,7 +237,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
                 {item.progress.percentage > 0 ? (
                   <View style={styles.progressSection}>
-                    <Text style={styles.progressText}>{item.progress.percentage}% watched</Text>
+                    <Text style={styles.progressText}>{item.progress.percentage.toFixed(1)}% {item.source === 'live' ? 'complete' : 'watched'}</Text>
                     <View style={styles.detailProgressTrack}>
                       <View style={[styles.detailProgressFill, { width: `${Math.min(item.progress.percentage, 100)}%` }]} />
                     </View>
@@ -244,7 +251,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 <View style={styles.tvActions}>
                   {isPlexItem && hasVideoPlayer ? (
                     <FocusButton
-                      title="Play Here"
+                      title="Play"
                       style={styles.playButton}
                       textStyle={styles.playButtonText}
                       onPress={handlePlay}
@@ -252,16 +259,16 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isPlexItem ? (
+                  {canGoToShow ? (
                     <FocusButton
-                      title="Open in Plex"
+                      title="Go to Show"
                       style={styles.openPlexButton}
                       textStyle={styles.openPlexButtonText}
-                      onPress={handleOpenInPlex}
+                      onPress={handleGoToShow}
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
                     <FocusButton
                       title="Mark as Watched"
                       style={styles.watchedButton}
@@ -271,7 +278,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && isTvShow && (item.showTitle || item.title) ? (
+                  {!isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
                     <FocusButton
                       title="Mark All as Watched"
                       style={styles.watchedButton}
@@ -357,7 +364,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
                 {item.progress.percentage > 0 ? (
                   <View style={styles.progressSection}>
-                    <Text style={styles.progressText}>{item.progress.percentage}% watched</Text>
+                    <Text style={styles.progressText}>{item.progress.percentage.toFixed(1)}% {item.source === 'live' ? 'complete' : 'watched'}</Text>
                     <View style={styles.detailProgressTrack}>
                       <View style={[styles.detailProgressFill, { width: `${Math.min(item.progress.percentage, 100)}%` }]} />
                     </View>
@@ -379,23 +386,23 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 <View style={styles.actions}>
                   {isPlexItem && hasVideoPlayer ? (
                     <Pressable style={styles.playButton} onPress={handlePlay}>
-                      <Text style={styles.playButtonText}>Play Here</Text>
+                      <Text style={styles.playButtonText}>Play</Text>
                     </Pressable>
                   ) : null}
 
-                  {isPlexItem ? (
-                    <Pressable style={styles.openPlexButton} onPress={handleOpenInPlex}>
-                      <Text style={styles.openPlexButtonText}>Open in Plex</Text>
+                  {canGoToShow ? (
+                    <Pressable style={styles.openPlexButton} onPress={handleGoToShow}>
+                      <Text style={styles.openPlexButtonText}>Go to Show</Text>
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkWatched}>
                       <Text style={styles.watchedButtonText}>Mark as Watched</Text>
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && isTvShow && (item.showTitle || item.title) ? (
+                  {!isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkAllWatched}>
                       <Text style={styles.watchedButtonText}>Mark All as Watched</Text>
                     </Pressable>

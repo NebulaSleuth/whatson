@@ -16,9 +16,10 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { isTV, isTVOS } from '@/lib/tv';
+import { useQuery } from '@tanstack/react-query';
 
 /** Visible toggle for TV — the native Switch is invisible on tvOS */
 function TVToggle({ value }: { value: boolean }) {
@@ -53,7 +54,13 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched, liveTvChannels, setLiveTvChannels } = useAppStore();
+  const { data: availableChannels = [], isLoading: channelsLoading, error: channelsError, refetch: refetchChannels } = useQuery({
+    queryKey: ['live', 'channels'],
+    queryFn: () => api.getLiveChannels(),
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: 1,
+  });
 
   useTVBackHandler(useCallback(() => {
     apiInputRef.current?.focus();
@@ -279,6 +286,59 @@ export default function SettingsScreen() {
               />
             )}
           </TVPressable>
+        </View>
+
+        {/* What's on TV */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What's on TV</Text>
+          <Text style={styles.sectionDescription}>
+            Pick the channels you watch. The home screen shows what's on now and coming up later on these channels.
+          </Text>
+          {channelsLoading ? (
+            <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
+              Loading channels...
+            </Text>
+          ) : channelsError ? (
+            <View>
+              <Text style={[styles.sectionDescription, { color: colors.error }]}>
+                Couldn't load channels: {(channelsError as Error).message}
+              </Text>
+              <TVPressable
+                style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.sm }]}
+                onPress={() => refetchChannels()}
+              >
+                <Text style={[styles.primaryButtonText, { color: colors.text }]}>Retry</Text>
+              </TVPressable>
+            </View>
+          ) : availableChannels.length === 0 ? (
+            <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>
+              No channels available.
+            </Text>
+          ) : (
+            availableChannels.map((channel) => {
+              const enabled = liveTvChannels.includes(channel);
+              const toggle = async () => {
+                const next = enabled
+                  ? liveTvChannels.filter((x) => x !== channel)
+                  : [...liveTvChannels, channel];
+                setLiveTvChannels(next);
+                await saveLiveTvChannels(next);
+              };
+              return (
+                <TVPressable key={channel} style={styles.serviceRow} onPress={toggle}>
+                  <Text style={styles.serviceLabel}>{channel}</Text>
+                  {isTV ? <TVToggle value={enabled} /> : (
+                    <Switch
+                      value={enabled}
+                      onValueChange={toggle}
+                      trackColor={{ false: '#333', true: colors.primary }}
+                      thumbColor="#fff"
+                    />
+                  )}
+                </TVPressable>
+              );
+            })
+          )}
         </View>
 
         {/* Apple TV Remote */}

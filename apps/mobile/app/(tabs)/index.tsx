@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ContentItem } from '@whatson/shared';
+import type { ContentItem, ContentSection } from '@whatson/shared';
 import { ShelfList, type ShelfListHandle } from '@/components/ShelfList';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
@@ -40,6 +40,32 @@ export default function HomeScreen() {
     enabled: isReady && !isLoading,
     staleTime: 10 * 60 * 1000, // Fresh for 10 minutes
   });
+
+  const liveChannels = useAppStore((s) => s.liveTvChannels);
+  const channelsKey = liveChannels.join(',');
+  const { data: liveNow } = useQuery({
+    queryKey: ['live', 'now', channelsKey],
+    queryFn: () => api.getLiveNow(liveChannels),
+    enabled: isReady && liveChannels.length > 0,
+    staleTime: 60 * 1000,
+  });
+  const { data: liveLater } = useQuery({
+    queryKey: ['live', 'later', channelsKey],
+    queryFn: () => api.getLiveLater(liveChannels, 6),
+    enabled: isReady && liveChannels.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const liveSections = useMemo<ContentSection[]>(() => {
+    const out: ContentSection[] = [];
+    if (liveNow && liveNow.length > 0) {
+      out.push({ id: 'live-now', title: "What's on TV", type: 'mixed', items: liveNow, sortOrder: 0 });
+    }
+    if (liveLater && liveLater.length > 0) {
+      out.push({ id: 'live-later', title: "What's on TV Later", type: 'mixed', items: liveLater, sortOrder: 1 });
+    }
+    return out;
+  }, [liveNow, liveLater]);
 
   // On TV, focus the first shelf card when data loads
   const hasFocusedInitial = useRef(false);
@@ -81,7 +107,7 @@ export default function HomeScreen() {
           )
         }
       >
-        {isLoading && (
+        {(!isReady || isLoading) && (
           <>
             <SkeletonShelf />
             <SkeletonShelf />
@@ -89,14 +115,14 @@ export default function HomeScreen() {
           </>
         )}
 
-        {error && !isLoading && (
+        {isReady && error && !isLoading && (
           <ErrorState
             message={(error as Error).message}
             onRetry={() => refetch()}
           />
         )}
 
-        {!isLoading && !error && data?.sections && (
+        {isReady && !isLoading && !error && data?.sections && (
           <ShelfList
             ref={shelfListRef}
             sections={data.sections}
@@ -106,15 +132,22 @@ export default function HomeScreen() {
           />
         )}
 
+        {isReady && !isLoading && !error && liveSections.length > 0 && (
+          <ShelfList
+            sections={liveSections}
+            onItemPress={handleItemPress}
+          />
+        )}
+
         {/* Recommendation shelves — below main content */}
-        {!isLoading && !error && recData?.sections && recData.sections.length > 0 && (
+        {isReady && !isLoading && !error && recData?.sections && recData.sections.length > 0 && (
           <ShelfList
             sections={recData.sections}
             onItemPress={handleItemPress}
           />
         )}
 
-        {!isLoading && !error && (!data?.sections || data.sections.length === 0) && (
+        {isReady && !isLoading && !error && (!data?.sections || data.sections.length === 0) && (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyTitle}>Nothing to show</Text>
             <Text style={styles.emptyText}>
