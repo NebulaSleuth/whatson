@@ -108,18 +108,16 @@ export const plexAdapter: MediaServerAdapter = {
     }));
   },
 
-  getPlaybackInfo(_id: string, _opts: PlaybackOpts): Promise<PlaybackInfo> {
-    // Playback is still owned by routes/playback.ts; the adapter surface exists
-    // so future non-Plex servers can implement it. Wire-through happens in PR 1c.
-    throw new Error('plexAdapter.getPlaybackInfo: not yet wired — use /api/playback/:ratingKey');
+  getPlaybackInfo(id: string, opts: PlaybackOpts): Promise<PlaybackInfo> {
+    return plex.getPlaybackInfo(id, opts);
   },
 
-  async reportProgress(): Promise<void> {
-    throw new Error('plexAdapter.reportProgress: not yet wired — use /api/playback/progress');
+  reportProgress(id: string, timeMs: number, durationMs: number, state: string, sessionId: string, userToken?: string): Promise<void> {
+    return plex.reportProgress(id, timeMs, durationMs, state, sessionId, userToken);
   },
 
-  async stopPlayback(): Promise<void> {
-    throw new Error('plexAdapter.stopPlayback: not yet wired — use /api/playback/stop');
+  stopPlayback(sessionId: string, userToken?: string): Promise<void> {
+    return plex.stopPlayback(sessionId, userToken);
   },
 
   markWatched(id: string, userToken?: string): Promise<void> {

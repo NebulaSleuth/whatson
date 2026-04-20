@@ -549,3 +549,177 @@ export function resetClient(): void {
   // and artwork URLs depend on it being set
   userClients.clear();
 }
+
+// ── Playback ──
+
+import type { PlaybackInfo, PlaybackOpts } from './adapters/types.js';
+
+export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Promise<PlaybackInfo> {
+  const offsetSeconds = Math.floor((opts.offsetMs || 0) / 1000);
+  const token = opts.userToken || config.plex.token;
+
+  let serverUrl = await getServerUrl();
+  if (opts.connectionType === 'remote') {
+    const conns = getDiscoveredConnections();
+    if (conns.remote.length > 0) serverUrl = conns.remote[0];
+  }
+  if (!serverUrl) throw new Error('Plex server not available');
+
+  const { data: metaRaw } = await axios.get(`${serverUrl}/library/metadata/${ratingKey}`, {
+    params: { includeMarkers: 1 },
+    headers: {
+      Accept: 'application/json',
+      'X-Plex-Token': token,
+      'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+    },
+    timeout: 10000,
+  });
+
+  const metaData = typeof metaRaw === 'string' ? JSON.parse(metaRaw) : metaRaw;
+  const item = metaData?.MediaContainer?.Metadata?.[0];
+  if (!item) throw new Error('Item not found');
+
+  const media = item.Media?.[0];
+  const part = media?.Part?.[0];
+  const streams = part?.Stream || [];
+
+  const subtitles = streams
+    .filter((s: any) => s.streamType === 3)
+    .map((s: any) => ({
+      id: s.id,
+      index: s.index,
+      language: s.language || 'Unknown',
+      title: s.displayTitle || s.language || 'Unknown',
+      selected: s.selected === 1,
+    }));
+
+  const audioTracks = streams
+    .filter((s: any) => s.streamType === 2)
+    .map((s: any) => ({
+      id: s.id,
+      index: s.index,
+      language: s.language || 'Unknown',
+      title: s.displayTitle || `${s.language || 'Unknown'} (${s.codec} ${s.channels}ch)`,
+      selected: s.selected === 1,
+    }));
+
+  const maxBitrate = opts.maxBitrate || 20000;
+  const resolution = opts.resolution || '1920x1080';
+  const forceTranscode = !!opts.forceTranscode;
+  const { subtitleStreamID, audioStreamID } = opts;
+
+  const hasTrackOverride = subtitleStreamID != null || audioStreamID != null;
+  const directPlay = hasTrackOverride || forceTranscode ? '0' : '0';
+  const directStream = hasTrackOverride || forceTranscode ? '0' : '1';
+
+  const sessionId = `whatson-${Date.now()}`;
+  const transcodeParams: Record<string, string> = {
+    path: `/library/metadata/${ratingKey}`,
+    protocol: 'hls',
+    session: sessionId,
+    offset: String(offsetSeconds),
+    directPlay,
+    directStream,
+    videoQuality: forceTranscode ? '75' : '100',
+    videoResolution: resolution,
+    maxVideoBitrate: String(maxBitrate),
+    mediaIndex: '0',
+    partIndex: '0',
+    location: 'lan',
+    subtitles: 'auto',
+    copyts: '1',
+    hasMDE: '1',
+    fastSeek: '1',
+    'X-Plex-Token': token,
+    'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+    'X-Plex-Product': PLEX_PRODUCT,
+    'X-Plex-Platform': 'Chrome',
+  };
+
+  const partId = part?.id;
+  if (partId && (audioStreamID != null || subtitleStreamID != null)) {
+    try {
+      const partParams: Record<string, string> = { 'X-Plex-Token': token };
+      if (audioStreamID != null) partParams.audioStreamID = String(audioStreamID);
+      if (subtitleStreamID != null) partParams.subtitleStreamID = String(subtitleStreamID);
+      await axios.put(`${serverUrl}/library/parts/${partId}`, null, { params: partParams, timeout: 5000 });
+    } catch {}
+  }
+
+  if (subtitleStreamID != null) transcodeParams.subtitles = 'burn';
+
+  try {
+    await axios.get(`${serverUrl}/video/:/transcode/universal/decision`, {
+      params: transcodeParams,
+      headers: { Accept: 'application/json' },
+      timeout: 10000,
+    });
+  } catch {}
+
+  const streamUrl = axios.getUri({
+    url: `${serverUrl}/video/:/transcode/universal/start.m3u8`,
+    params: transcodeParams,
+  });
+
+  const directPlayUrl = part?.key
+    ? `${serverUrl}${part.key}?X-Plex-Token=${config.plex.token}`
+    : null;
+
+  return {
+    streamUrl,
+    directPlayUrl,
+    sessionId,
+    title: item.grandparentTitle ? `${item.grandparentTitle} - ${item.title}` : item.title,
+    showTitle: item.grandparentTitle || null,
+    episodeTitle: item.grandparentTitle ? item.title : null,
+    seasonNumber: item.parentIndex,
+    episodeNumber: item.index,
+    duration: item.duration || 0,
+    viewOffset: item.viewOffset || 0,
+    subtitles,
+    audioTracks,
+    markers: (item.Marker || []).map((m: any) => ({
+      type: m.type,
+      startMs: m.startTimeOffset,
+      endMs: m.endTimeOffset,
+    })),
+    serverUrl,
+  };
+}
+
+export async function reportProgress(
+  ratingKey: string,
+  timeMs: number,
+  durationMs: number,
+  state: string,
+  sessionId: string,
+  userToken?: string,
+): Promise<void> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl) return;
+
+  await axios.get(`${serverUrl}/:/timeline`, {
+    params: {
+      ratingKey,
+      key: `/library/metadata/${ratingKey}`,
+      state: state || 'playing',
+      time: String(timeMs),
+      duration: String(durationMs),
+    },
+    headers: {
+      'X-Plex-Token': userToken || config.plex.token,
+      'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
+      'X-Plex-Session-Identifier': sessionId || PLEX_CLIENT_IDENTIFIER,
+    },
+    timeout: 5000,
+  }).catch(() => {});
+}
+
+export async function stopPlayback(sessionId: string, userToken?: string): Promise<void> {
+  const serverUrl = await getServerUrl();
+  if (!serverUrl || !sessionId) return;
+  await axios.get(`${serverUrl}/video/:/transcode/universal/stop`, {
+    params: { session: sessionId, 'X-Plex-Token': userToken || config.plex.token },
+    timeout: 5000,
+  }).catch(() => {});
+}

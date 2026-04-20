@@ -50,6 +50,10 @@ export interface PlaybackOpts {
   subtitleStreamID?: number;
   audioStreamID?: number;
   userToken?: string;
+  /** Plex-specific: force a full transcode even when direct-stream would work. */
+  forceTranscode?: boolean;
+  /** Plex-specific: tells the adapter whether the client is on LAN or remote. */
+  connectionType?: 'local' | 'remote';
 }
 
 export interface PlaybackInfo {

@@ -1,254 +1,72 @@
 import { Router } from 'express';
-import axios from 'axios';
-import { config } from '../config.js';
-import { getServerUrl, getMachineIdentifier, getDiscoveredConnections } from '../services/plex.js';
+import type { ContentSource } from '@whatson/shared';
 import { notifyDataChanged } from '../ws.js';
-import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
+import { getAdapterForSource } from '../services/adapters/registry.js';
 
 export const playbackRouter = Router();
 
+function sourceFrom(req: { query: Record<string, unknown> }): ContentSource {
+  const raw = (req.query.source as string) || 'plex';
+  return raw as ContentSource;
+}
+
 /**
- * Get playback info for a Plex item — stream URL, subtitles, audio tracks.
+ * Get playback info for a library item — stream URL, subtitles, audio tracks.
+ * Dispatched via adapter; Plex is the only implementation today.
  */
 playbackRouter.get('/playback/:ratingKey', async (req, res) => {
   try {
     const { ratingKey } = req.params;
-    // The rest of this handler assumes Plex semantics (HLS transcode, /library/metadata/*
-    // paths, Plex markers). Jellyfin/Emby adapters will implement their own playback
-    // pipelines in a later slice; for now, reject explicit non-Plex requests up front.
-    const source = (req.query.source as string) || 'plex';
-    if (source !== 'plex') {
-      res.status(400).json({
-        success: false,
-        error: `Playback for source "${source}" not yet supported on this endpoint`,
-      });
-      return;
-    }
-    const offset = parseInt(req.query.offset as string) || 0;
-    // Use remote Plex URL if client is remote
-    let serverUrl = await getServerUrl();
-    if (req.plexConnectionType === 'remote') {
-      const conns = getDiscoveredConnections();
-      if (conns.remote.length > 0) serverUrl = conns.remote[0];
-    }
-
-    if (!serverUrl) {
-      res.status(500).json({ success: false, error: 'Plex server not available' });
+    const source = sourceFrom(req);
+    const adapter = getAdapterForSource(source);
+    if (!adapter || !adapter.isConfigured()) {
+      res.status(400).json({ success: false, error: `Source "${source}" not configured` });
       return;
     }
 
-    // Get item metadata for duration, subtitles, audio tracks, markers
-    const { data: metaRaw } = await axios.get(`${serverUrl}/library/metadata/${ratingKey}`, {
-      params: { includeMarkers: 1 },
-      headers: {
-        Accept: 'application/json',
-        'X-Plex-Token': req.plexUserToken || config.plex.token,
-        'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
-      },
-      timeout: 10000,
+    const data = await adapter.getPlaybackInfo(ratingKey, {
+      offsetMs: req.query.offset ? parseInt(req.query.offset as string) * 1000 : 0,
+      maxBitrate: req.query.maxBitrate ? parseInt(req.query.maxBitrate as string) : undefined,
+      resolution: (req.query.resolution as string) || undefined,
+      subtitleStreamID: req.query.subtitleStreamID ? parseInt(req.query.subtitleStreamID as string) : undefined,
+      audioStreamID: req.query.audioStreamID ? parseInt(req.query.audioStreamID as string) : undefined,
+      forceTranscode: req.query.forceTranscode === '1',
+      connectionType: req.plexConnectionType,
+      userToken: req.plexUserToken,
     });
 
-    const metaData = typeof metaRaw === 'string' ? JSON.parse(metaRaw) : metaRaw;
-    const item = metaData?.MediaContainer?.Metadata?.[0];
-    if (!item) {
-      res.status(404).json({ success: false, error: 'Item not found' });
-      return;
-    }
-
-    const media = item.Media?.[0];
-    const part = media?.Part?.[0];
-    const streams = part?.Stream || [];
-
-    // Extract subtitle tracks
-    const subtitles = streams
-      .filter((s: any) => s.streamType === 3)
-      .map((s: any) => ({
-        id: s.id,
-        index: s.index,
-        language: s.language || 'Unknown',
-        languageCode: s.languageCode || '',
-        codec: s.codec,
-        title: s.displayTitle || s.language || 'Unknown',
-        forced: s.forced === 1,
-        selected: s.selected === 1,
-      }));
-
-    // Extract audio tracks
-    const audioTracks = streams
-      .filter((s: any) => s.streamType === 2)
-      .map((s: any) => ({
-        id: s.id,
-        index: s.index,
-        language: s.language || 'Unknown',
-        languageCode: s.languageCode || '',
-        codec: s.codec,
-        channels: s.channels,
-        title: s.displayTitle || `${s.language || 'Unknown'} (${s.codec} ${s.channels}ch)`,
-        selected: s.selected === 1,
-      }));
-
-    // Build the HLS transcode URL
-    // Quality params from query string (set by client when changing quality)
-    const maxBitrate = parseInt(req.query.maxBitrate as string) || 20000;
-    const resolution = (req.query.resolution as string) || '1920x1080';
-    const forceTranscode = req.query.forceTranscode === '1';
-
-    // directStream=1 allows remuxing without re-encode (ignores bitrate limits)
-    // directPlay=1 serves the original file (no transcode at all)
-    // To enforce bitrate, set both to 0 to force full transcode
-    const directPlay = forceTranscode ? '0' : '0';
-    const directStream = forceTranscode ? '0' : '1';
-
-    const subtitleStreamID = req.query.subtitleStreamID as string | undefined;
-    const audioStreamID = req.query.audioStreamID as string | undefined;
-
-    // Force transcode when subtitle or audio track is explicitly selected
-    const hasTrackOverride = !!subtitleStreamID || !!audioStreamID;
-    const finalDirectPlay = hasTrackOverride ? '0' : directPlay;
-    const finalDirectStream = hasTrackOverride ? '0' : directStream;
-
-    const sessionId = `whatson-${Date.now()}`;
-    const transcodeParams: Record<string, string> = {
-      path: `/library/metadata/${ratingKey}`,
-      protocol: 'hls',
-      session: sessionId,
-      offset: String(offset),
-      directPlay: finalDirectPlay,
-      directStream: finalDirectStream,
-      videoQuality: forceTranscode ? '75' : '100',
-      videoResolution: resolution,
-      maxVideoBitrate: String(maxBitrate),
-      mediaIndex: '0',
-      partIndex: '0',
-      location: 'lan',
-      subtitles: 'auto',
-      copyts: '1',
-      hasMDE: '1',
-      fastSeek: '1',
-      'X-Plex-Token': req.plexUserToken || config.plex.token,
-      'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
-      'X-Plex-Product': PLEX_PRODUCT,
-      'X-Plex-Platform': 'Chrome',
-    };
-    // Set audio/subtitle preferences on the part BEFORE transcoding
-    const partId = part?.id;
-    const plexToken = req.plexUserToken || config.plex.token;
-    if (partId && (audioStreamID || subtitleStreamID)) {
-      try {
-        const partParams: Record<string, string> = { 'X-Plex-Token': plexToken };
-        if (audioStreamID) partParams.audioStreamID = audioStreamID;
-        if (subtitleStreamID) partParams.subtitleStreamID = subtitleStreamID;
-        await axios.put(`${serverUrl}/library/parts/${partId}`, null, { params: partParams, timeout: 5000 });
-      } catch {}
-    }
-
-    if (subtitleStreamID) {
-      transcodeParams.subtitles = 'burn';
-    }
-
-    // Call the decision endpoint first — tells Plex to set up the transcode session
-    try {
-      await axios.get(`${serverUrl}/video/:/transcode/universal/decision`, {
-        params: transcodeParams,
-        headers: { Accept: 'application/json' },
-        timeout: 10000,
-      });
-    } catch {}
-
-    // Build stream URL using axios-style param encoding (Plex requires unencoded slashes in path)
-    const streamUrl = axios.getUri({
-      url: `${serverUrl}/video/:/transcode/universal/start.m3u8`,
-      params: transcodeParams,
-    });
-
-    // Also build a direct play URL as fallback
-    const directPlayUrl = part?.key
-      ? `${serverUrl}${part.key}?X-Plex-Token=${config.plex.token}`
-      : null;
-
-    res.json({
-      success: true,
-      data: {
-        streamUrl,
-        directPlayUrl,
-        sessionId,
-        title: item.grandparentTitle
-          ? `${item.grandparentTitle} - ${item.title}`
-          : item.title,
-        showTitle: item.grandparentTitle || null,
-        episodeTitle: item.grandparentTitle ? item.title : null,
-        seasonNumber: item.parentIndex,
-        episodeNumber: item.index,
-        duration: item.duration || 0, // milliseconds
-        viewOffset: item.viewOffset || 0, // milliseconds — resume position
-        subtitles,
-        audioTracks,
-        markers: (item.Marker || []).map((m: any) => ({
-          type: m.type,
-          startMs: m.startTimeOffset,
-          endMs: m.endTimeOffset,
-        })),
-        serverUrl,
-      },
-    });
+    res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });
 
-/**
- * Report playback progress to Plex.
- */
+/** Report playback progress. */
 playbackRouter.post('/playback/progress', async (req, res) => {
   try {
-    const { ratingKey, time, duration, state, sessionId } = req.body;
-    const serverUrl = await getServerUrl();
-
-    if (!serverUrl) {
-      res.json({ success: true }); // Don't fail playback if we can't report
-      return;
+    const { ratingKey, time, duration, state, sessionId, source } = req.body as {
+      ratingKey: string; time: number; duration: number; state: string; sessionId: string;
+      source?: ContentSource;
+    };
+    const adapter = getAdapterForSource(source || 'plex');
+    if (adapter) {
+      await adapter.reportProgress(ratingKey, time, duration, state, sessionId, req.plexUserToken);
     }
-
-    await axios.get(`${serverUrl}/:/timeline`, {
-      params: {
-        ratingKey,
-        key: `/library/metadata/${ratingKey}`,
-        state: state || 'playing',
-        time: String(time),
-        duration: String(duration),
-      },
-      headers: {
-        'X-Plex-Token': req.plexUserToken || config.plex.token,
-        'X-Plex-Client-Identifier': PLEX_CLIENT_IDENTIFIER,
-        'X-Plex-Session-Identifier': sessionId || PLEX_CLIENT_IDENTIFIER,
-      },
-      timeout: 5000,
-    }).catch(() => {}); // Don't fail on timeline errors
-
     res.json({ success: true });
   } catch {
     res.json({ success: true }); // Never fail playback over progress reporting
   }
 });
 
-/**
- * Stop a transcode session.
- */
+/** Stop a transcode / playback session. */
 playbackRouter.post('/playback/stop', async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    const serverUrl = await getServerUrl();
-
-    if (serverUrl && sessionId) {
-      await axios.get(`${serverUrl}/video/:/transcode/universal/stop`, {
-        params: { session: sessionId, 'X-Plex-Token': config.plex.token },
-        timeout: 5000,
-      }).catch(() => {});
+    const { sessionId, source } = req.body as { sessionId?: string; source?: ContentSource };
+    const adapter = getAdapterForSource(source || 'plex');
+    if (adapter && sessionId) {
+      await adapter.stopPlayback(sessionId, req.plexUserToken);
     }
-
-    // Notify clients — play position has changed
     notifyDataChanged('playback-stop', 'home', 'tv', 'movies');
-
     res.json({ success: true });
   } catch {
     res.json({ success: true });

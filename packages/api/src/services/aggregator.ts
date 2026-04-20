@@ -415,12 +415,18 @@ export async function searchAll(
   query: string,
   type?: 'tv' | 'movie',
 ): Promise<ContentItem[]> {
-  const plexResults = isPlexConfigured()
-    ? await safeCall(() => plex.search(query), [])
-    : [];
-  const plexIndex = buildPlexWatchIndex(plexResults);
+  // Query every configured library-server adapter in parallel. Each one returns
+  // items tagged with its own source ('plex' | 'jellyfin' | 'emby').
+  const adapters = getConfiguredAdapters();
+  const libraryResults = (await Promise.all(
+    adapters.map((a) => safeCall(() => a.search(query), [])),
+  )).flat();
 
-  const searches = await Promise.all([
+  // Build an index of every library-server item so we can enrich Sonarr/Radarr
+  // hits with watched state regardless of which server has it.
+  const libraryIndex = buildPlexWatchIndex(libraryResults);
+
+  const externalSearches = await Promise.all([
     config.sonarr.url && type !== 'movie'
       ? safeCall(() => sonarr.searchSeries(query), [])
       : [],
@@ -430,13 +436,13 @@ export async function searchAll(
   ]);
 
   const enriched: ContentItem[] = [];
-  for (const items of searches) {
+  for (const items of externalSearches) {
     for (const item of items) {
-      enriched.push(mergeWithPlexState(item, plexIndex));
+      enriched.push(mergeWithPlexState(item, libraryIndex));
     }
   }
 
-  const allResults = [...plexResults, ...enriched];
+  const allResults = [...libraryResults, ...enriched];
 
   let filtered = allResults;
   if (type === 'tv') {
@@ -445,12 +451,16 @@ export async function searchAll(
     filtered = allResults.filter((i) => i.type === 'movie');
   }
 
+  // Library-server hits (any adapter) take precedence over Sonarr/Radarr for dedup —
+  // they carry watch state and a real playback target.
+  const isLibrarySource = (s: ContentItem['source']) => s === 'plex' || s === 'jellyfin' || s === 'emby';
   const seen = new Map<string, ContentItem>();
   for (const item of filtered) {
     const key = item.type === 'episode' && item.showTitle
       ? `${item.showTitle}-S${item.seasonNumber}E${item.episodeNumber}`.toLowerCase()
       : `${item.title}-${item.year}`.toLowerCase();
-    if (!seen.has(key) || item.source === 'plex') {
+    const existing = seen.get(key);
+    if (!existing || (isLibrarySource(item.source) && !isLibrarySource(existing.source))) {
       seen.set(key, item);
     }
   }
