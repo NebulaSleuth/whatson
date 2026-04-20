@@ -53,10 +53,6 @@ function networkOf(ep: TvMazeScheduleItem): string | undefined {
   return ep.show.network?.name || ep.show.webChannel?.name || undefined;
 }
 
-function todayYmd(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function toItem(ep: TvMazeScheduleItem): ContentItem | null {
   const network = networkOf(ep);
   if (!network) return null;
@@ -79,9 +75,6 @@ function toItem(ep: TvMazeScheduleItem): ContentItem | null {
     ? Math.min(100, ((now - airStart) / runtimeMs) * 100)
     : 0;
 
-  const isNew = ep.airdate === todayYmd();
-  const isRerun = !isNew;
-
   return {
     id: `live:${ep.id}`,
     type: 'episode',
@@ -100,8 +93,6 @@ function toItem(ep: TvMazeScheduleItem): ContentItem | null {
     addedAt: ep.airstamp,
     year: new Date(ep.airstamp).getFullYear(),
     genres: ep.show.genres || [],
-    isNew,
-    isRerun,
   };
 }
 

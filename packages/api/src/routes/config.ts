@@ -6,6 +6,7 @@ import * as plex from '../services/plex.js';
 import * as plexPlayback from '../services/plexPlayback.js';
 import * as sonarr from '../services/sonarr.js';
 import * as radarr from '../services/radarr.js';
+import { startUpdateScheduler } from '../services/updater.js';
 import { getCached, setCached } from '../cache.js';
 import type { ApiResponse } from '@whatson/shared';
 
@@ -35,6 +36,11 @@ configRouter.get('/config', async (_req, res) => {
       provider: config.epg.provider,
       country: config.epg.country,
       tmdbApiKey: config.epg.tmdbApiKey ? '••••' + config.epg.tmdbApiKey.slice(-4) : '',
+    },
+    update: {
+      enabled: config.update.enabled,
+      repo: config.update.repo,
+      channel: config.update.channel,
     },
   };
 
@@ -115,7 +121,7 @@ configRouter.post('/config/test', async (req, res) => {
 /** Save config to .env and hot-reload */
 configRouter.post('/config/save', async (req, res) => {
   try {
-    const { plex: plexCfg, sonarr: sonarrCfg, radarr: radarrCfg, epg: epgCfg, port } = req.body;
+    const { plex: plexCfg, sonarr: sonarrCfg, radarr: radarrCfg, epg: epgCfg, update: updateCfg, port } = req.body;
     const values: Record<string, string> = {};
 
     if (port != null) {
@@ -139,6 +145,11 @@ configRouter.post('/config/save', async (req, res) => {
       if ('country' in epgCfg) values.EPG_COUNTRY = epgCfg.country || 'US';
       if ('tmdbApiKey' in epgCfg) values.TMDB_API_KEY = epgCfg.tmdbApiKey || '';
     }
+    if (updateCfg) {
+      if ('enabled' in updateCfg) values.AUTO_UPDATE = updateCfg.enabled ? 'true' : 'false';
+      if ('repo' in updateCfg && updateCfg.repo) values.UPDATE_REPO = String(updateCfg.repo);
+      if ('channel' in updateCfg && updateCfg.channel) values.UPDATE_CHANNEL = String(updateCfg.channel);
+    }
 
     if (Object.keys(values).length === 0) {
       res.status(400).json({ success: false, error: 'No config values provided' });
@@ -158,6 +169,9 @@ configRouter.post('/config/save', async (req, res) => {
     plex.resetClient();
     sonarr.resetClient();
     radarr.resetClient();
+
+    // Re-arm the update scheduler in case AUTO_UPDATE was toggled
+    if (updateCfg) startUpdateScheduler();
 
     res.json({ success: true, data: { saved: true } });
   } catch (error) {

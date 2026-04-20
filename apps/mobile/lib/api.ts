@@ -143,6 +143,32 @@ export const api = {
   getRecommendations: (showTmdb: boolean = true) =>
     fetchApi<{ sections: ContentSection[] }>(`/recommendations${showTmdb ? '' : '?tmdb=0'}`),
 
+  // Server updates
+  getUpdateStatus: () =>
+    fetchApi<{
+      currentVersion: string;
+      latestVersion: string | null;
+      updateAvailable: boolean;
+      releaseUrl: string | null;
+      assetName: string | null;
+      downloadUrl: string | null;
+      publishedAt: string | null;
+      lastCheckedAt: string | null;
+      lastError: string | null;
+      enabled: boolean;
+      platformSupported: boolean;
+    }>('/update/status'),
+  checkForUpdate: () =>
+    fetchApi<{
+      currentVersion: string;
+      latestVersion: string | null;
+      updateAvailable: boolean;
+      lastCheckedAt: string | null;
+      lastError: string | null;
+    }>('/update/check', { method: 'POST' }),
+  applyUpdate: () =>
+    fetchApi<{ started: boolean }>('/update/apply', { method: 'POST' }),
+
   // Live TV
   getLiveChannels: () => fetchApi<string[]>('/live/channels'),
   getLiveNow: (channels: string[]) => {

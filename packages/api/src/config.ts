@@ -43,6 +43,12 @@ function loadConfig(): AppConfig {
       country: process.env.EPG_COUNTRY || 'US',
       tmdbApiKey: process.env.TMDB_API_KEY || '',
     },
+    update: {
+      // Default: on. Disable by setting AUTO_UPDATE=false in .env.
+      enabled: (process.env.AUTO_UPDATE || 'true').toLowerCase() !== 'false',
+      repo: process.env.UPDATE_REPO || 'NebulaSleuth/whatson',
+      channel: (process.env.UPDATE_CHANNEL as 'stable' | 'prerelease') || 'stable',
+    },
   };
 }
 

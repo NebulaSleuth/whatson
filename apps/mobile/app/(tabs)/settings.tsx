@@ -398,6 +398,9 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* Server Updates */}
+        <ServerUpdatesSection />
+
         {/* Server Configuration */}
         {serverConfig && (
           <View style={styles.section}>
@@ -443,6 +446,125 @@ export default function SettingsScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ServerUpdatesSection() {
+  const [status, setStatus] = useState<{
+    currentVersion: string;
+    latestVersion: string | null;
+    updateAvailable: boolean;
+    lastCheckedAt: string | null;
+    lastError: string | null;
+    platformSupported: boolean;
+    enabled: boolean;
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    api.getUpdateStatus().then(setStatus).catch(() => {});
+  }, []);
+
+  async function doCheck() {
+    setChecking(true);
+    try {
+      const res = await api.checkForUpdate();
+      const current = await api.getUpdateStatus();
+      setStatus(current);
+      if (res.lastError) {
+        Alert.alert('Check failed', res.lastError);
+      } else if (res.updateAvailable) {
+        Alert.alert('Update available', `${res.currentVersion} → ${res.latestVersion}`);
+      } else {
+        Alert.alert('Up to date', `Running ${res.currentVersion}`);
+      }
+    } catch (error) {
+      Alert.alert('Error', (error as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function doApply() {
+    Alert.alert(
+      'Install update?',
+      'The server service will stop, update, and restart. The app may briefly lose connection.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Install',
+          onPress: async () => {
+            setApplying(true);
+            try {
+              await api.applyUpdate();
+              Alert.alert('Update started', 'The installer is running. The server will come back online in ~30 seconds.');
+            } catch (error) {
+              Alert.alert('Error', (error as Error).message);
+            } finally {
+              setApplying(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Server Updates</Text>
+      {!status ? (
+        <Text style={[styles.sectionDescription, { color: colors.textMuted }]}>Loading…</Text>
+      ) : !status.platformSupported ? (
+        <Text style={styles.sectionDescription}>
+          Auto-update is only supported on Windows servers.
+        </Text>
+      ) : (
+        <>
+          <View style={styles.configRow}>
+            <Text style={styles.configLabel}>Current</Text>
+            <Text style={styles.configValue}>{status.currentVersion}</Text>
+          </View>
+          <View style={styles.configRow}>
+            <Text style={styles.configLabel}>Latest</Text>
+            <Text style={styles.configValue}>
+              {status.latestVersion
+                ? status.latestVersion + (status.updateAvailable ? ' (new)' : '')
+                : '—'}
+            </Text>
+          </View>
+          <View style={styles.configRow}>
+            <Text style={styles.configLabel}>Last checked</Text>
+            <Text style={styles.configValue}>
+              {status.lastCheckedAt ? new Date(status.lastCheckedAt).toLocaleString() : 'Never'}
+            </Text>
+          </View>
+          {status.lastError ? (
+            <Text style={[styles.sectionDescription, { color: colors.error, marginTop: spacing.sm }]}>
+              {status.lastError}
+            </Text>
+          ) : null}
+          <TVPressable
+            style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
+            onPress={doCheck}
+          >
+            <Text style={[styles.primaryButtonText, { color: colors.text }]}>
+              {checking ? 'Checking…' : 'Check for Updates'}
+            </Text>
+          </TVPressable>
+          {status.updateAvailable && (
+            <TVPressable
+              style={[styles.primaryButton, { marginTop: spacing.sm }]}
+              onPress={doApply}
+            >
+              <Text style={styles.primaryButtonText}>
+                {applying ? 'Starting…' : 'Install Update'}
+              </Text>
+            </TVPressable>
+          )}
+        </>
+      )}
+    </View>
   );
 }
 

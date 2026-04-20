@@ -188,11 +188,18 @@ export interface EpgConfig {
   xmltvUrl?: string;
 }
 
+export interface UpdateConfig {
+  enabled: boolean;
+  repo: string;           // "<owner>/<name>" on GitHub
+  channel: 'stable' | 'prerelease';
+}
+
 export interface ServerConfig {
   plex: PlexConfig;
   sonarr: SonarrConfig;
   radarr: RadarrConfig;
   epg: EpgConfig;
+  update: UpdateConfig;
 }
 
 // ── API Request/Response ──

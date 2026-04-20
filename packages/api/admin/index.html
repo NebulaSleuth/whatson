@@ -351,6 +351,38 @@
       </div>
     </div>
 
+    <!-- Updates -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Updates</h2>
+        <div></div>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="update-enabled" style="width:18px;height:18px;cursor:pointer" />
+          <span>Automatically install updates</span>
+        </label>
+        <div class="hint">Checks GitHub Releases on startup and every hour. Windows only.</div>
+      </div>
+      <div class="field">
+        <label>Current version</label>
+        <div id="update-current" style="color:#ccc">—</div>
+      </div>
+      <div class="field">
+        <label>Latest available</label>
+        <div id="update-latest" style="color:#ccc">—</div>
+      </div>
+      <div class="field">
+        <label>Last checked</label>
+        <div id="update-checked" style="color:#888;font-size:13px">—</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="checkUpdate()">Check Now</button>
+        <button class="btn btn-primary" id="update-apply-btn" onclick="applyUpdate()" disabled>Install Update</button>
+        <button class="btn btn-primary" onclick="saveUpdate()">Save</button>
+      </div>
+    </div>
+
     <div class="footer">
       Whats On Server &mdash; configuration is saved to the .env file on this machine
     </div>
@@ -397,6 +429,10 @@
         }
         if (cfg.epg.tmdbApiKey) {
           document.getElementById('tmdb-apikey').placeholder = 'Configured (' + cfg.epg.tmdbApiKey + ')';
+        }
+
+        if (cfg.update) {
+          document.getElementById('update-enabled').checked = !!cfg.update.enabled;
         }
 
         // Show current port
@@ -606,8 +642,77 @@
       }
     }
 
+    // ── Updates ──
+    function renderUpdateStatus(s) {
+      document.getElementById('update-current').textContent = s.currentVersion || '—';
+      document.getElementById('update-latest').textContent =
+        s.latestVersion ? (s.latestVersion + (s.updateAvailable ? ' (update available)' : ' (up to date)')) : '—';
+      document.getElementById('update-checked').textContent = s.lastCheckedAt
+        ? new Date(s.lastCheckedAt).toLocaleString() + (s.lastError ? ' — ' + s.lastError : '')
+        : 'Never';
+      document.getElementById('update-apply-btn').disabled = !s.updateAvailable;
+    }
+
+    async function loadUpdateStatus() {
+      try {
+        const res = await fetch(API + '/update/status').then(r => r.json());
+        if (res.success) renderUpdateStatus(res.data);
+      } catch {}
+    }
+
+    async function checkUpdate() {
+      showToast('Checking for updates…');
+      try {
+        const res = await fetch(API + '/update/check', { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+          renderUpdateStatus(res.data);
+          showToast(res.data.updateAvailable
+            ? 'Update available: ' + res.data.latestVersion
+            : 'You are up to date');
+        } else {
+          showToast(res.error || 'Check failed', 'error');
+        }
+      } catch (e) {
+        showToast('Check failed: ' + e.message, 'error');
+      }
+    }
+
+    async function applyUpdate() {
+      if (!confirm('Install the update now? The service will restart.')) return;
+      try {
+        const res = await fetch(API + '/update/apply', { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+          showToast('Installer launched. Service will restart momentarily.');
+        } else {
+          showToast(res.error || 'Install failed', 'error');
+        }
+      } catch (e) {
+        showToast('Install failed: ' + e.message, 'error');
+      }
+    }
+
+    async function saveUpdate() {
+      const enabled = document.getElementById('update-enabled').checked;
+      try {
+        const res = await fetch(API + '/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ update: { enabled } }),
+        }).then(r => r.json());
+        if (res.success) {
+          showToast('Update preference saved');
+          loadStatus();
+        } else {
+          showToast(res.error || 'Save failed', 'error');
+        }
+      } catch (e) {
+        showToast('Save failed: ' + e.message, 'error');
+      }
+    }
+
     // ── Init ──
     loadStatus();
+    loadUpdateStatus();
   </script>
 </body>
 </html>

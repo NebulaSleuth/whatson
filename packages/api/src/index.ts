@@ -48,6 +48,8 @@ import { libraryRouter } from './routes/library.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 import { usersRouter } from './routes/users.js';
 import { liveRouter } from './routes/live.js';
+import { updateRouter } from './routes/update.js';
+import { startUpdateScheduler } from './services/updater.js';
 import { userContext } from './middleware/userContext.js';
 import { initWebSocket } from './ws.js';
 
@@ -94,6 +96,7 @@ app.use('/api', playbackRouter);
 app.use('/api', libraryRouter);
 app.use('/api', recommendationsRouter);
 app.use('/api', liveRouter);
+app.use('/api', updateRouter);
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);
@@ -129,4 +132,5 @@ server.listen(config.port, () => {
   console.log(`[Sonarr] ${config.sonarr.url || 'Not configured'}`);
   console.log(`[Radarr] ${config.radarr.url || 'Not configured'}`);
   console.log(`[EPG] Provider: ${config.epg.provider}, Country: ${config.epg.country}`);
+  startUpdateScheduler();
 });
