@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import * as radarr from '../services/radarr.js';
-import * as plex from '../services/plex.js';
 import * as tracked from '../services/tracked.js';
 import { config } from '../config.js';
 import { proxyArtworkUrls } from '../utils.js';
+import { getConfiguredAdapters } from '../services/adapters/registry.js';
 import type { ApiResponse, ContentItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
 
@@ -32,13 +32,19 @@ function trackedMoviesToContentItems(): ContentItem[] {
 moviesRouter.get('/movies/recent', async (req, res) => {
   try {
     const limit = 20;
-    const [radarrRecent, plexRecent] = await Promise.all([
+    const adapters = getConfiguredAdapters();
+    const [radarrRecent, perAdapterRecent] = await Promise.all([
       config.radarr.url ? radarr.getRecentDownloads(limit) : [],
-      config.plex.token ? plex.getRecentlyAdded(limit, req.plexUserToken) : [],
+      Promise.all(
+        adapters.map((a) =>
+          a.getRecentlyAdded(limit, req.plexUserToken).catch(() => [] as ContentItem[]),
+        ),
+      ),
     ]);
+    const libraryRecent = perAdapterRecent.flat();
     const movies = [
       ...radarrRecent,
-      ...plexRecent.filter((i) => i.type === 'movie'),
+      ...libraryRecent.filter((i) => i.type === 'movie'),
       ...trackedMoviesToContentItems(),
     ].filter((i) => !i.progress.watched);
 

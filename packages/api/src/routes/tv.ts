@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import * as sonarr from '../services/sonarr.js';
-import * as plex from '../services/plex.js';
 import * as tracked from '../services/tracked.js';
 import * as tvmaze from '../services/tvmaze.js';
 import { config } from '../config.js';
 import { proxyArtworkUrls } from '../utils.js';
+import { getConfiguredAdapters } from '../services/adapters/registry.js';
 import type { ApiResponse, ContentItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
 
@@ -102,12 +102,18 @@ tvRouter.get('/tv/upcoming', async (req, res) => {
 tvRouter.get('/tv/recent', async (req, res) => {
   try {
     const limit = 20;
-    const [plexRecent, trackedEps] = await Promise.all([
-      config.plex.token ? plex.getRecentlyAdded(limit, req.plexUserToken) : [],
+    const adapters = getConfiguredAdapters();
+    const [perAdapterRecent, trackedEps] = await Promise.all([
+      Promise.all(
+        adapters.map((a) =>
+          a.getRecentlyAdded(limit, req.plexUserToken).catch(() => [] as ContentItem[]),
+        ),
+      ),
       getTrackedTvEpisodes(),
     ]);
+    const libraryRecent = perAdapterRecent.flat();
     const allEpisodes = [
-      ...plexRecent.filter((i) => i.type === 'episode'),
+      ...libraryRecent.filter((i) => i.type === 'episode'),
       ...trackedEps.ready,
     ].filter((i) => !i.progress.watched);
 
