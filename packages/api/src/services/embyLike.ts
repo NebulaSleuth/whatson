@@ -93,16 +93,22 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
   const authHeader = (token?: string): string =>
     token ? `${AUTH_PREFIX}, Token="${token}"` : AUTH_PREFIX;
 
-  const clientFor = (baseUrl: string, token?: string): AxiosInstance =>
-    axios.create({
-      baseURL: baseUrl,
-      timeout: 15000,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: authHeader(token),
-      },
-    });
+  /**
+   * Jellyfin accepts both `Authorization` and `X-Emby-Authorization`; Emby only
+   * reliably reads the latter. We send both so a single client factory works
+   * against either flavour. Post-auth we additionally set `X-Emby-Token` which
+   * Emby uses for simple token-passing on most endpoints.
+   */
+  const clientFor = (baseUrl: string, token?: string): AxiosInstance => {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: authHeader(token),
+      'X-Emby-Authorization': authHeader(token),
+    };
+    if (token) headers['X-Emby-Token'] = token;
+    return axios.create({ baseURL: baseUrl, timeout: 15000, headers });
+  };
 
   const authenticate = async (): Promise<EmbyLikeSession | null> => {
     if (authInFlight) return authInFlight;
@@ -293,7 +299,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         },
       });
       return (data?.Items || []) as JfItem[];
-    }).catch(() => [] as JfItem[]);
+    }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
     const result = items.map(toContentItem);
     if (result.length > 0) setCached(key, result);
@@ -314,7 +323,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         },
       });
       return (Array.isArray(data) ? data : data?.Items || []) as JfItem[];
-    }).catch(() => [] as JfItem[]);
+    }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
     const result = items.map(toContentItem);
     if (result.length > 0) setCached(key, result);
@@ -345,7 +357,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
           },
         });
         return (data?.Items || []) as JfItem[];
-      }).catch(() => [] as JfItem[]);
+      }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
       all.push(...batch);
       if (batch.length < pageSize) break;
@@ -363,7 +378,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         params: { UserId: s.userId, Fields: 'UserData' },
       });
       return (data?.Items || []) as JfItem[];
-    }).catch(() => [] as JfItem[]);
+    }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
     return items
       .filter((it) => (it.IndexNumber ?? 0) > 0)
@@ -394,7 +412,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         },
       });
       return (data?.Items || []) as JfItem[];
-    }).catch(() => [] as JfItem[]);
+    }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
     return items.map(toContentItem);
   };
@@ -411,7 +432,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         },
       });
       return (data?.Items || []) as JfItem[];
-    }).catch(() => [] as JfItem[]);
+    }).catch((err: Error) => {
+      console.warn(`[${opts.label}] fetch failed:`, err.message);
+      return [] as JfItem[];
+    });
 
     return items.map(toContentItem);
   };
