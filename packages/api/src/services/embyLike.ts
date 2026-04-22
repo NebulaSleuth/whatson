@@ -89,6 +89,11 @@ interface JfItem {
 export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
   let session: EmbyLikeSession | null = null;
   let authInFlight: Promise<EmbyLikeSession | null> | null = null;
+  // Track the most recent progress per active PlaySessionId so stopPlayback can
+  // replay ItemId + PositionTicks on /Sessions/Playing/Stopped. Without those,
+  // Emby treats the Stopped event as "ended at position 0" and wipes the
+  // resume point, even though progress reports saved it seconds earlier.
+  const lastProgress = new Map<string, { itemId: string; positionTicks: number }>();
 
   const authHeader = (token?: string): string =>
     token ? `${AUTH_PREFIX}, Token="${token}"` : AUTH_PREFIX;
@@ -547,12 +552,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
   ): Promise<void> => {
     const s = await ensureSession();
     if (!s) return;
+    const positionTicks = Math.max(0, Math.floor(timeMs * TICKS_PER_MS));
+    lastProgress.set(sessionId, { itemId, positionTicks });
     const cfg = opts.getConfig();
     const http = clientFor(cfg.url, s.accessToken);
     await http.post('/Sessions/Playing/Progress', {
       ItemId: itemId,
       PlaySessionId: sessionId,
-      PositionTicks: Math.max(0, Math.floor(timeMs * TICKS_PER_MS)),
+      PositionTicks: positionTicks,
       IsPaused: state === 'paused',
       PlayMethod: 'Transcode',
       EventName: 'timeupdate',
@@ -564,7 +571,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     if (!s) return;
     const cfg = opts.getConfig();
     const http = clientFor(cfg.url, s.accessToken);
-    await http.post('/Sessions/Playing/Stopped', { PlaySessionId: sessionId }).catch(() => {});
+    const last = lastProgress.get(sessionId);
+    const body: Record<string, unknown> = { PlaySessionId: sessionId };
+    if (last) {
+      body.ItemId = last.itemId;
+      body.PositionTicks = last.positionTicks;
+    }
+    await http.post('/Sessions/Playing/Stopped', body).catch(() => {});
+    lastProgress.delete(sessionId);
   };
 
   return {
