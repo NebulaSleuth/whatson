@@ -464,6 +464,15 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
 
     const http = clientFor(cfg.url, s.accessToken);
     const { data: item } = await http.get(`/Users/${s.userId}/Items/${itemId}`);
+
+    // Auto-resume: Plex streams carry `offset=N` which the client rewrites when
+    // info.viewOffset > 0; Emby streams carry `StartTimeTicks=N` which the
+    // client doesn't know to rewrite, so the adapter has to bake the saved
+    // resume position into the URL itself when the client didn't pass one.
+    const savedPositionTicks = (item as JfItem).UserData?.PlaybackPositionTicks || 0;
+    const requestedTicks = (playOpts.offsetMs || 0) * TICKS_PER_MS;
+    const startTicks = requestedTicks > 0 ? requestedTicks : savedPositionTicks;
+
     const { data: playback } = await http.post(
       `/Items/${itemId}/PlaybackInfo`,
       {
@@ -472,7 +481,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
           MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
           MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
         },
-        StartTimeTicks: (playOpts.offsetMs || 0) * TICKS_PER_MS,
+        StartTimeTicks: startTicks,
         MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
       },
       { params: { UserId: s.userId } },
@@ -491,7 +500,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       Container: 'ts',
       SubtitleMethod: 'Encode',
       MaxStreamingBitrate: String((playOpts.maxBitrate || 20000) * 1000),
-      StartTimeTicks: String((playOpts.offsetMs || 0) * TICKS_PER_MS),
+      StartTimeTicks: String(startTicks),
     };
     if (playOpts.subtitleStreamID != null) streamParams.SubtitleStreamIndex = String(playOpts.subtitleStreamID);
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
@@ -535,7 +544,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       seasonNumber: item.ParentIndexNumber,
       episodeNumber: item.IndexNumber,
       duration: (item.RunTimeTicks || 0) / TICKS_PER_MS,
-      viewOffset: (item.UserData?.PlaybackPositionTicks || 0) / TICKS_PER_MS,
+      viewOffset: startTicks / TICKS_PER_MS,
       subtitles,
       audioTracks,
       markers: [],
