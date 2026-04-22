@@ -270,7 +270,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       const { data } = await http.get(`/Users/${s.userId}/Items/Resume`, {
         params: {
           IncludeItemTypes: 'Episode,Movie',
-          Fields: 'PrimaryImageAspectRatio,Overview,UserData',
+          Fields: 'PrimaryImageAspectRatio,Overview,UserData,DateCreated,PremiereDate',
           Limit: 50,
         },
       });
@@ -294,7 +294,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       const { data } = await http.get('/Shows/NextUp', {
         params: {
           UserId: s.userId,
-          Fields: 'PrimaryImageAspectRatio,Overview,UserData',
+          Fields: 'PrimaryImageAspectRatio,Overview,UserData,DateCreated,PremiereDate',
           Limit: 50,
         },
       });
@@ -318,7 +318,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       const { data } = await http.get(`/Users/${s.userId}/Items/Latest`, {
         params: {
           IncludeItemTypes: 'Episode,Movie',
-          Fields: 'PrimaryImageAspectRatio,Overview,UserData,ParentBackdropImageTags',
+          Fields: 'PrimaryImageAspectRatio,Overview,UserData,ParentBackdropImageTags,DateCreated,PremiereDate',
           Limit: limit,
         },
       });
@@ -349,7 +349,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
           params: {
             Recursive: true,
             IncludeItemTypes: jfType,
-            Fields: 'PrimaryImageAspectRatio,Overview,UserData,Genres',
+            Fields: 'PrimaryImageAspectRatio,Overview,UserData,Genres,DateCreated,PremiereDate',
             SortBy: 'SortName',
             SortOrder: 'Ascending',
             StartIndex: startIndex,
@@ -408,7 +408,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         params: {
           SeasonId: seasonId,
           UserId: s.userId,
-          Fields: 'Overview,UserData,PrimaryImageAspectRatio',
+          Fields: 'Overview,UserData,PrimaryImageAspectRatio,DateCreated,PremiereDate',
         },
       });
       return (data?.Items || []) as JfItem[];
@@ -427,7 +427,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
           SearchTerm: query,
           IncludeItemTypes: 'Movie,Series,Episode',
           Recursive: true,
-          Fields: 'Overview,UserData',
+          Fields: 'Overview,UserData,DateCreated,PremiereDate',
           Limit: 50,
         },
       });
