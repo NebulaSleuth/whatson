@@ -258,6 +258,12 @@ export interface SportsCompetitor {
   homeAway?: 'home' | 'away';
   winner?: boolean;
   record?: string;
+  /** Hex string without `#`, e.g. "0150b5". Sourced from the provider. */
+  primaryColor?: string;
+  /** Hex string without `#`. Usually the secondary brand color. */
+  altColor?: string;
+  /** True when this competitor matches one of the user's followed team ids. */
+  isFollowed?: boolean;
 }
 
 export interface SportsEvent {

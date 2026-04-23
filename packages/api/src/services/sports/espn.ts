@@ -24,6 +24,8 @@ function buildTeamCompetitor(t: any): SportsCompetitor {
     homeAway: t.homeAway === 'home' || t.homeAway === 'away' ? t.homeAway : undefined,
     winner: t.winner === true,
     record: t.records?.[0]?.summary || undefined,
+    primaryColor: typeof team.color === 'string' ? team.color : undefined,
+    altColor: typeof team.alternateColor === 'string' ? team.alternateColor : undefined,
   };
 }
 

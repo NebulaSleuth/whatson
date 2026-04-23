@@ -35,17 +35,26 @@ export async function getTeamsForLeague(leagueKey: string): Promise<SportsTeamSu
   return provider.getTeams(meta);
 }
 
-/** Keep only events the user actually follows, per prefs. */
+/**
+ * Keep only events the user actually follows, and stamp `isFollowed` on
+ * competitors that match the user's team-id list so the card can pick the
+ * right brand color for the "my team" accent bar.
+ */
 function filterByPrefs(events: SportsEvent[], prefs: SportsPrefs): SportsEvent[] {
   const byLeague = new Map(prefs.leagues.map((p) => [p.key, p]));
-  return events.filter((e) => {
+  const out: SportsEvent[] = [];
+  for (const e of events) {
     const pref = byLeague.get(e.league);
-    if (!pref) return false;
-    if (pref.mode === 'all' || !e.teamSport) return true;
-    // Team filter: keep if any competitor id matches a followed team.
-    const ids = new Set(pref.teamIds);
-    return e.competitors.some((c) => ids.has(c.id));
-  });
+    if (!pref) continue;
+    const followedIds = new Set(pref.mode === 'teams' ? pref.teamIds : []);
+    if (!(pref.mode === 'all' || !e.teamSport || e.competitors.some((c) => followedIds.has(c.id)))) {
+      continue;
+    }
+    // Clone competitors so we don't mutate the provider's cached array.
+    const competitors = e.competitors.map((c) => ({ ...c, isFollowed: followedIds.has(c.id) }));
+    out.push({ ...e, competitors });
+  }
+  return out;
 }
 
 function yyyymmdd(d: Date): string {

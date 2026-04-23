@@ -19,6 +19,20 @@ function formatLocalTime(iso: string): string {
  * team rows with large right-aligned score for in-progress events, or a
  * tournament title for non-team sports), and footer (status + broadcast).
  */
+/**
+ * Pick the color for the top accent bar: the user's followed team's brand
+ * color (mode='teams'), else the home team's, else nothing. Hex in, hex out
+ * with a `#` prefix; empty string when no usable color was found.
+ */
+function accentColorFor(event: SportsEvent): string {
+  if (!event.teamSport) return '';
+  const followed = event.competitors.find((c) => c.isFollowed && c.primaryColor);
+  if (followed?.primaryColor) return `#${followed.primaryColor}`;
+  const home = event.competitors.find((c) => c.homeAway === 'home' && c.primaryColor);
+  if (home?.primaryColor) return `#${home.primaryColor}`;
+  return '';
+}
+
 export const SportsCard = React.memo(function SportsCard({
   event,
   onPress,
@@ -28,6 +42,7 @@ export const SportsCard = React.memo(function SportsCard({
 }) {
   const [focused, setFocused] = React.useState(false);
   const live = event.status === 'in';
+  const accent = accentColorFor(event);
 
   return (
     <Pressable
@@ -37,6 +52,8 @@ export const SportsCard = React.memo(function SportsCard({
       onBlur={() => setFocused(false)}
       focusable
     >
+      {accent !== '' && <View style={[styles.accentBar, { backgroundColor: accent }]} />}
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.league} numberOfLines={1}>{event.leagueLabel}</Text>
@@ -140,9 +157,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 10,
     padding: spacing.md,
+    paddingTop: spacing.md + 6, // leave room for the 6 px accent bar
     borderWidth: 2,
     borderColor: 'transparent',
     justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  accentBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 6,
   },
   cardFocused: { borderColor: colors.focus },
   cardLive: { borderColor: 'rgba(229, 57, 53, 0.25)' },
