@@ -97,8 +97,21 @@ function UpcomingBackground({ event }: { event: SportsEvent }) {
 
 // ── Team rows ──
 
-function TeamRow({ c, highlightScore, textColor }: { c: SportsCompetitor; highlightScore: boolean; textColor: string }) {
-  const name = c.abbreviation || c.shortName || c.name;
+function TeamRow({
+  c,
+  variant,
+  textColor,
+}: {
+  c: SportsCompetitor;
+  variant: 'live' | 'upcoming';
+  textColor: string;
+}) {
+  // Upcoming cards show the full team name and never a score (ESPN sometimes
+  // returns "0" on pre-games). Live cards stay compact: abbreviation + score.
+  const name = variant === 'upcoming'
+    ? (c.name || c.shortName || c.abbreviation || '')
+    : (c.abbreviation || c.shortName || c.name);
+  const showScore = variant === 'live' && c.score != null;
   return (
     <View style={styles.teamRow}>
       {c.logo ? (
@@ -107,8 +120,8 @@ function TeamRow({ c, highlightScore, textColor }: { c: SportsCompetitor; highli
         <View style={[styles.teamLogo, styles.teamLogoPlaceholder]} />
       )}
       <Text style={[styles.teamName, { color: textColor }]} numberOfLines={1}>{name}</Text>
-      {c.score != null ? (
-        <Text style={[styles.teamScore, { color: textColor }, highlightScore && styles.teamScoreLive, c.winner && styles.teamScoreWinner]}>
+      {showScore ? (
+        <Text style={[styles.teamScore, { color: textColor }, styles.teamScoreLive, c.winner && styles.teamScoreWinner]}>
           {c.score}
         </Text>
       ) : null}
@@ -179,8 +192,8 @@ export const SportsCard = React.memo(function SportsCard({
       <View style={styles.body}>
         {event.teamSport && event.competitors.length >= 2 ? (
           <>
-            <TeamRow c={event.competitors[0]} highlightScore={live} textColor={upcoming ? textColor : colors.text} />
-            <TeamRow c={event.competitors[1]} highlightScore={live} textColor={upcoming ? textColor : colors.text} />
+            <TeamRow c={event.competitors[0]} variant={upcoming ? 'upcoming' : 'live'} textColor={upcoming ? textColor : colors.text} />
+            <TeamRow c={event.competitors[1]} variant={upcoming ? 'upcoming' : 'live'} textColor={upcoming ? textColor : colors.text} />
           </>
         ) : (
           <Text style={[styles.tournamentTitle, upcoming && { color: textColor }]} numberOfLines={2}>
