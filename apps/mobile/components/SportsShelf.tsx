@@ -8,22 +8,41 @@ import { isTV } from '@/lib/tv';
 const CARD_WIDTH = isTV ? 340 : 280;
 const CARD_HEIGHT = isTV ? 160 : 140;
 
-function formatLocalTime(iso: string): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
+// ── Helpers ──
 
 /**
- * Sports card with three zones: header (league + LIVE pill), body (stacked
- * team rows with large right-aligned score for in-progress events, or a
- * tournament title for non-team sports), and footer (status + broadcast).
+ * Format start time for upcoming cards. Shows just the time if it's today,
+ * "Tomorrow 7:00 PM" if it's tomorrow (local), or "Fri 7:00 PM" for later
+ * in the week. Falls back to an empty string on unparseable input.
  */
-/**
- * Pick the color for the top accent bar: the user's followed team's brand
- * color (mode='teams'), else the home team's, else nothing. Hex in, hex out
- * with a `#` prefix; empty string when no usable color was found.
- */
+function formatUpcomingTime(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const eventDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDelta = Math.round((eventDay - startOfToday) / (1000 * 60 * 60 * 24));
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (dayDelta === 0) return time;
+  if (dayDelta === 1) return `Tomorrow ${time}`;
+  if (dayDelta > 1 && dayDelta < 7) {
+    return `${d.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  }
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+/** Relative luminance check for picking legible text over a team color. */
+function isDarkHex(hex: string): boolean {
+  const h = hex.replace('#', '');
+  if (h.length !== 6) return true;
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum < 0.6;
+}
+
+/** Pick the color for the live-card top accent bar (followed → home → none). */
 function accentColorFor(event: SportsEvent): string {
   if (!event.teamSport) return '';
   const followed = event.competitors.find((c) => c.isFollowed && c.primaryColor);
@@ -32,6 +51,72 @@ function accentColorFor(event: SportsEvent): string {
   if (home?.primaryColor) return `#${home.primaryColor}`;
   return '';
 }
+
+// ── Upcoming card background ──
+
+/**
+ * Colored background for upcoming cards. Uses a diagonal split when both
+ * competitors are followed, a solid color when one is, and falls back to
+ * the home team's color when the user follows the whole league. Renders
+ * nothing when no usable color exists — caller's base surface shows through.
+ */
+function UpcomingBackground({ event }: { event: SportsEvent }) {
+  if (!event.teamSport) return null;
+  const followed = event.competitors.filter((c) => c.isFollowed && c.primaryColor);
+
+  if (followed.length >= 2) {
+    const colorA = `#${followed[0].primaryColor}`;
+    const colorB = `#${followed[1].primaryColor}`;
+    // Two Views: solid A across the whole card, B overlayed on the right half
+    // with a skewed left edge to read as a diagonal split.
+    return (
+      <>
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colorA }]} />
+        <View
+          style={{
+            position: 'absolute',
+            top: -CARD_HEIGHT,
+            bottom: -CARD_HEIGHT,
+            right: -CARD_WIDTH / 2,
+            width: CARD_WIDTH,
+            backgroundColor: colorB,
+            transform: [{ skewX: '-25deg' }],
+          }}
+        />
+      </>
+    );
+  }
+  const single = followed[0]
+    || event.competitors.find((c) => c.homeAway === 'home' && c.primaryColor)
+    || event.competitors.find((c) => c.primaryColor);
+  if (single?.primaryColor) {
+    return <View style={[StyleSheet.absoluteFillObject, { backgroundColor: `#${single.primaryColor}` }]} />;
+  }
+  return null;
+}
+
+// ── Team rows ──
+
+function TeamRow({ c, highlightScore, textColor }: { c: SportsCompetitor; highlightScore: boolean; textColor: string }) {
+  const name = c.abbreviation || c.shortName || c.name;
+  return (
+    <View style={styles.teamRow}>
+      {c.logo ? (
+        <Image source={{ uri: c.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="disk" />
+      ) : (
+        <View style={[styles.teamLogo, styles.teamLogoPlaceholder]} />
+      )}
+      <Text style={[styles.teamName, { color: textColor }]} numberOfLines={1}>{name}</Text>
+      {c.score != null ? (
+        <Text style={[styles.teamScore, { color: textColor }, highlightScore && styles.teamScoreLive, c.winner && styles.teamScoreWinner]}>
+          {c.score}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+// ── Card ──
 
 export const SportsCard = React.memo(function SportsCard({
   event,
@@ -42,21 +127,46 @@ export const SportsCard = React.memo(function SportsCard({
 }) {
   const [focused, setFocused] = React.useState(false);
   const live = event.status === 'in';
-  const accent = accentColorFor(event);
+  const upcoming = event.status === 'pre';
+
+  // For upcoming cards, detect if the background will be colored so we can
+  // pick a contrasting text color. Live cards use the default surface tone.
+  let textColor: string = colors.text;
+  if (upcoming && event.teamSport) {
+    const anyFollowed = event.competitors.find((c) => c.isFollowed && c.primaryColor);
+    const home = event.competitors.find((c) => c.homeAway === 'home' && c.primaryColor);
+    const pick = anyFollowed || home;
+    if (pick?.primaryColor) {
+      textColor = isDarkHex(`#${pick.primaryColor}`) ? '#fff' : '#000';
+    }
+  }
 
   return (
     <Pressable
-      style={[styles.card, focused && styles.cardFocused, live && styles.cardLive]}
+      // Order matters: live-accent border first, then focus border, so focus
+      // always wins when both conditions are true.
+      style={[styles.card, live && styles.cardLive, focused && styles.cardFocused]}
       onPress={() => onPress(event)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable
     >
-      {accent !== '' && <View style={[styles.accentBar, { backgroundColor: accent }]} />}
+      {/* Background (upcoming only) */}
+      {upcoming && <UpcomingBackground event={event} />}
+
+      {/* Live top accent bar */}
+      {live && accentColorFor(event) !== '' && (
+        <View style={[styles.accentBar, { backgroundColor: accentColorFor(event) }]} />
+      )}
+
+      {/* Dark scrim at the bottom for footer legibility over colored bg */}
+      {upcoming && event.teamSport && <View style={styles.scrim} />}
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.league} numberOfLines={1}>{event.leagueLabel}</Text>
+        <Text style={[styles.league, upcoming && { color: textColor, opacity: 0.85 }]} numberOfLines={1}>
+          {event.leagueLabel}
+        </Text>
         {live && (
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
@@ -69,26 +179,30 @@ export const SportsCard = React.memo(function SportsCard({
       <View style={styles.body}>
         {event.teamSport && event.competitors.length >= 2 ? (
           <>
-            <TeamRow c={event.competitors[0]} highlightScore={live} />
-            <TeamRow c={event.competitors[1]} highlightScore={live} />
+            <TeamRow c={event.competitors[0]} highlightScore={live} textColor={upcoming ? textColor : colors.text} />
+            <TeamRow c={event.competitors[1]} highlightScore={live} textColor={upcoming ? textColor : colors.text} />
           </>
         ) : (
-          <Text style={styles.tournamentTitle} numberOfLines={2}>{event.title}</Text>
+          <Text style={[styles.tournamentTitle, upcoming && { color: textColor }]} numberOfLines={2}>
+            {event.title}
+          </Text>
         )}
       </View>
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.status} numberOfLines={1}>
+        <Text style={[styles.status, upcoming && { color: textColor }]} numberOfLines={1}>
           {live
             ? event.statusDetail
-            : event.status === 'post'
-              ? event.statusDetail
-              : (formatLocalTime(event.startsAt) || event.statusDetail)}
+            : upcoming
+              ? formatUpcomingTime(event.startsAt) || event.statusDetail
+              : event.statusDetail}
         </Text>
         {event.broadcast ? (
-          <View style={styles.broadcastPill}>
-            <Text style={styles.broadcastText} numberOfLines={1}>{event.broadcast}</Text>
+          <View style={[styles.broadcastPill, upcoming && styles.broadcastPillUpcoming]}>
+            <Text style={[styles.broadcastText, upcoming && styles.broadcastTextUpcoming]} numberOfLines={1}>
+              {event.broadcast}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -96,24 +210,7 @@ export const SportsCard = React.memo(function SportsCard({
   );
 });
 
-function TeamRow({ c, highlightScore }: { c: SportsCompetitor; highlightScore: boolean }) {
-  const name = c.abbreviation || c.shortName || c.name;
-  return (
-    <View style={styles.teamRow}>
-      {c.logo ? (
-        <Image source={{ uri: c.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="disk" />
-      ) : (
-        <View style={[styles.teamLogo, styles.teamLogoPlaceholder]} />
-      )}
-      <Text style={styles.teamName} numberOfLines={1}>{name}</Text>
-      {c.score != null ? (
-        <Text style={[styles.teamScore, highlightScore && styles.teamScoreLive, c.winner && styles.teamScoreWinner]}>
-          {c.score}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
+// ── Shelf ──
 
 export function SportsShelf({
   title,
@@ -157,7 +254,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 10,
     padding: spacing.md,
-    paddingTop: spacing.md + 6, // leave room for the 6 px accent bar
+    paddingTop: spacing.md + 6, // room for the live accent bar
     borderWidth: 2,
     borderColor: 'transparent',
     justifyContent: 'space-between',
@@ -169,6 +266,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 6,
+  },
+  scrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 40,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   cardFocused: { borderColor: colors.focus },
   cardLive: { borderColor: 'rgba(229, 57, 53, 0.25)' },
@@ -212,5 +317,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     maxWidth: 120,
   },
+  broadcastPillUpcoming: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
   broadcastText: { ...typography.caption, color: colors.primary, fontWeight: '700' },
+  broadcastTextUpcoming: { color: '#111' },
 });
