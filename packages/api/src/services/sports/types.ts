@@ -24,6 +24,11 @@ export interface SportsProvider {
   readonly name: string;
   isConfigured(): boolean;
   supportsLeague(league: LeagueMeta): boolean;
-  getScoreboard(league: LeagueMeta): Promise<SportsEvent[]>;
+  /**
+   * Fetch the scoreboard for a league. `dateYYYYMMDD` is optional — when
+   * omitted, providers return today's events. Callers fetch multiple dates
+   * to cover a time window that crosses a UTC day boundary.
+   */
+  getScoreboard(league: LeagueMeta, dateYYYYMMDD?: string): Promise<SportsEvent[]>;
   getTeams(league: LeagueMeta): Promise<SportsTeamSummary[]>;
 }

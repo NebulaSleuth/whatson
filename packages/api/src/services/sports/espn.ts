@@ -78,23 +78,26 @@ function normalizeTournamentEvent(e: any, league: LeagueMeta): SportsEvent {
   };
 }
 
-async function fetchScoreboard(league: LeagueMeta): Promise<SportsEvent[]> {
+async function fetchScoreboard(league: LeagueMeta, dateYYYYMMDD?: string): Promise<SportsEvent[]> {
   if (!league.espnPath) return [];
-  const cacheKey = `sports:espn:scoreboard:${league.key}`;
+  const cacheKey = `sports:espn:scoreboard:${league.key}:${dateYYYYMMDD || 'today'}`;
   const cached = getCached<SportsEvent[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const { data } = await axios.get(`${ESPN_BASE}/${league.espnPath}/scoreboard`, { timeout: 10000 });
+    const params = dateYYYYMMDD ? { dates: dateYYYYMMDD } : undefined;
+    const { data } = await axios.get(`${ESPN_BASE}/${league.espnPath}/scoreboard`, { timeout: 10000, params });
     const raw = Array.isArray(data?.events) ? data.events : [];
     const normalized = raw.map((e: any) =>
       league.teamSport ? normalizeTeamEvent(e, league) : normalizeTournamentEvent(e, league),
     );
-    // 30 s cache — matches ESPN's own update cadence during live events.
-    if (normalized.length > 0) setCached(cacheKey, normalized, 30);
+    // 30 s cache for live scoreboards; future-dated boards change far less
+    // often so we can hold them longer (10 min).
+    const ttl = dateYYYYMMDD ? 600 : 30;
+    if (normalized.length > 0) setCached(cacheKey, normalized, ttl);
     return normalized;
   } catch (error) {
-    console.warn(`[sports/espn] scoreboard ${league.key} failed:`, (error as Error).message);
+    console.warn(`[sports/espn] scoreboard ${league.key}${dateYYYYMMDD ? ' ' + dateYYYYMMDD : ''} failed:`, (error as Error).message);
     return [];
   }
 }

@@ -48,6 +48,13 @@ function filterByPrefs(events: SportsEvent[], prefs: SportsPrefs): SportsEvent[]
   });
 }
 
+function yyyymmdd(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
 async function fetchFollowedEvents(prefs: SportsPrefs): Promise<SportsEvent[]> {
   // Fetch scoreboards only for leagues the user follows — avoids polling
   // ESPN's entire catalog every 60 s.
@@ -55,18 +62,37 @@ async function fetchFollowedEvents(prefs: SportsPrefs): Promise<SportsEvent[]> {
     .map((p) => getLeague(p.key))
     .filter((l: LeagueMeta | undefined): l is LeagueMeta => Boolean(l));
 
+  // ESPN's "default" scoreboard returns today in US-Eastern, and `dates=`
+  // params map to ET days too — not UTC. So `no-date` + `today-UTC-yyyymmdd`
+  // + `tomorrow-UTC-yyyymmdd` effectively gives us today-ET, tomorrow-ET,
+  // and day-after-ET (UTC is always ≥ ET, so UTC today's yyyymmdd maps to
+  // ET tomorrow's day). That covers any 24 h "later" window plus a buffer.
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const dates: (string | undefined)[] = [undefined, yyyymmdd(today), yyyymmdd(tomorrow)];
+
   const results = await Promise.all(
-    followed.map(async (meta) => {
-      const provider = providerForLeague(meta);
-      if (!provider) return [] as SportsEvent[];
-      return provider.getScoreboard(meta).catch((err) => {
-        console.warn(`[sports] ${meta.key} via ${provider.name} failed:`, (err as Error).message);
-        return [] as SportsEvent[];
-      });
-    }),
+    followed.flatMap((meta) =>
+      dates.map(async (date) => {
+        const provider = providerForLeague(meta);
+        if (!provider) return [] as SportsEvent[];
+        return provider.getScoreboard(meta, date).catch((err: Error) => {
+          console.warn(`[sports] ${meta.key}${date ? ' ' + date : ''} via ${provider.name} failed:`, err.message);
+          return [] as SportsEvent[];
+        });
+      }),
+    ),
   );
   const all = results.flat();
-  return filterByPrefs(all, prefs);
+  // Dedupe across today/tomorrow — the same event can appear in both when
+  // it sits close to the UTC boundary.
+  const seen = new Set<string>();
+  const deduped = all.filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+  return filterByPrefs(deduped, prefs);
 }
 
 export async function getNow(prefs: SportsPrefs = loadPrefs()): Promise<SportsEvent[]> {
@@ -98,11 +124,16 @@ export async function getEvent(id: string): Promise<SportsEvent | null> {
   if (!meta) return null;
   const provider = providerForLeague(meta);
   if (!provider) return null;
-  // For now, re-scan the league's scoreboard and pick the event by id.
-  // Per-event endpoints per provider can be added when richer live detail
-  // (play-by-play, box scores) is needed.
-  const events = await provider.getScoreboard(meta);
-  const found = events.find((e) => e.id === id) || null;
+  // Scan the same ET-day window the list endpoints use so a card tapped
+  // from the "Later" shelf for tomorrow's or day-after's game resolves.
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const boards = await Promise.all([
+    provider.getScoreboard(meta).catch(() => []),
+    provider.getScoreboard(meta, yyyymmdd(today)).catch(() => []),
+    provider.getScoreboard(meta, yyyymmdd(tomorrow)).catch(() => []),
+  ]);
+  const found = boards.flat().find((e) => e.id === id) || null;
   if (!found) return null;
   const [enriched] = await enrichEventsWithBadges([found]);
   return enriched;
