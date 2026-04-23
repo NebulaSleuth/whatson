@@ -64,6 +64,7 @@ import { usersRouter } from './routes/users.js';
 import { liveRouter } from './routes/live.js';
 import { updateRouter } from './routes/update.js';
 import { authRouter } from './routes/auth.js';
+import { sportsRouter } from './routes/sports.js';
 import { startUpdateScheduler } from './services/updater.js';
 import { userContext } from './middleware/userContext.js';
 import { initWebSocket } from './ws.js';
@@ -113,6 +114,7 @@ app.use('/api', recommendationsRouter);
 app.use('/api', liveRouter);
 app.use('/api', updateRouter);
 app.use('/api', authRouter);
+app.use('/api', sportsRouter);
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);

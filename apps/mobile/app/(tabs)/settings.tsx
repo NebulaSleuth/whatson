@@ -334,6 +334,20 @@ export default function SettingsScreen() {
           refetchChannels={refetchChannels}
         />
 
+        {/* Sports */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sports</Text>
+          <Text style={styles.sectionDescription}>
+            Pick leagues and favorite teams. The Sports tab shows what's on now and what's coming up next.
+          </Text>
+          <TVPressable
+            style={styles.primaryButton}
+            onPress={() => router.push('/sports-settings' as any)}
+          >
+            <Text style={styles.primaryButtonText}>Configure Sports Follows</Text>
+          </TVPressable>
+        </View>
+
         {/* Apple TV Remote */}
         {isTVOS && (
           <View style={styles.section}>

@@ -243,3 +243,65 @@ export interface SearchRequest {
   limit?: number;
   offset?: number;
 }
+
+// ── Sports ──
+
+export type SportsStatus = 'pre' | 'in' | 'post';
+
+export interface SportsCompetitor {
+  id: string;
+  name: string;
+  shortName?: string;
+  abbreviation?: string;
+  logo?: string;
+  score?: string;
+  homeAway?: 'home' | 'away';
+  winner?: boolean;
+  record?: string;
+}
+
+export interface SportsEvent {
+  id: string;                 // '{league}:{providerEventId}'
+  providerEventId: string;
+  provider: string;           // 'espn' (future: 'api-sports')
+  league: string;             // 'nba', 'epl', 'atp', etc.
+  leagueLabel: string;
+  sport: string;              // 'basketball', 'soccer', 'tennis', ...
+  teamSport: boolean;
+  title: string;
+  subtitle?: string;
+  startsAt: string;           // ISO 8601
+  status: SportsStatus;
+  statusDetail: string;
+  competitors: SportsCompetitor[];
+  broadcast?: string;
+  venue?: string;
+  summary?: string;
+}
+
+export interface SportsLeagueSummary {
+  key: string;
+  label: string;
+  sport: string;
+  teamSport: boolean;
+}
+
+export interface SportsTeamSummary {
+  id: string;
+  name: string;
+  abbreviation?: string;
+  logo?: string;
+}
+
+export type SportsPrefMode = 'teams' | 'all';
+
+export interface SportsLeaguePref {
+  key: string;
+  mode: SportsPrefMode;
+  /** Ignored when mode='all'. */
+  teamIds: string[];
+}
+
+export interface SportsPrefs {
+  leagues: SportsLeaguePref[];
+}

@@ -1,4 +1,4 @@
-import type { ApiResponse, HomeResponse, SearchResponse, ContentItem, ContentSection } from '@whatson/shared';
+import type { ApiResponse, HomeResponse, SearchResponse, ContentItem, ContentSection, SportsEvent, SportsLeagueSummary, SportsPrefs, SportsTeamSummary } from '@whatson/shared';
 import { useAppStore } from './store';
 
 function getBaseUrl(): string {
@@ -245,6 +245,21 @@ export const api = {
     fetchApi<{ connected: boolean }>('/config/test', {
       method: 'POST',
       body: JSON.stringify({ service, url, token, apiKey }),
+    }),
+
+  // Sports
+  getSportsLeagues: () => fetchApi<SportsLeagueSummary[]>('/sports/leagues'),
+  getSportsTeams: (league: string) =>
+    fetchApi<SportsTeamSummary[]>(`/sports/teams?league=${encodeURIComponent(league)}`),
+  getSportsNow: () => fetchApi<SportsEvent[]>('/sports/now'),
+  getSportsLater: (hours = 24) => fetchApi<SportsEvent[]>(`/sports/later?hours=${hours}`),
+  getSportsEvent: (id: string) =>
+    fetchApi<SportsEvent>(`/sports/event/${encodeURIComponent(id)}`),
+  getSportsPrefs: () => fetchApi<SportsPrefs>('/sports/prefs'),
+  putSportsPrefs: (prefs: SportsPrefs) =>
+    fetchApi<SportsPrefs>('/sports/prefs', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
     }),
 
   // Discover / TMDB Search
