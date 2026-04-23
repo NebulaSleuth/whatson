@@ -60,7 +60,7 @@ export default function HomeScreen() {
   });
   const { data: sportsLater } = useQuery({
     queryKey: ['sports', 'later'],
-    queryFn: () => api.getSportsLater(24),
+    queryFn: () => api.getSportsLater(168),
     enabled: isReady && followsSports,
     refetchInterval: followsSports ? 5 * 60 * 1000 : false,
   });

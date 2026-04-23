@@ -49,8 +49,8 @@ sportsRouter.get('/sports/now', async (_req, res) => {
 /** Sports On Later — upcoming events within the next N hours. */
 sportsRouter.get('/sports/later', async (req, res) => {
   try {
-    const hours = req.query.hours ? parseInt(req.query.hours as string, 10) : 24;
-    const events = await getLater(Number.isFinite(hours) && hours > 0 ? hours : 24);
+    const hours = req.query.hours ? parseInt(req.query.hours as string, 10) : 168;
+    const events = await getLater(Number.isFinite(hours) && hours > 0 ? hours : 168);
     const response: ApiResponse<SportsEvent[]> = { success: true, data: events };
     res.json(response);
   } catch (error) {

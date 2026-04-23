@@ -252,7 +252,7 @@ export const api = {
   getSportsTeams: (league: string) =>
     fetchApi<SportsTeamSummary[]>(`/sports/teams?league=${encodeURIComponent(league)}`),
   getSportsNow: () => fetchApi<SportsEvent[]>('/sports/now'),
-  getSportsLater: (hours = 24) => fetchApi<SportsEvent[]>(`/sports/later?hours=${hours}`),
+  getSportsLater: (hours = 168) => fetchApi<SportsEvent[]>(`/sports/later?hours=${hours}`),
   getSportsEvent: (id: string) =>
     fetchApi<SportsEvent>(`/sports/event/${encodeURIComponent(id)}`),
   getSportsPrefs: () => fetchApi<SportsPrefs>('/sports/prefs'),

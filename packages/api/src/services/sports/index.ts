@@ -55,7 +55,10 @@ function yyyymmdd(d: Date): string {
   return `${y}${m}${day}`;
 }
 
-async function fetchFollowedEvents(prefs: SportsPrefs): Promise<SportsEvent[]> {
+async function fetchFollowedEvents(
+  prefs: SportsPrefs,
+  horizonHours = 48,
+): Promise<SportsEvent[]> {
   // Fetch scoreboards only for leagues the user follows — avoids polling
   // ESPN's entire catalog every 60 s.
   const followed: LeagueMeta[] = prefs.leagues
@@ -63,13 +66,18 @@ async function fetchFollowedEvents(prefs: SportsPrefs): Promise<SportsEvent[]> {
     .filter((l: LeagueMeta | undefined): l is LeagueMeta => Boolean(l));
 
   // ESPN's "default" scoreboard returns today in US-Eastern, and `dates=`
-  // params map to ET days too — not UTC. So `no-date` + `today-UTC-yyyymmdd`
-  // + `tomorrow-UTC-yyyymmdd` effectively gives us today-ET, tomorrow-ET,
-  // and day-after-ET (UTC is always ≥ ET, so UTC today's yyyymmdd maps to
-  // ET tomorrow's day). That covers any 24 h "later" window plus a buffer.
-  const today = new Date();
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-  const dates: (string | undefined)[] = [undefined, yyyymmdd(today), yyyymmdd(tomorrow)];
+  // params map to ET days too — not UTC. We fetch `no-date` (today ET) plus
+  // a UTC yyyymmdd for every day in the horizon window. UTC is always ≥ ET,
+  // so today-UTC's yyyymmdd maps to ET-tomorrow — giving us broad coverage
+  // without needing explicit ET-date math. Cache is per-date so repeated
+  // fetches within TTL are free.
+  const now = new Date();
+  const dayCount = Math.max(2, Math.ceil(horizonHours / 24) + 1);
+  const dates: (string | undefined)[] = [undefined];
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    dates.push(yyyymmdd(d));
+  }
 
   const results = await Promise.all(
     followed.flatMap((meta) =>
@@ -102,10 +110,13 @@ export async function getNow(prefs: SportsPrefs = loadPrefs()): Promise<SportsEv
 }
 
 export async function getLater(
-  hours = 24,
+  // 168 h (7 days) is the shelf's default window — long enough to see the
+  // week's upcoming slate for each followed league without forcing the user
+  // to scroll past yesterday's tomorrow. Callers can override via `?hours=N`.
+  hours = 168,
   prefs: SportsPrefs = loadPrefs(),
 ): Promise<SportsEvent[]> {
-  const all = await fetchFollowedEvents(prefs);
+  const all = await fetchFollowedEvents(prefs, hours);
   const horizonMs = Date.now() + hours * 60 * 60 * 1000;
   const upcoming = all
     .filter((e) => e.status === 'pre')
@@ -124,16 +135,16 @@ export async function getEvent(id: string): Promise<SportsEvent | null> {
   if (!meta) return null;
   const provider = providerForLeague(meta);
   if (!provider) return null;
-  // Scan the same ET-day window the list endpoints use so a card tapped
-  // from the "Later" shelf for tomorrow's or day-after's game resolves.
-  const today = new Date();
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-  const boards = await Promise.all([
-    provider.getScoreboard(meta).catch(() => []),
-    provider.getScoreboard(meta, yyyymmdd(today)).catch(() => []),
-    provider.getScoreboard(meta, yyyymmdd(tomorrow)).catch(() => []),
-  ]);
-  const found = boards.flat().find((e) => e.id === id) || null;
+  // Scan the full later-window ET-day range so a card tapped from "Later"
+  // resolves no matter how far out the game is.
+  const now = new Date();
+  const boards: Promise<SportsEvent[]>[] = [provider.getScoreboard(meta).catch(() => [])];
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    boards.push(provider.getScoreboard(meta, yyyymmdd(d)).catch(() => []));
+  }
+  const resolved = await Promise.all(boards);
+  const found = resolved.flat().find((e) => e.id === id) || null;
   if (!found) return null;
   const [enriched] = await enrichEventsWithBadges([found]);
   return enriched;

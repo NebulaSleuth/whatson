@@ -25,7 +25,7 @@ export default function SportsScreen() {
   });
   const laterQuery = useQuery({
     queryKey: ['sports', 'later'],
-    queryFn: () => api.getSportsLater(24),
+    queryFn: () => api.getSportsLater(168),
     refetchInterval: 5 * 60 * 1000,
   });
   const prefsQuery = useQuery({
