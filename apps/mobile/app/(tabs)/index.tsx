@@ -1,9 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { ContentItem, ContentSection } from '@whatson/shared';
+import type { ContentItem, ContentSection, SportsEvent } from '@whatson/shared';
 import { ShelfList, type ShelfListHandle } from '@/components/ShelfList';
+import { SportsShelf } from '@/components/SportsShelf';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { isTV } from '@/lib/tv';
@@ -40,6 +42,31 @@ export default function HomeScreen() {
     enabled: isReady && !isLoading,
     staleTime: 10 * 60 * 1000, // Fresh for 10 minutes
   });
+
+  // Sports shelves — only mount queries when the user has followed at least
+  // one league. Keeps anonymous home loads free of extra ESPN traffic.
+  const { data: sportsPrefs } = useQuery({
+    queryKey: ['sports', 'prefs'],
+    queryFn: api.getSportsPrefs,
+    enabled: isReady,
+    staleTime: 60 * 1000,
+  });
+  const followsSports = (sportsPrefs?.leagues.length ?? 0) > 0;
+  const { data: sportsNow } = useQuery({
+    queryKey: ['sports', 'now'],
+    queryFn: api.getSportsNow,
+    enabled: isReady && followsSports,
+    refetchInterval: followsSports ? 30000 : false,
+  });
+  const { data: sportsLater } = useQuery({
+    queryKey: ['sports', 'later'],
+    queryFn: () => api.getSportsLater(24),
+    enabled: isReady && followsSports,
+    refetchInterval: followsSports ? 5 * 60 * 1000 : false,
+  });
+  const handleSportsPress = useCallback((e: SportsEvent) => {
+    router.push({ pathname: '/sports-detail', params: { id: e.id } } as any);
+  }, []);
 
   const liveChannels = useAppStore((s) => s.liveTvChannels);
   const channelsKey = liveChannels.join(',');
@@ -130,6 +157,14 @@ export default function HomeScreen() {
             onRefresh={() => refetch()}
             tabBarNodeId={tabNodeId}
           />
+        )}
+
+        {isReady && !isLoading && !error && followsSports && (sportsNow?.length ?? 0) > 0 && (
+          <SportsShelf title="Sports On Now" events={sportsNow!} onItemPress={handleSportsPress} />
+        )}
+
+        {isReady && !isLoading && !error && followsSports && (sportsLater?.length ?? 0) > 0 && (
+          <SportsShelf title="Sports On Later" events={sportsLater!} onItemPress={handleSportsPress} />
         )}
 
         {isReady && !isLoading && !error && liveSections.length > 0 && (
