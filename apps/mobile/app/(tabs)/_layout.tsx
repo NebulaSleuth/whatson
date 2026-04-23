@@ -1,6 +1,9 @@
 import React, { useCallback, createContext, useContext, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, Pressable, StyleSheet, findNodeHandle } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
 import { colors, spacing } from '@/constants/theme';
 import { isTV, TV_SAFE_AREA } from '@/lib/tv';
 import { Clock } from '@/components/Clock';
@@ -64,6 +67,20 @@ function TVTabButton(props: any) {
 export default function TabLayout() {
   const [activeTabNodeId, setActiveTabNodeId] = useState<number | undefined>(undefined);
 
+  // Hide the Sports tab until the user has followed at least one league.
+  // Sports Settings is reachable from the main Settings tab, so new users can
+  // still discover and configure it. Query invalidation on prefs save makes
+  // the tab appear automatically when the first league is saved.
+  const isReady = useAppStore((s) => s.isReady);
+  const { data: sportsPrefs } = useQuery({
+    queryKey: ['sports', 'prefs'],
+    queryFn: api.getSportsPrefs,
+    enabled: isReady,
+    staleTime: 60 * 1000,
+    retry: false, // older backends without /sports/* should just hide the tab
+  });
+  const showSports = (sportsPrefs?.leagues.length ?? 0) > 0;
+
   return (
     <TabNodeContext.Provider value={activeTabNodeId}>
     <View style={{ flex: 1 }}>
@@ -125,6 +142,10 @@ export default function TabLayout() {
         options={{
           title: 'Sports',
           tabBarIcon: ({ focused }) => <TabIcon name="Sports" focused={focused} />,
+          // href: null removes the tab from the tab bar but keeps the route
+          // file bundled — router.push('/sports') still works when sports is
+          // reconfigured while the app is open.
+          href: showSports ? undefined : null,
         }}
       />
       <Tabs.Screen
