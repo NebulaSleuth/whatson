@@ -100,6 +100,26 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
     ]);
   };
 
+  const handleMarkUnwatched = () => {
+    const title = item.showTitle || item.title;
+    const label = episodeLabel ? `${title} - ${episodeLabel}` : title;
+    Alert.alert('Mark as Unwatched', `Mark "${label}" as unwatched?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark Unwatched',
+        onPress: async () => {
+          try {
+            await api.markUnwatched(item.sourceId, item.source);
+            onRefresh?.();
+            onClose();
+          } catch (error) {
+            Alert.alert('Error', (error as Error).message);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleMarkAllWatched = () => {
     const showName = item.showTitle || item.title;
     Alert.alert('Mark All as Watched', `Mark all episodes of "${showName}" as watched?`, [
@@ -270,13 +290,22 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
                     <FocusButton
                       title="Mark as Watched"
                       style={styles.watchedButton}
                       textStyle={styles.watchedButtonText}
                       onPress={handleMarkWatched}
                       preferFocus={!isLibraryItem}
+                    />
+                  ) : null}
+
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
+                    <FocusButton
+                      title="Mark as Unwatched"
+                      style={styles.unwatchedButton}
+                      textStyle={styles.unwatchedButtonText}
+                      onPress={handleMarkUnwatched}
                     />
                   ) : null}
 
@@ -398,9 +427,15 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' ? (
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkWatched}>
                       <Text style={styles.watchedButtonText}>Mark as Watched</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
+                    <Pressable style={styles.unwatchedButton} onPress={handleMarkUnwatched}>
+                      <Text style={styles.unwatchedButtonText}>Mark as Unwatched</Text>
                     </Pressable>
                   ) : null}
 
