@@ -1,0 +1,4 @@
+out/
+*.zip
+*.pkg
+node_modules/

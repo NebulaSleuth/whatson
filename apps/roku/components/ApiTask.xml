@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  ApiTask — single-shot HTTP request, runs on a background thread so the
+  render thread stays responsive.
+
+  Inputs:    url, method ("GET" | "POST" | "PUT" | "DELETE"), body, headers
+  Output:    response (parsed JSON, or { success: false, error } on failure)
+
+  Every screen builds one of these per request, observes `response`, and
+  reads it in the callback. Headers can be augmented with the per-request
+  user / connection-type values before kicking off `control = "RUN"`.
+-->
+<component name="ApiTask" extends="Task">
+    <script type="text/brightscript" uri="ApiTask.brs" />
+
+    <interface>
+        <field id="url" type="string" />
+        <field id="method" type="string" value="GET" />
+        <field id="body" type="string" />
+        <field id="userId" type="string" />
+        <field id="connectionType" type="string" value="local" />
+        <field id="response" type="assocarray" />
+    </interface>
+</component>

@@ -1,0 +1,14 @@
+{
+  "name": "@whatson/roku",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Roku channel for Whats On — sideload via npm run deploy.",
+  "scripts": {
+    "deploy": "node scripts/deploy.js",
+    "package": "node scripts/package.js",
+    "typecheck": "node -e \"console.log('No JS typecheck — channel is BrightScript.')\""
+  },
+  "devDependencies": {
+    "roku-deploy": "^3.12.0"
+  }
+}

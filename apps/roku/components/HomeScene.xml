@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Root scene. Phase 0 spike: a single Label header, a status line, and a
+  RowList of shelves built from /api/home. Subsequent phases turn this
+  into a tabbed scene (Home / TV / Movies / Library / Search / Sports /
+  Settings); see PLAN.md §7.
+-->
+<component name="HomeScene" extends="Scene">
+    <script type="text/brightscript" uri="HomeScene.brs" />
+
+    <interface>
+        <field id="apiUrl" type="string" />
+    </interface>
+
+    <children>
+        <Rectangle width="1920" height="1080" color="0x0e0e0eff" />
+
+        <Label
+            id="title"
+            text="Whats On"
+            translation="[80, 60]"
+            font="font:LargeBoldSystemFont"
+            color="0xe5a00dff" />
+
+        <Label
+            id="status"
+            text="Loading…"
+            translation="[80, 130]"
+            color="0xb0b0b0ff" />
+
+        <RowList
+            id="rowList"
+            translation="[80, 200]"
+            itemSize="[1760, 360]"
+            rowItemSize="[[200, 300]]"
+            rowItemSpacing="[[16, 0]]"
+            rowSpacing="[40]"
+            rowFocusAnimationStyle="floatingFocus"
+            rowLabelOffset="[[0, 0]]"
+            showRowLabel="[true]"
+            visible="false"
+            focusable="true" />
+    </children>
+</component>

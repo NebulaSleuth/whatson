@@ -15,6 +15,8 @@
     "service:install": "npm run service:install -w packages/api",
     "service:uninstall": "npm run service:uninstall -w packages/api",
     "service:status": "npm run service:status -w packages/api",
+    "roku:deploy": "npm run deploy -w apps/roku",
+    "roku:package": "npm run package -w apps/roku",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
