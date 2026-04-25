@@ -324,6 +324,12 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         params: {
           IncludeItemTypes: 'Episode,Movie',
           Fields: 'PrimaryImageAspectRatio,Overview,UserData,ParentBackdropImageTags,DateCreated,PremiereDate',
+          // GroupItems defaults to true, which collapses newly-added episodes
+          // into their parent Series — they then come back with Type='Series',
+          // get mapped to type:'show', and miss the aggregator's Ready-to-Watch
+          // TV filter (which requires type:'episode'). Force individual
+          // episodes; aggregator's oneEpisodePerShow collapses dupes downstream.
+          GroupItems: false,
           Limit: limit,
         },
       });
