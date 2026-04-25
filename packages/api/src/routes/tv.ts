@@ -5,6 +5,7 @@ import * as tvmaze from '../services/tvmaze.js';
 import { config } from '../config.js';
 import { proxyArtworkUrls } from '../utils.js';
 import { getConfiguredAdapters } from '../services/adapters/registry.js';
+import { sortInProgressFirst } from '../services/aggregator.js';
 import type { ApiResponse, ContentItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
 
@@ -117,22 +118,25 @@ tvRouter.get('/tv/recent', async (req, res) => {
       ...trackedEps.ready,
     ].filter((i) => !i.progress.watched);
 
-    // Only show earliest unwatched episode per show
+    // First collapse to one episode per show — keep the earliest unwatched
+    // episode so the user lands on the next thing they should watch.
     const seen = new Set<string>();
-    const sorted = [...allEpisodes].sort((a, b) => {
+    const earliestPerShow = [...allEpisodes].sort((a, b) => {
       if (a.showTitle && b.showTitle && a.showTitle === b.showTitle) {
         return ((a.seasonNumber || 0) * 1000 + (a.episodeNumber || 0)) -
                ((b.seasonNumber || 0) * 1000 + (b.episodeNumber || 0));
       }
       return 0;
-    });
-    const episodes = sorted.filter((i) => {
+    }).filter((i) => {
       if (!i.showTitle) return true;
       const key = i.showTitle.toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+    // Then re-sort cross-show by in-progress + addedAt desc — same ordering
+    // as the home page's "Ready to Watch — TV Shows" shelf.
+    const episodes = sortInProgressFirst(earliestPerShow);
 
     const response: ApiResponse<ContentItem[]> = { success: true, data: proxyArtworkUrls(episodes) };
     res.json(response);

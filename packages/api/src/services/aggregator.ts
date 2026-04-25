@@ -192,8 +192,12 @@ async function trackedTvToEpisodeItems(
  * so newly downloaded content surfaces at the top regardless of which library
  * server it came from. Without the secondary key the shelf bunches by adapter
  * order (Plex first, then Jellyfin, then Emby).
+ *
+ * Exported so the /tv/recent and /movies/recent route handlers can apply the
+ * same ordering — keeps the TV/Movies tab "Ready to Watch" shelves in sync
+ * with the home page version.
  */
-function sortInProgressFirst(items: ContentItem[]): ContentItem[] {
+export function sortInProgressFirst(items: ContentItem[]): ContentItem[] {
   return [...items].sort((a, b) => {
     const aInProgress = a.progress.percentage > 0 && !a.progress.watched;
     const bInProgress = b.progress.percentage > 0 && !b.progress.watched;

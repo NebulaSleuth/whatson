@@ -21,10 +21,19 @@ recommendationsRouter.get('/recommendations', async (req, res) => {
     const sections: ContentSection[] = [];
     let order = 0;
 
-    // 1. Plex recommendation hubs (per-user, no external API needed)
+    // 1. Plex recommendation hubs (per-user, no external API needed).
+    // Skip "Recently Added" / "Recently Aired" hubs — Home already has the
+    // aggregator's "Ready to Watch" shelves which derive from the same
+    // recently-added feeds and apply unwatched / one-per-show filtering, so
+    // surfacing Plex's raw hubs alongside is redundant noise.
     if (config.plex.token) {
       const hubs = await plex.getRecommendationHubs(userToken);
+      const isRecentlyAddedTitle = (t: string): boolean => {
+        const lower = (t || '').toLowerCase().trim();
+        return lower.startsWith('recently added') || lower.startsWith('recently aired');
+      };
       for (const hub of hubs) {
+        if (isRecentlyAddedTitle(hub.title)) continue;
         sections.push({
           id: `rec-plex-${order}`,
           title: hub.title,

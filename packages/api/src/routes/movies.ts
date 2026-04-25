@@ -4,6 +4,7 @@ import * as tracked from '../services/tracked.js';
 import { config } from '../config.js';
 import { proxyArtworkUrls } from '../utils.js';
 import { getConfiguredAdapters } from '../services/adapters/registry.js';
+import { sortInProgressFirst } from '../services/aggregator.js';
 import type { ApiResponse, ContentItem } from '@whatson/shared';
 import { STREAMING_PROVIDERS } from '@whatson/shared';
 
@@ -33,20 +34,32 @@ moviesRouter.get('/movies/recent', async (req, res) => {
   try {
     const limit = 20;
     const adapters = getConfiguredAdapters();
-    const [radarrRecent, perAdapterRecent] = await Promise.all([
-      config.radarr.url ? radarr.getRecentDownloads(limit) : [],
-      Promise.all(
-        adapters.map((a) =>
-          a.getRecentlyAdded(limit, req.plexUserToken).catch(() => [] as ContentItem[]),
-        ),
+    // Library-server movies + tracked items only — no Radarr passthrough.
+    // Mirrors the TV tab's "library only" approach (no Sonarr) and matches
+    // the user expectation that anything in Ready to Watch is playable from
+    // a configured media server.
+    const perAdapterRecent = await Promise.all(
+      adapters.map((a) =>
+        a.getRecentlyAdded(limit, req.plexUserToken).catch(() => [] as ContentItem[]),
       ),
-    ]);
+    );
     const libraryRecent = perAdapterRecent.flat();
-    const movies = [
-      ...radarrRecent,
-      ...libraryRecent.filter((i) => i.type === 'movie'),
-      ...trackedMoviesToContentItems(),
-    ].filter((i) => !i.progress.watched);
+    const seen = new Set<string>();
+    const movies = sortInProgressFirst(
+      [
+        ...libraryRecent.filter((i) => i.type === 'movie'),
+        ...trackedMoviesToContentItems(),
+      ]
+        .filter((i) => !i.progress.watched)
+        .filter((i) => {
+          // Dedupe by title-year so the same movie on two servers doesn't
+          // surface twice. First seen wins (matches home aggregator).
+          const key = `${i.title}-${i.year}`.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }),
+    );
 
     const response: ApiResponse<ContentItem[]> = { success: true, data: proxyArtworkUrls(movies) };
     res.json(response);

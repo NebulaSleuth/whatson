@@ -109,7 +109,7 @@ export default function MoviesScreen() {
             {(() => {
               const sections: ContentSection[] = [];
               if (downloadingItems.length > 0) sections.push({ id: 'movies-downloading', title: 'Downloading', type: 'movie', items: downloadingItems, sortOrder: 0 });
-              if (recentItems.length > 0) sections.push({ id: 'movies-recent', title: 'Recently Downloaded', type: 'movie', items: recentItems, sortOrder: 1 });
+              if (recentItems.length > 0) sections.push({ id: 'movies-recent', title: 'Ready to Watch', type: 'movie', items: recentItems, sortOrder: 1 });
               if (comingSoonItems.length > 0) sections.push({ id: 'movies-coming', title: 'Coming Soon', type: 'movie', items: comingSoonItems, sortOrder: 2 });
               if (sections.length === 0) return null;
               return (
