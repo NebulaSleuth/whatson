@@ -36,21 +36,25 @@ function mergeWithPlexState(item: ContentItem, plexIndex: Map<string, ContentIte
     return item;
   }
 
-  const plexItem = plexIndex.get(key);
-  if (!plexItem) return item;
+  const libraryItem = plexIndex.get(key);
+  if (!libraryItem) return item;
 
   return {
     ...item,
-    progress: plexItem.progress,
-    status: plexItem.progress.percentage > 0 && !plexItem.progress.watched
+    progress: libraryItem.progress,
+    status: libraryItem.progress.percentage > 0 && !libraryItem.progress.watched
       ? 'watching'
-      : plexItem.progress.watched
+      : libraryItem.progress.watched
         ? 'ready'
         : item.status,
-    artwork: plexItem.artwork.poster ? plexItem.artwork : item.artwork,
-    playbackUrl: plexItem.playbackUrl || item.playbackUrl,
-    source: 'plex',
-    sourceId: plexItem.sourceId,
+    artwork: libraryItem.artwork.poster ? libraryItem.artwork : item.artwork,
+    playbackUrl: libraryItem.playbackUrl || item.playbackUrl,
+    // Use the matched library's source — Plex / Jellyfin / Emby — so playback
+    // dispatch picks the right adapter. The old code hardcoded 'plex' which
+    // broke playback for Sonarr/Radarr items matched against a non-Plex
+    // server.
+    source: libraryItem.source,
+    sourceId: libraryItem.sourceId,
   };
 }
 
@@ -183,13 +187,20 @@ async function trackedTvToEpisodeItems(
 
 // ── Helpers ──
 
+/**
+ * Sort: in-progress (started but unwatched) first, then by addedAt descending
+ * so newly downloaded content surfaces at the top regardless of which library
+ * server it came from. Without the secondary key the shelf bunches by adapter
+ * order (Plex first, then Jellyfin, then Emby).
+ */
 function sortInProgressFirst(items: ContentItem[]): ContentItem[] {
   return [...items].sort((a, b) => {
     const aInProgress = a.progress.percentage > 0 && !a.progress.watched;
     const bInProgress = b.progress.percentage > 0 && !b.progress.watched;
-    if (aInProgress && !bInProgress) return -1;
-    if (!aInProgress && bInProgress) return 1;
-    return 0;
+    if (aInProgress !== bInProgress) return aInProgress ? -1 : 1;
+    const aTs = a.addedAt ? new Date(a.addedAt).getTime() : 0;
+    const bTs = b.addedAt ? new Date(b.addedAt).getTime() : 0;
+    return bTs - aTs;
   });
 }
 
@@ -334,12 +345,17 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
     ...trackedTvComingSoon,
   ].filter((i) => i.status === 'coming_soon' || i.status === 'downloading')))));
 
-  // Movies: ready to watch = Plex movies (not in Continue Watching) + Radarr downloads + tracked movies
+  // Movies: ready to watch = library-server movies (not in Continue Watching)
+  // + Radarr items that mergeWithPlexState already re-tagged to a library
+  // server source + tracked movies. We drop Radarr items that are still
+  // tagged 'radarr' after the merge — Radarr says they're downloaded but no
+  // configured library server has picked them up yet, so they're not
+  // playable through the app and surface a confusing dead card.
   const moviesReady = deduplicateById(
     filterWatched(
       sortInProgressFirst([
         ...recentPlex.filter((i) => i.type === 'movie' && !watchingIds.has(i.id)),
-        ...enrichedRadarrRecent,
+        ...enrichedRadarrRecent.filter((i) => i.source !== 'radarr'),
         ...trackedMovies,
       ]),
     ),
