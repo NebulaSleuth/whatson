@@ -319,21 +319,25 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const cached = getCached<ContentItem[]>(key);
     if (cached) return cached;
 
+    // We previously hit /Users/{userId}/Items/Latest, but Jellyfin and Emby
+    // apply per-library "show in latest / recently added" filtering on that
+    // endpoint — libraries with EnableLatestItems disabled (or excluded from
+    // the user's Home view) are silently dropped, so freshly added items in
+    // them never reach Ready-to-Watch even though they show on the Library
+    // tab. Use the generic /Items endpoint with Recursive + SortBy=DateCreated
+    // instead, which mirrors what the Library page sees.
     const items = await authedRequest(async (http, s) => {
-      const { data } = await http.get(`/Users/${s.userId}/Items/Latest`, {
+      const { data } = await http.get(`/Users/${s.userId}/Items`, {
         params: {
           IncludeItemTypes: 'Episode,Movie',
+          Recursive: true,
+          SortBy: 'DateCreated,SortName',
+          SortOrder: 'Descending',
           Fields: 'PrimaryImageAspectRatio,Overview,UserData,ParentBackdropImageTags,DateCreated,PremiereDate',
-          // GroupItems defaults to true, which collapses newly-added episodes
-          // into their parent Series — they then come back with Type='Series',
-          // get mapped to type:'show', and miss the aggregator's Ready-to-Watch
-          // TV filter (which requires type:'episode'). Force individual
-          // episodes; aggregator's oneEpisodePerShow collapses dupes downstream.
-          GroupItems: false,
           Limit: limit,
         },
       });
-      return (Array.isArray(data) ? data : data?.Items || []) as JfItem[];
+      return (data?.Items || []) as JfItem[];
     }).catch((err: Error) => {
       console.warn(`[${opts.label}] fetch failed:`, err.message);
       return [] as JfItem[];
