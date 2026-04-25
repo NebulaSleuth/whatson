@@ -14,7 +14,16 @@ export const artworkRouter = Router();
  * or an api_key query param. We do the latter so the proxy call is stateless.
  */
 async function buildFetchConfig(imageUrl: string): Promise<{ url: string; headers: Record<string, string> }> {
-  const headers: Record<string, string> = { Accept: 'image/*' };
+  // Tight Accept negotiation. The previous `image/*` let Plex/Jellyfin/Emby
+  // return WebP or AVIF, which Roku's `Poster` node silently drops — phone
+  // and TV clients re-decode either format fine, so the asymmetry only
+  // surfaces on Roku. Listing JPEG/PNG/GIF first with high q-values makes
+  // every upstream we know about negotiate down to a Roku-compatible
+  // format. */* fallback at low q keeps the proxy working against any
+  // unknown server that ignores Accept entirely.
+  const headers: Record<string, string> = {
+    Accept: 'image/jpeg, image/png;q=0.95, image/gif;q=0.9, image/*;q=0.6',
+  };
   let url = imageUrl;
 
   const attach = async (ensure: () => Promise<{ accessToken: string } | null>) => {
