@@ -27,22 +27,44 @@ function hasTmdbKey(): boolean {
 
 // ── TMDB Search ──
 
-async function searchTmdb(query: string): Promise<TmdbSearchResult[]> {
-  const { data } = await axios.get(`${TMDB_BASE_URL}/search/multi`, {
-    params: {
-      api_key: config.epg.tmdbApiKey,
-      query,
-      include_adult: false,
-      language: 'en-US',
-      page: 1,
-    },
+/**
+ * TMDB search. With no opts, hits /search/multi (the discover flow).
+ * Pass `type` to use the type-specific endpoint (/search/movie or /search/tv)
+ * and optionally `year` to disambiguate same-titled releases — the
+ * "Because you watched X" flow uses both so it doesn't pick the wrong
+ * franchise/remake/UK-vs-US-version when looking up the title.
+ */
+async function searchTmdb(
+  query: string,
+  opts: { type?: 'movie' | 'tv'; year?: number } = {},
+): Promise<TmdbSearchResult[]> {
+  const endpoint = opts.type === 'movie'
+    ? 'search/movie'
+    : opts.type === 'tv'
+      ? 'search/tv'
+      : 'search/multi';
+  const params: Record<string, unknown> = {
+    api_key: config.epg.tmdbApiKey,
+    query,
+    include_adult: false,
+    language: 'en-US',
+    page: 1,
+  };
+  if (opts.type === 'movie' && opts.year) params.year = opts.year;
+  if (opts.type === 'tv' && opts.year) params.first_air_date_year = opts.year;
+
+  const { data } = await axios.get(`${TMDB_BASE_URL}/${endpoint}`, {
+    params,
     timeout: 10000,
   });
 
   const results: TmdbSearchResult[] = [];
   for (const item of data.results || []) {
-    if (item.media_type !== 'movie' && item.media_type !== 'tv') continue;
-    const isMovie = item.media_type === 'movie';
+    // /search/multi returns media_type per row; type-specific endpoints don't
+    // — fall back to the explicit opts.type in that case.
+    const mediaType = (item.media_type as string | undefined) || opts.type;
+    if (mediaType !== 'movie' && mediaType !== 'tv') continue;
+    const isMovie = mediaType === 'movie';
     results.push({
       id: item.id,
       tmdbId: item.id,
@@ -165,8 +187,12 @@ export function isTmdbAvailable(): boolean {
 }
 
 /**
- * Get TMDB "similar" titles for a given movie or TV show.
- * Returns items not already in the user's Plex library.
+ * TMDB recommendations for a given movie/TV id.
+ *
+ * Hits `/recommendations`, not `/similar`. TMDB's `/similar` is shallow
+ * keyword + genre overlap, which produces a lot of "thrillers from the
+ * 2010s" filler. `/recommendations` is collaborative-filtering data
+ * (people-who-rated-X-also-liked-Y) and is noticeably more relevant.
  */
 export async function getTmdbSimilar(
   tmdbId: number,
@@ -175,7 +201,7 @@ export async function getTmdbSimilar(
   if (!hasTmdbKey()) return [];
 
   try {
-    const { data } = await axios.get(`${TMDB_BASE_URL}/${type}/${tmdbId}/similar`, {
+    const { data } = await axios.get(`${TMDB_BASE_URL}/${type}/${tmdbId}/recommendations`, {
       params: { api_key: config.epg.tmdbApiKey, page: 1 },
       timeout: 10000,
     });
@@ -204,21 +230,26 @@ export async function getTmdbSimilar(
  * Takes the user's recent watch history and finds similar titles.
  */
 export async function getTmdbRecommendations(
-  watchedItems: Array<{ title: string; tmdbId?: number; type: 'movie' | 'tv' }>,
+  watchedItems: Array<{ title: string; tmdbId?: number; type: 'movie' | 'tv'; year?: number }>,
 ): Promise<{ title: string; items: TmdbSearchResult[] }[]> {
   if (!hasTmdbKey() || watchedItems.length === 0) return [];
 
   const results: { title: string; items: TmdbSearchResult[] }[] = [];
   const seenIds = new Set<number>();
 
-  // Get similar for up to 5 recent items
+  // Get recommendations for up to 5 recent items
   for (const watched of watchedItems.slice(0, 5)) {
     let tmdbId = watched.tmdbId;
 
-    // If no TMDB ID, search for it
+    // If no TMDB ID, search for it. Type-specific endpoint plus year (when
+    // we have it) keeps us from picking the wrong "Avatar" / "It" / "The
+    // Office" — a very common cause of completely off-topic recs.
     if (!tmdbId) {
       try {
-        const searchResults = await searchTmdb(watched.title);
+        const searchResults = await searchTmdb(watched.title, {
+          type: watched.type,
+          year: watched.year,
+        });
         const match = searchResults.find(
           (r) => r.type === watched.type && r.title.toLowerCase() === watched.title.toLowerCase(),
         ) || searchResults[0];

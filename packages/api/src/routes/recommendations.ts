@@ -61,12 +61,16 @@ recommendationsRouter.get('/recommendations', async (req, res) => {
           plex.getLibrary('show', userToken).catch(() => []),
         ]);
 
-        // Current: items being watched now
+        // Current: items being watched now. We carry `year` for movies (TMDB
+        // disambiguation), but skip year for episodes — `item.year` on an
+        // episode is the episode's air year, not the show's first-aired year,
+        // so passing it to TMDB's tv search hurts more than it helps.
         const currentItems = [...continueWatching, ...onDeck]
           .filter((item) => item.type === 'episode' || item.type === 'movie')
           .map((item) => ({
             title: item.showTitle || item.title,
             type: (item.type === 'episode' ? 'tv' : 'movie') as 'movie' | 'tv',
+            year: item.type === 'movie' ? (item.year || undefined) : undefined,
           }));
 
         // Recent: items watched in the last 90 days from library
@@ -77,6 +81,7 @@ recommendationsRouter.get('/recommendations', async (req, res) => {
           .map((item) => ({
             title: item.showTitle || item.title,
             type: (item.type === 'episode' ? 'tv' : item.type === 'show' ? 'tv' : 'movie') as 'movie' | 'tv',
+            year: item.type === 'movie' ? (item.year || undefined) : undefined,
           }));
 
         // Merge and deduplicate — current first, then recent
