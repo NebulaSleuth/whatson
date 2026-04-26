@@ -646,7 +646,19 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
     } catch {}
   }
 
-  if (subtitleStreamID != null) transcodeParams.subtitles = 'burn';
+  // Pass the explicit stream IDs to the transcode URL too — the
+  // /library/parts PUT updates the persisted default, but Plex's
+  // universal transcode honours its own request params over the
+  // session DB on a fresh session, which is what Roku is hitting
+  // every time we re-issue.
+  if (audioStreamID != null) transcodeParams.audioStreamID = String(audioStreamID);
+  if (subtitleStreamID != null) {
+    transcodeParams.subtitleStreamID = String(subtitleStreamID);
+    // subtitleStreamID=0 means "off" — burning stream 0 falls back to
+    // whatever the previous selection was, which is exactly the bug
+    // users hit when they tried to turn subtitles off.
+    transcodeParams.subtitles = subtitleStreamID === 0 ? 'none' : 'burn';
+  }
 
   try {
     await axios.get(`${serverUrl}/video/:/transcode/universal/decision`, {
