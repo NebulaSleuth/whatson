@@ -314,7 +314,7 @@ sub reportProgress(stopped as boolean)
         duration: duration,
         state: state,
         sessionId: m.playbackInfo.sessionId,
-        source: m.selectedItem.itemSource,
+        source: m.selectedItem.itemSource
     }
 
     progress = CreateObject("roSGNode", "ApiTask")
@@ -328,13 +328,14 @@ sub sendStop()
     if m.playbackInfo = invalid or m.selectedItem = invalid then return
     body = {
         sessionId: m.playbackInfo.sessionId,
-        source: m.selectedItem.itemSource,
+        source: m.selectedItem.itemSource
     }
-    stop = CreateObject("roSGNode", "ApiTask")
-    stop.method = "POST"
-    stop.url = m.apiUrl + "/api/playback/stop"
-    stop.body = FormatJson(body)
-    stop.control = "RUN"
+    ' `stop` would shadow the BrightScript reserved word — use stopTask.
+    stopTask = CreateObject("roSGNode", "ApiTask")
+    stopTask.method = "POST"
+    stopTask.url = m.apiUrl + "/api/playback/stop"
+    stopTask.body = FormatJson(body)
+    stopTask.control = "RUN"
 end sub
 
 sub stopPlayback()
