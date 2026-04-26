@@ -253,6 +253,42 @@ Four stages, manual trigger only:
 
 Installs Java 17 + Android SDK (platform 36, build-tools 36.0.0). Keystore comes from pipeline secrets. `scripts/patch-signing.py` patches Gradle for CI signing.
 
+### Shipping a backend release
+
+When the user asks to "deploy the backend" or "ship a release", run the full pipeline — version bump, commit, push, build the installer, publish a GitHub release. The Windows in-channel updater polls `https://api.github.com/repos/<repo>/releases/latest` and installs whatever asset matches `*setup.exe`, so the GitHub release IS the deploy mechanism. Don't stop at "commit and push" — that doesn't reach the running services.
+
+```bash
+# 1. Bump version IN TWO PLACES (this matters — see updater note below):
+#    a. packages/api/package.json   "version": "0.1.NN"
+#    b. packages/shared/src/constants.ts   APP_VERSION = '0.1.NN'
+#    The updater compares the running binary's APP_VERSION (baked from
+#    constants.ts at build time) against the GitHub tag. If you bump
+#    only package.json, the binary reports its OLD version forever and
+#    the updater re-installs the same release in a loop on every poll.
+
+# 2. Stage backend files only — Roku/mobile work-in-progress stays local.
+git add packages/api/package.json packages/shared/src/constants.ts packages/api/src/... package-lock.json
+
+# 3. Commit + push
+git commit -m "v0.1.NN — short description" -m "longer body"
+git push origin main
+
+# 4. Build installer (NSIS Windows installer + portable zip + standalone exe)
+npm run build:installer
+# Outputs to packages/api/installers/:
+#   whatson-api-<version>-setup.exe         ← what the updater picks up
+#   whatson-api-<version>-win32-portable.zip
+
+# 5. Cut the GitHub release with both assets attached
+gh release create v0.1.NN \
+  packages/api/installers/whatson-api-0.1.NN-setup.exe \
+  packages/api/installers/whatson-api-0.1.NN-win32-portable.zip \
+  --title "v0.1.NN — short description" \
+  --notes "<full body>"
+```
+
+The updater (`packages/api/src/services/updater.ts`) finds the release within minutes. NSIS installer brings down the running NSSM service, swaps the binary, and brings it back — no manual restart needed on user machines.
+
 ### Running locally
 
 ```bash
