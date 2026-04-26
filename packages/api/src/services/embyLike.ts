@@ -515,12 +515,31 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       VideoCodec: 'h264',
       AudioCodec: 'aac,mp3',
       Container: 'ts',
-      SubtitleMethod: 'Encode',
       MaxStreamingBitrate: String((playOpts.maxBitrate || 20000) * 1000),
       StartTimeTicks: String(startTicks),
     };
-    if (playOpts.subtitleStreamID != null) streamParams.SubtitleStreamIndex = String(playOpts.subtitleStreamID);
+    // Jellyfin/Emby use SubtitleStreamIndex=-1 for "no subtitle".
+    // Our clients pass 0 as the "off" sentinel — translate it.
+    // SubtitleMethod=Encode burns the subtitle into the video, which
+    // we only want when there's actually a subtitle to burn. For
+    // off, we omit SubtitleMethod so the encoder doesn't try to burn
+    // an absent stream.
+    if (playOpts.subtitleStreamID != null) {
+      const subId = playOpts.subtitleStreamID;
+      if (subId === 0 || subId < 0) {
+        streamParams.SubtitleStreamIndex = '-1';
+      } else {
+        streamParams.SubtitleStreamIndex = String(subId);
+        streamParams.SubtitleMethod = 'Encode';
+      }
+    } else {
+      // No explicit choice — let Jellyfin pick its default (which it
+      // does via IsDefault on the source's MediaStreams). Burn it.
+      streamParams.SubtitleMethod = 'Encode';
+    }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
+
+    console.log(`[${opts.label}] playback streamParams: SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'}`);
 
     const streamUrl = axios.getUri({
       url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
