@@ -253,6 +253,22 @@ Four stages, manual trigger only:
 
 Installs Java 17 + Android SDK (platform 36, build-tools 36.0.0). Keystore comes from pipeline secrets. `scripts/patch-signing.py` patches Gradle for CI signing.
 
+### User's running backend
+
+The user's backend lives at **`http://192.168.1.181:3001`** on their LAN. When you need to inspect runtime state mid-debug — backend logs, current update status, the resolved API URL Roku is hitting, etc. — fetch directly from there with `WebFetch` rather than asking the user to copy-paste.
+
+Useful endpoints:
+
+- `GET /api/health` — quick liveness + version check
+- `GET /api/update/status` — currentVersion, latestVersion, updateAvailable
+- `GET /api/logs` — last 200 lines of the backend log (text/plain)
+- `GET /api/logs?lines=500` — bigger tail, max 5000
+- `GET /api/logs?filter=plex.subs` — only lines containing the filter string (great for tag-prefixed log lines we sprinkle in)
+- `GET /api/logs/info` — log file path + size + last-modified, for sanity-checking logging is alive
+- `GET /api/config/status` — provider config status (which media servers are configured, etc.)
+
+The user's network is local-only and unauthenticated. No tokens needed.
+
 ### Shipping a backend release
 
 When the user asks to "deploy the backend" or "ship a release", run the full pipeline — version bump, commit, push, build the installer, publish a GitHub release. The Windows in-channel updater polls `https://api.github.com/repos/<repo>/releases/latest` and installs whatever asset matches `*setup.exe`, so the GitHub release IS the deploy mechanism. Don't stop at "commit and push" — that doesn't reach the running services.
