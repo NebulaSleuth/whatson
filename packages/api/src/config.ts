@@ -132,6 +132,17 @@ export function saveConfigToEnv(values: Record<string, string>): void {
   const dir = dirname(envPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(envPath, lines.join('\n'));
+
+  // Mirror the values into the running process's env so the next
+  // reloadConfig() actually sees them. Without this, the hash sits on
+  // disk but loadConfig() keeps reading process.env's old empty
+  // string until restart — which is why the admin password setup
+  // looked like it succeeded but didn't persist for the next /setup
+  // visit.
+  for (const [key, val] of Object.entries(values)) {
+    process.env[key] = val;
+  }
+
   console.log(`[Config] Saved config to ${envPath}`);
 }
 
