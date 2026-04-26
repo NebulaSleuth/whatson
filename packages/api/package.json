@@ -1,6 +1,6 @@
 {
   "name": "@whatson/api",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "private": true,
   "main": "./dist/index.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^5.1.0",
+    "jimp": "^1.6.1",
     "node-cache": "^5.1.2",
     "ws": "^8.20.0"
   },
