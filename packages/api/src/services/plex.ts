@@ -653,11 +653,16 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
   // every time we re-issue.
   if (audioStreamID != null) transcodeParams.audioStreamID = String(audioStreamID);
   if (subtitleStreamID != null) {
-    transcodeParams.subtitleStreamID = String(subtitleStreamID);
-    // subtitleStreamID=0 means "off" — burning stream 0 falls back to
-    // whatever the previous selection was, which is exactly the bug
-    // users hit when they tried to turn subtitles off.
-    transcodeParams.subtitles = subtitleStreamID === 0 ? 'none' : 'burn';
+    if (subtitleStreamID === 0) {
+      // OFF — do NOT pass subtitleStreamID=0 to the transcode URL.
+      // Some Plex builds interpret 0 as "use existing default" rather
+      // than "no subtitle" and re-burn whatever was selected before.
+      // `subtitles=none` alone is the unambiguous off signal.
+      transcodeParams.subtitles = 'none';
+    } else {
+      transcodeParams.subtitleStreamID = String(subtitleStreamID);
+      transcodeParams.subtitles = 'burn';
+    }
   }
 
   try {
