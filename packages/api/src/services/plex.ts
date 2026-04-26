@@ -636,23 +636,29 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
     'X-Plex-Platform': 'Chrome',
   };
 
-  // Stream-level selection — `/library/streams/{id}?selected=0|1` is
-  // the unambiguous Plex API. The older part-level
-  // `/library/parts/{partId}?subtitleStreamID=0` doesn't reliably
-  // clear the persisted selection on every Plex build (notably for
-  // ASS subtitles flagged as Default), so we deselect every subtitle
-  // stream individually and only enable the chosen one (or none).
+  // Stream-level selection with diagnostics. We've now tried:
+  //   v0.1.30: subtitleStreamID=0 + subtitles=none on transcode
+  //   v0.1.31: subtitles=none, no subtitleStreamID on transcode
+  //   v0.1.32: per-stream selected=0 PUT to deselect
+  // ...and Off still doesn't take effect on at least one user's setup.
+  // Logging here so we can see whether the PUTs are actually returning
+  // 200, what params Plex sees, and whether the transcode URL ends up
+  // with the expected subtitles=none.
   if (Array.isArray(streams)) {
     if (subtitleStreamID != null) {
       const subStreams = streams.filter((s: any) => s.streamType === 3);
+      console.log(`[plex.subs] target subtitleStreamID=${subtitleStreamID}, streams=[${subStreams.map((s: any) => `${s.id}:${s.displayTitle || s.language}${s.selected === 1 ? '(SEL)' : ''}`).join(', ')}]`);
       for (const s of subStreams) {
         const target = subtitleStreamID === 0 ? '0' : (s.id === subtitleStreamID ? '1' : '0');
         try {
-          await axios.put(`${serverUrl}/library/streams/${s.id}`, null, {
+          const resp = await axios.put(`${serverUrl}/library/streams/${s.id}`, null, {
             params: { selected: target, 'X-Plex-Token': token },
             timeout: 5000,
           });
-        } catch {}
+          console.log(`[plex.subs] stream ${s.id} → selected=${target} :: ${resp.status}`);
+        } catch (err: any) {
+          console.warn(`[plex.subs] stream ${s.id} → selected=${target} FAILED:`, err?.response?.status, err?.message);
+        }
       }
     }
     if (audioStreamID != null) {
@@ -669,16 +675,18 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
     }
   }
 
-  // Also do the part-level PUT as belt-and-suspenders — older Plex
-  // builds may only honour this one and the calls are idempotent.
+  // Belt-and-suspenders: the part-level PUT for older Plex builds.
   const partId = part?.id;
   if (partId && (audioStreamID != null || subtitleStreamID != null)) {
     try {
       const partParams: Record<string, string> = { 'X-Plex-Token': token };
       if (audioStreamID != null) partParams.audioStreamID = String(audioStreamID);
       if (subtitleStreamID != null) partParams.subtitleStreamID = String(subtitleStreamID);
-      await axios.put(`${serverUrl}/library/parts/${partId}`, null, { params: partParams, timeout: 5000 });
-    } catch {}
+      const resp = await axios.put(`${serverUrl}/library/parts/${partId}`, null, { params: partParams, timeout: 5000 });
+      console.log(`[plex.subs] part ${partId} PUT subtitleStreamID=${subtitleStreamID} :: ${resp.status}`);
+    } catch (err: any) {
+      console.warn(`[plex.subs] part ${partId} PUT FAILED:`, err?.response?.status, err?.message);
+    }
   }
 
   // Pass the explicit stream IDs to the transcode URL too — the
@@ -712,6 +720,7 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
     url: `${serverUrl}/video/:/transcode/universal/start.m3u8`,
     params: transcodeParams,
   });
+  console.log(`[plex.subs] transcode params: subtitles=${transcodeParams.subtitles} subtitleStreamID=${transcodeParams.subtitleStreamID || '(not set)'} audioStreamID=${transcodeParams.audioStreamID || '(not set)'}`);
 
   const directPlayUrl = part?.key
     ? `${serverUrl}${part.key}?X-Plex-Token=${config.plex.token}`
