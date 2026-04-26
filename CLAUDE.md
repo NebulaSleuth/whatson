@@ -1,17 +1,18 @@
 # Whats On — Architecture & Contributor Guide
 
-A cross-platform "what should I watch tonight?" app that unifies Plex, Sonarr, Radarr, TMDB, and TVmaze into a Netflix-style home experience. Runs on Android, iOS, Android TV, Apple TV today; Windows and Roku planned.
+A cross-platform "what should I watch tonight?" app that unifies Plex, Sonarr, Radarr, TMDB, and TVmaze into a Netflix-style home experience. Runs on Android, iOS, Android TV, Apple TV today; Roku spike in progress; Windows planned.
 
-See `plan.md` for phase-by-phase status. This file describes the architecture that is actually in code.
+See `plan.md` for mobile phase-by-phase status and `apps/roku/PLAN.md` for the Roku roadmap. This file describes the architecture that is actually in code.
 
 ---
 
 ## Monorepo Layout
 
-npm workspaces at the root. Three workspaces:
+npm workspaces at the root. Four workspaces:
 
 ```
 apps/mobile            React Native (Expo) app — phone + TV
+apps/roku              SceneGraph / BrightScript channel
 packages/api           Node + Express backend
 packages/shared        Shared TypeScript types + constants
 ```
@@ -283,3 +284,4 @@ Set `EXPO_PUBLIC_API_URL` for the mobile app if the backend isn't on `localhost:
 8. **`X-Plex-Connection: local|remote`** lets Plex pick the best link; the app tracks this in Zustand (`plexConnectionType`) and sends it on every request. Jellyfin/Emby use a single URL — header is ignored for those sources.
 9. **Client passes `source` with every library call** (`?source=plex|jellyfin|emby` on library/playback, `source` in scrobble bodies). Backends default to Plex when missing, for back-compat with pre-adapter clients.
 10. **Android detail sheets use `Modal`, not a custom portal.** Non-modal implementations render invisibly on Android.
+11. **Roku must match Android TV / tvOS — features, look, and feel.** The mobile TV apps are the design reference for the Roku channel. Tabs, shelves, defaults (sort orders, type toggles, time windows), focus colour (`#E5A00D`), poster aspect ratios, detail-sheet actions — all should look and behave like the user's tvOS / Android TV experience. When a Roku platform constraint forces a divergence (e.g. SceneGraph lacks an exact equivalent), record it in `apps/roku/PLAN.md` and treat closing the gap as a follow-up, not a permanent decision. Don't invent Roku-only UX patterns. See `apps/roku/PLAN.md §1` for the full parity commitments.

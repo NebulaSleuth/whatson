@@ -4,13 +4,38 @@ This document is the architecture and delivery plan for the Roku client. It assu
 
 ---
 
-## 1. Goals
+## 1. Goals — Roku must match Android TV / tvOS
 
-- Feature parity with the phone/TV mobile client for the core flows: Home, TV Shows, Movies, Library, Search, Sports, and Settings.
-- Reuse the `:3001` HTTP API verbatim. Zero backend changes to ship the Roku client.
-- Same per-user, multi-server (Plex / Jellyfin / Emby) behaviour. Same `X-Plex-User` / `X-Plex-Connection` header conventions.
-- Native HLS playback with subtitle and audio track switching. Resume on stop.
-- Acceptable performance on a 2017-era Roku Express (lowest-common-denominator target).
+**The Android TV (`com.whatson.tv`) and tvOS apps are the design reference.**
+Every screen, every interaction, every default value the Roku channel ships
+should match what the user sees on those builds. When the implementation
+forces a divergence (Roku platform constraint, missing SceneGraph primitive),
+note the divergence in this plan and treat closing the gap as a follow-up,
+not a permanent decision.
+
+Concrete commitments:
+
+- **Feature set** — same tabs (Home / TV Shows / Movies / Library / Search /
+  Sports / Settings), same shelves on Home (Continue Watching, Ready to
+  Watch — TV/Movies, Coming Soon — TV/Movies, Sports On Now / Later, "What's
+  on TV"), same detail-sheet actions (Play, Mark Watched, Mark Unwatched,
+  Add to Sonarr/Radarr).
+- **Defaults** — Library tab opens to TV Shows sorted A-Z; Sports On Later
+  shows 7 days; Continue Watching items excluded from Ready to Watch;
+  one-card-per-show on TV shelves. Same defaults the mobile aggregator
+  produces — no Roku-only divergence.
+- **Data flow** — reuse the `:3001` HTTP API verbatim, including the union
+  across all configured library servers. Zero backend changes to ship the
+  Roku client. Same `X-Plex-User` / `X-Plex-Connection` headers; same
+  per-user multi-server behaviour.
+- **Look** — gold accent (`#E5A00D`) for focus + brand mark, matching the
+  mobile theme. Posters at the same 2:3 aspect ratio. Team-coloured sports
+  cards. Live "LIVE" pill with white dot.
+- **Playback** — native HLS via Roku's `Video` node, subtitle + audio
+  switching, intro/credits skip, position resume, periodic progress
+  reporting. Same scrobble flow.
+- **Performance** — acceptable on a 2017-era Roku Express
+  (lowest-common-denominator target).
 
 ## 2. Non-goals (initial release)
 
