@@ -1,16 +1,17 @@
 import type { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import { verifyAuthKey } from '../services/pairing.js';
+import { verifySessionCookie } from '../services/session.js';
 
 /**
- * Per-device API auth via the `X-Whatson-Auth` header.
+ * Per-device API auth, gated on the admin password being set.
  *
- * Enforcement is gated on the admin password being set:
  *  - No admin password configured → open mode. Backend behaves like
  *    older releases (any LAN client works without an auth key).
- *  - Admin password set → every /api/* request needs a valid auth
- *    key, except the allowlist below: health checks and the auth
- *    flow itself need to work for unpaired clients to onboard.
+ *  - Admin password set → every /api/* request needs EITHER a valid
+ *    session cookie (admin browsing /setup) OR a valid auth key
+ *    (paired device), except the allowlist below: health checks and
+ *    the auth flow itself need to work for unpaired clients to onboard.
  *
  * Allowlist endpoints are matched on path SUFFIX since this runs
  * after the `/api` prefix is stripped.
@@ -42,10 +43,20 @@ export async function apiAuth(req: Request, res: Response, next: NextFunction): 
     return;
   }
 
+  // Admin sessions (cookie set by POST /api/auth/login) bypass the
+  // device-key check — the /setup page needs to call /api/config/save,
+  // /api/auth/devices, etc. without holding a paired auth key.
+  if (verifySessionCookie(req.headers.cookie)) {
+    next();
+    return;
+  }
+
   const headerVal = req.headers['x-whatson-auth'];
   const presented = Array.isArray(headerVal) ? headerVal[0] : headerVal;
   if (!presented) {
-    res.status(401).json({ success: false, error: 'Missing X-Whatson-Auth header. Pair this device via /setup.' });
+    res
+      .status(401)
+      .json({ success: false, error: 'Authentication required. Sign in to /setup or pair this device.' });
     return;
   }
   const device = await verifyAuthKey(presented);
