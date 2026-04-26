@@ -636,6 +636,41 @@ export async function getPlaybackInfo(ratingKey: string, opts: PlaybackOpts): Pr
     'X-Plex-Platform': 'Chrome',
   };
 
+  // Stream-level selection — `/library/streams/{id}?selected=0|1` is
+  // the unambiguous Plex API. The older part-level
+  // `/library/parts/{partId}?subtitleStreamID=0` doesn't reliably
+  // clear the persisted selection on every Plex build (notably for
+  // ASS subtitles flagged as Default), so we deselect every subtitle
+  // stream individually and only enable the chosen one (or none).
+  if (Array.isArray(streams)) {
+    if (subtitleStreamID != null) {
+      const subStreams = streams.filter((s: any) => s.streamType === 3);
+      for (const s of subStreams) {
+        const target = subtitleStreamID === 0 ? '0' : (s.id === subtitleStreamID ? '1' : '0');
+        try {
+          await axios.put(`${serverUrl}/library/streams/${s.id}`, null, {
+            params: { selected: target, 'X-Plex-Token': token },
+            timeout: 5000,
+          });
+        } catch {}
+      }
+    }
+    if (audioStreamID != null) {
+      const audStreams = streams.filter((s: any) => s.streamType === 2);
+      for (const s of audStreams) {
+        const target = s.id === audioStreamID ? '1' : '0';
+        try {
+          await axios.put(`${serverUrl}/library/streams/${s.id}`, null, {
+            params: { selected: target, 'X-Plex-Token': token },
+            timeout: 5000,
+          });
+        } catch {}
+      }
+    }
+  }
+
+  // Also do the part-level PUT as belt-and-suspenders — older Plex
+  // builds may only honour this one and the calls are idempotent.
   const partId = part?.id;
   if (partId && (audioStreamID != null || subtitleStreamID != null)) {
     try {
