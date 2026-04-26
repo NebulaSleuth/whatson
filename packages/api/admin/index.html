@@ -240,10 +240,80 @@
   </style>
 </head>
 <body>
-  <div class="container">
+  <!-- Auth gate. Shown until /api/auth/admin-status reports we're
+       logged in (or no admin password is set yet). -->
+  <div id="auth-gate" style="display:none">
+    <div class="container">
+      <div class="header">
+        <h1>Whats On</h1>
+        <p id="auth-gate-sub">Server Configuration</p>
+      </div>
+
+      <div class="card" id="auth-setup-card" style="display:none">
+        <div class="card-header"><h2>Set up admin password</h2></div>
+        <p style="color:#aaa;margin-bottom:12px">Pick a password to protect this server's settings. You'll use it to pair new devices.</p>
+        <div class="form-row">
+          <label>New password (min 8 characters)</label>
+          <input type="password" id="setup-password" autocomplete="new-password" />
+        </div>
+        <div class="form-row">
+          <label>Confirm password</label>
+          <input type="password" id="setup-password-confirm" autocomplete="new-password" />
+        </div>
+        <button class="btn btn-primary" onclick="setupAdmin()">Save and continue</button>
+        <div id="setup-msg" style="color:#ff7777;margin-top:12px"></div>
+      </div>
+
+      <div class="card" id="auth-login-card" style="display:none">
+        <div class="card-header"><h2>Admin login</h2></div>
+        <div class="form-row">
+          <label>Password</label>
+          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <button class="btn btn-primary" onclick="doLogin()">Log in</button>
+        <div id="login-msg" style="color:#ff7777;margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container" id="main-container" style="display:none">
     <div class="header">
       <h1>Whats On</h1>
       <p>Server Configuration</p>
+      <div style="margin-top:8px"><a href="#" onclick="doLogout(event)" style="color:#888;font-size:12px">Log out</a></div>
+    </div>
+
+    <!-- Security & Devices -->
+    <div class="card" id="security-card">
+      <div class="card-header"><h2>Security &amp; Devices</h2></div>
+
+      <h3 style="margin-bottom:8px;color:#ccc;font-size:14px">Pair a new device</h3>
+      <p style="color:#888;font-size:13px;margin-bottom:12px">Enter the 6-digit code shown on your TV / phone. The device will pick up the auth key on its next poll.</p>
+      <div class="form-row">
+        <label>Pair code</label>
+        <input type="text" id="pair-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" />
+      </div>
+      <div class="form-row">
+        <label>Device label (optional)</label>
+        <input type="text" id="pair-label" placeholder="Living Room Roku" />
+      </div>
+      <button class="btn btn-primary" onclick="completePair()">Pair this device</button>
+      <div id="pair-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+
+      <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">Paired devices</h3>
+      <div id="devices-list" style="color:#888;font-size:13px">Loading…</div>
+
+      <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">Change admin password</h3>
+      <div class="form-row">
+        <label>Current password</label>
+        <input type="password" id="change-old" autocomplete="current-password" />
+      </div>
+      <div class="form-row">
+        <label>New password</label>
+        <input type="password" id="change-new" autocomplete="new-password" />
+      </div>
+      <button class="btn btn-secondary" onclick="changePassword()">Update password</button>
+      <div id="change-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
     </div>
 
     <!-- Plex -->
@@ -798,9 +868,161 @@
       }
     }
 
+    // ── Auth gate / pairing ──
+
+    async function bootAuthGate() {
+      try {
+        const status = await fetch(API + '/auth/admin-status').then(r => r.json());
+        const has = status?.data?.hasAdminPassword;
+        if (!has) {
+          // No admin password yet → first-run setup screen.
+          show('auth-gate'); show('auth-setup-card'); hide('auth-login-card'); hide('main-container');
+          return;
+        }
+        // Has admin password — try a session-protected endpoint to see if we're already logged in.
+        const ping = await fetch(API + '/auth/devices', { credentials: 'same-origin' });
+        if (ping.ok) {
+          showMain();
+          return;
+        }
+        show('auth-gate'); hide('auth-setup-card'); show('auth-login-card'); hide('main-container');
+      } catch (e) {
+        show('auth-gate'); hide('auth-setup-card'); show('auth-login-card');
+        const msg = document.getElementById('login-msg');
+        if (msg) msg.textContent = 'Failed to talk to the server: ' + e.message;
+      }
+    }
+
+    function show(id) { const el = document.getElementById(id); if (el) el.style.display = ''; }
+    function hide(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+
+    function showMain() {
+      hide('auth-gate');
+      show('main-container');
+      // Refresh main-screen state when entering the secured UI.
+      if (typeof loadStatus === 'function') loadStatus();
+      if (typeof loadUpdateStatus === 'function') loadUpdateStatus();
+      loadDevices();
+    }
+
+    async function setupAdmin() {
+      const pw = document.getElementById('setup-password').value;
+      const confirm = document.getElementById('setup-password-confirm').value;
+      const msg = document.getElementById('setup-msg');
+      msg.textContent = '';
+      if (pw.length < 8) { msg.textContent = 'Password must be at least 8 characters.'; return; }
+      if (pw !== confirm) { msg.textContent = 'Passwords don\'t match.'; return; }
+      try {
+        const r = await fetch(API + '/auth/setup-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ password: pw }),
+        }).then(r => r.json());
+        if (!r.success) { msg.textContent = r.error || 'Setup failed.'; return; }
+        showMain();
+      } catch (e) { msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    async function doLogin() {
+      const pw = document.getElementById('login-password').value;
+      const msg = document.getElementById('login-msg');
+      msg.textContent = '';
+      try {
+        const r = await fetch(API + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ password: pw }),
+        }).then(r => r.json());
+        if (!r.success) { msg.textContent = r.error || 'Login failed.'; return; }
+        showMain();
+      } catch (e) { msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    async function doLogout(ev) {
+      if (ev) ev.preventDefault();
+      try { await fetch(API + '/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+      hide('main-container');
+      bootAuthGate();
+    }
+
+    async function loadDevices() {
+      const list = document.getElementById('devices-list');
+      try {
+        const r = await fetch(API + '/auth/devices', { credentials: 'same-origin' }).then(r => r.json());
+        const items = r?.data || [];
+        if (items.length === 0) { list.innerHTML = '<em style="color:#666">No devices paired yet.</em>'; return; }
+        list.innerHTML = items.map(d => {
+          const seen = d.lastSeenAt ? 'last seen ' + new Date(d.lastSeenAt).toLocaleString() : 'never seen';
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #2a2a2a">
+            <div>
+              <div style="color:#ddd">${escapeHtml(d.label)}</div>
+              <div style="color:#666;font-size:12px">paired ${new Date(d.createdAt).toLocaleDateString()} · ${seen}</div>
+            </div>
+            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="revokeDevice('${d.id}')">Revoke</button>
+          </div>`;
+        }).join('');
+      } catch (e) { list.textContent = 'Failed to load devices: ' + e.message; }
+    }
+
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])); }
+
+    async function revokeDevice(id) {
+      if (!confirm('Revoke this device? It will need to pair again.')) return;
+      try {
+        await fetch(API + '/auth/devices/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' });
+        loadDevices();
+      } catch (e) { alert('Revoke failed: ' + e.message); }
+    }
+
+    async function completePair() {
+      const code = document.getElementById('pair-code').value.trim();
+      const label = document.getElementById('pair-label').value.trim();
+      const msg = document.getElementById('pair-msg');
+      msg.style.color = '#aaa';
+      msg.textContent = '';
+      if (!/^\d{6}$/.test(code)) { msg.style.color = '#ff7777'; msg.textContent = 'Enter the 6-digit code.'; return; }
+      try {
+        const r = await fetch(API + '/auth/pair/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ code, label }),
+        }).then(r => r.json());
+        if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Pair failed.'; return; }
+        msg.style.color = '#77ff77';
+        msg.textContent = 'Paired. The device should pick up its auth key within a few seconds.';
+        document.getElementById('pair-code').value = '';
+        document.getElementById('pair-label').value = '';
+        loadDevices();
+      } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    async function changePassword() {
+      const oldPw = document.getElementById('change-old').value;
+      const newPw = document.getElementById('change-new').value;
+      const msg = document.getElementById('change-msg');
+      msg.style.color = '#aaa';
+      msg.textContent = '';
+      if (newPw.length < 8) { msg.style.color = '#ff7777'; msg.textContent = 'New password must be at least 8 characters.'; return; }
+      try {
+        const r = await fetch(API + '/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+        }).then(r => r.json());
+        if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Update failed.'; return; }
+        msg.style.color = '#77ff77';
+        msg.textContent = 'Password updated.';
+        document.getElementById('change-old').value = '';
+        document.getElementById('change-new').value = '';
+      } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
+    }
+
     // ── Init ──
-    loadStatus();
-    loadUpdateStatus();
+    bootAuthGate();
   </script>
 </body>
 </html>

@@ -59,6 +59,10 @@ function loadConfig(): AppConfig {
       repo: process.env.UPDATE_REPO || 'NebulaSleuth/whatson',
       channel: (process.env.UPDATE_CHANNEL as 'stable' | 'prerelease') || 'stable',
     },
+    auth: {
+      adminPasswordHash: (process.env.ADMIN_PASSWORD_HASH || '').trim(),
+      sessionSecret: (process.env.WHATSON_SESSION_SECRET || '').trim(),
+    },
   };
 }
 

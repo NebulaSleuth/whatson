@@ -68,6 +68,7 @@ import { sportsRouter } from './routes/sports.js';
 import { logsRouter } from './routes/logs.js';
 import { startUpdateScheduler } from './services/updater.js';
 import { userContext } from './middleware/userContext.js';
+import { apiAuth } from './middleware/apiAuth.js';
 import { initWebSocket } from './ws.js';
 
 const app = express();
@@ -95,6 +96,10 @@ app.use('/setup', setupRouter);
 
 // User context middleware — sets per-user Plex token and data paths
 app.use('/api', userContext);
+
+// X-Whatson-Auth gate — enforced when ADMIN_PASSWORD_HASH is set,
+// otherwise no-op (so existing installs upgrade without breakage).
+app.use('/api', apiAuth);
 
 // Routes
 app.use('/api', usersRouter);

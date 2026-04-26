@@ -213,6 +213,13 @@ export interface UpdateConfig {
   channel: 'stable' | 'prerelease';
 }
 
+export interface AuthConfig {
+  /** bcrypt hash of the admin password. Empty string = no password set, security disabled. */
+  adminPasswordHash: string;
+  /** HMAC secret for signing /setup admin session cookies. Auto-generated on first run if missing. */
+  sessionSecret: string;
+}
+
 export interface ServerConfig {
   plex: PlexConfig;
   jellyfin: JellyfinConfig;
@@ -221,6 +228,7 @@ export interface ServerConfig {
   radarr: RadarrConfig;
   epg: EpgConfig;
   update: UpdateConfig;
+  auth: AuthConfig;
 }
 
 // ── API Request/Response ──
