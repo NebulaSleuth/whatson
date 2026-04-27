@@ -172,22 +172,40 @@ export async function downloadAndApply(): Promise<{ started: boolean; reason?: s
   const tempPath = join(tempDir, `whatson-update-${Date.now()}.exe`);
 
   console.log(`[Updater] Downloading ${downloadUrl} → ${tempPath}`);
-  try {
-    const response = await axios.get(downloadUrl, {
-      responseType: 'stream',
-      timeout: 5 * 60 * 1000,
-      headers: { 'User-Agent': 'whatson-api' },
-    });
-    const writer = createWriteStream(tempPath);
-    await new Promise<void>((resolve, reject) => {
-      response.data.pipe(writer);
-      writer.on('finish', () => resolve());
-      writer.on('error', reject);
-      response.data.on('error', reject);
-    });
-  } catch (error) {
-    const msg = (error as Error).message;
-    console.error(`[Updater] Download failed: ${msg}`);
+  // GitHub's release-asset CDN occasionally returns 502/503 for ~10s
+  // right after a release publishes. Retry transient upstream errors
+  // a few times with a short backoff before giving up.
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      const response = await axios.get(downloadUrl, {
+        responseType: 'stream',
+        timeout: 5 * 60 * 1000,
+        headers: { 'User-Agent': 'whatson-api' },
+      });
+      const writer = createWriteStream(tempPath);
+      await new Promise<void>((resolve, reject) => {
+        response.data.pipe(writer);
+        writer.on('finish', () => resolve());
+        writer.on('error', reject);
+        response.data.on('error', reject);
+      });
+      lastErr = null;
+      break;
+    } catch (error) {
+      lastErr = error as Error;
+      const status = (error as { response?: { status?: number } }).response?.status;
+      const transient = status !== undefined && status >= 500 && status < 600;
+      const isLast = attempt === 4;
+      console.warn(`[Updater] Download attempt ${attempt} failed (${status ?? 'no-status'}): ${lastErr.message}`);
+      if (!transient || isLast) break;
+      // 1s, 3s, 5s backoff. Total ceiling ~9s on top of the initial.
+      await new Promise((r) => setTimeout(r, attempt * 2000 - 1000));
+    }
+  }
+  if (lastErr) {
+    const msg = lastErr.message;
+    console.error(`[Updater] Download failed after retries: ${msg}`);
     return { started: false, reason: msg };
   }
 
