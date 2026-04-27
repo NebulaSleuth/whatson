@@ -52,7 +52,19 @@ export async function apiAuth(req: Request, res: Response, next: NextFunction): 
   }
 
   const headerVal = req.headers['x-whatson-auth'];
-  const presented = Array.isArray(headerVal) ? headerVal[0] : headerVal;
+  let presented = Array.isArray(headerVal) ? headerVal[0] : headerVal;
+
+  // Fallback: accept the key via the `auth` query parameter. Roku's
+  // Poster node and (HLS) Video node fetch URLs through Roku's
+  // internal loaders, which don't let us attach custom headers.
+  // Including the key in the URL is the only way those requests can
+  // authenticate. Same key, just in a different place — verifyAuthKey
+  // hashes it the same way.
+  if (!presented) {
+    const q = req.query.auth;
+    presented = Array.isArray(q) ? String(q[0]) : typeof q === 'string' ? q : undefined;
+  }
+
   if (!presented) {
     res
       .status(401)
