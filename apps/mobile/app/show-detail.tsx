@@ -143,10 +143,10 @@ export default function ShowDetailScreen() {
       {/* Header with show info */}
       <View style={styles.header}>
         <Image
-          source={{ uri: resolveArtworkUrl(poster || '') }}
+          source={{ uri: resolveArtworkUrl(poster || '', { w: 360 }) }}
           style={styles.poster}
           contentFit="cover"
-          cachePolicy="disk"
+          cachePolicy="memory-disk"
         />
         <View style={styles.headerInfo}>
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
@@ -316,10 +316,10 @@ const EpisodeRow = React.memo(function EpisodeRow({
       {/* Thumbnail */}
       <View style={styles.episodeThumbnailContainer}>
         <Image
-          source={{ uri: resolveArtworkUrl(episode.artwork.thumbnail) }}
+          source={{ uri: resolveArtworkUrl(episode.artwork.thumbnail, { w: 480 }) }}
           style={styles.episodeThumbnail}
           contentFit="cover"
-          cachePolicy="disk"
+          cachePolicy="memory-disk"
           transition={0}
         />
         {hasProgress && (

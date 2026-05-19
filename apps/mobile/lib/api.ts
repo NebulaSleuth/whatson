@@ -5,14 +5,42 @@ function getBaseUrl(): string {
   return useAppStore.getState().apiUrl;
 }
 
-/** Resolve artwork URLs — converts relative proxy paths to absolute backend URLs */
-export function resolveArtworkUrl(url: string): string {
+/**
+ * Resolve artwork URLs — converts relative proxy paths to absolute
+ * backend URLs and (optionally) appends `?w=` / `?h=` size hints so
+ * the proxy resizes upstream art server-side before sending it down.
+ *
+ * Pass the dimension hint that matches the display size (or 2× for
+ * retina-ish sharpness). Without hints we'd download the upstream's
+ * 2000×3000 master only to decode + downscale on-device — a waste
+ * of bandwidth, decode time, and memory cache space.
+ *
+ * Already-absolute URLs (TMDB direct, CDN logos) pass through
+ * unchanged because their size is determined by the path/folder
+ * (e.g. TMDB's `/w500/abc.jpg`).
+ *
+ * When the device is paired (admin password is set on the backend),
+ * the auth key gets appended as `&auth=KEY` — RN's <Image> can't
+ * attach custom headers, so the query-param fallback is the only
+ * way these requests can authenticate.
+ */
+export function resolveArtworkUrl(url: string, opts?: { w?: number; h?: number }): string {
   if (!url) return '';
-  // Already absolute
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  // Relative proxy URL like /api/artwork?url=...
   const base = getBaseUrl().replace(/\/api\/?$/, '');
-  return `${base}${url}`;
+  let resolved = `${base}${url}`;
+  if (opts && (opts.w || opts.h)) {
+    const sep = resolved.includes('?') ? '&' : '?';
+    const params: string[] = [];
+    if (opts.w) params.push(`w=${opts.w}`);
+    if (opts.h) params.push(`h=${opts.h}`);
+    resolved += sep + params.join('&');
+  }
+  const authKey = useAppStore.getState().authKey;
+  if (authKey) {
+    resolved += (resolved.includes('?') ? '&' : '?') + 'auth=' + authKey;
+  }
+  return resolved;
 }
 
 function getUserId(): string | undefined {
@@ -29,12 +57,14 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${baseUrl}${path}`;
   const userId = getUserId();
   const connType = getPlexConnectionType();
+  const authKey = useAppStore.getState().authKey;
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       ...(userId ? { 'X-Plex-User': userId } : {}),
       'X-Plex-Connection': connType,
+      ...(authKey ? { 'X-Whatson-Auth': authKey } : {}),
       ...options?.headers,
     },
     ...options,
@@ -240,6 +270,36 @@ export const api = {
   // Auth / server providers
   getAuthProviders: () =>
     fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean }>('/auth/providers'),
+
+  // Device pairing — see packages/api/src/routes/auth.ts. Open endpoints
+  // (no auth header required) so unpaired clients can onboard.
+  getAdminStatus: () => fetchApi<{ hasAdminPassword: boolean }>('/auth/admin-status'),
+  pairStart: (deviceLabel?: string) =>
+    fetchApi<{ code: string; expiresAt: number }>('/auth/pair/start', {
+      method: 'POST',
+      body: JSON.stringify({ deviceLabel: deviceLabel || '' }),
+    }),
+  // Custom because the backend returns 410 + { success: false } for
+  // expired codes — fetchApi would throw on non-2xx, but the caller
+  // needs to react to the expired state to re-issue automatically.
+  pairPoll: async (code: string): Promise<{ status: 'pending' | 'completed' | 'expired'; key?: string }> => {
+    const url = `${getBaseUrl()}/auth/pair/poll?code=${encodeURIComponent(code)}`;
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    const text = await response.text();
+    let json: ApiResponse<{ status: 'pending' | 'completed' | 'expired'; key?: string }>;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error('Invalid response from pair-poll endpoint.');
+    }
+    if (response.status === 410 || json.data?.status === 'expired') {
+      return { status: 'expired' };
+    }
+    if (!response.ok || !json.success || !json.data) {
+      throw new Error(json.error || `HTTP ${response.status}`);
+    }
+    return json.data;
+  },
 
   testConnection: (service: string, url: string, token?: string, apiKey?: string) =>
     fetchApi<{ connected: boolean }>('/config/test', {

@@ -64,10 +64,10 @@ const LibraryCard = React.memo(function LibraryCard({
     >
       <View style={[cardStyles.poster, { width: pw, height: ph }, focused && cardStyles.posterFocused]}>
         <Image
-          source={{ uri: resolveArtworkUrl(item.artwork.poster) }}
+          source={{ uri: resolveArtworkUrl(item.artwork.poster, { w: 360 }) }}
           style={cardStyles.image}
           contentFit="cover"
-          cachePolicy="disk"
+          cachePolicy="memory-disk"
           transition={0}
         />
       </View>

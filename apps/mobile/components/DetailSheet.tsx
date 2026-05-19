@@ -230,9 +230,10 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
               {/* Left side: artwork */}
               <View style={styles.tvPoster}>
                 <Image
-                  source={{ uri: resolveArtworkUrl(item.artwork.poster || item.artwork.background) }}
+                  source={{ uri: resolveArtworkUrl(item.artwork.poster || item.artwork.background, { w: 720 }) }}
                   style={styles.tvPosterImage}
                   contentFit="cover"
+                  cachePolicy="memory-disk"
                   transition={0}
                 />
               </View>
@@ -365,10 +366,10 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={styles.scrollContent}>
               <View style={styles.heroContainer}>
                 <Image
-                  source={{ uri: resolveArtworkUrl(item.artwork.background || item.artwork.poster) }}
+                  source={{ uri: resolveArtworkUrl(item.artwork.background || item.artwork.poster, { w: 1280 }) }}
                   style={styles.heroImage}
                   contentFit="cover"
-                  cachePolicy="disk"
+                  cachePolicy="memory-disk"
                 />
                 <View style={styles.heroOverlay} />
                 <View style={styles.heroContent}>

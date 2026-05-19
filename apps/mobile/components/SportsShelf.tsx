@@ -115,7 +115,7 @@ function TeamRow({
   return (
     <View style={styles.teamRow}>
       {c.logo ? (
-        <Image source={{ uri: c.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="disk" />
+        <Image source={{ uri: c.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="memory-disk" />
       ) : (
         <View style={[styles.teamLogo, styles.teamLogoPlaceholder]} />
       )}

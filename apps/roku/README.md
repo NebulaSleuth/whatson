@@ -12,19 +12,42 @@ and roadmap live in [`PLAN.md`](./PLAN.md).
    reboots into a developer installer at `http://<roku-ip>` with
    username `rokudev` and a password you choose on first launch.
 
-2. **Backend running and reachable** from the Roku's network. The
-   channel needs an `apiUrl` configured before it can do anything;
-   today it's read from the Roku registry under section `whatson`,
-   key `apiUrl`. Until the Settings scene exists (phase 1), set it
-   manually with:
+2. **Backend running and reachable** from the Roku's network. Configure
+   the channel by setting deploy-time env vars:
+
+   ```bash
+   ROKU_HOST=192.168.1.50 \
+   ROKU_DEV_PASSWORD=changeme \
+   ROKU_API_URL=http://192.168.1.10:3001 \
+   ROKU_PLEX_USER_ID=1001793 \
+   npm run roku:deploy
+   ```
+
+   - `ROKU_API_URL` — backend base URL.
+   - `ROKU_PLEX_USER_ID` — *(optional, but you almost always want it)* —
+     sent on every API request as `X-Plex-User`. Without it the
+     backend resolves the request as anonymous, which usually means
+     no Plex content (Jellyfin / Emby still work fine since they're
+     single-user adapters). Find your user IDs at
+     `GET <apiUrl>/api/users` — the `id` field of each entry.
+
+   `scripts/deploy.js` writes both into `source/Config.brs` (a
+   gitignored, regenerated-on-every-deploy file) so they ship inside
+   the channel zip and survive reboots / reinstalls. The Roku
+   registry is still consulted as an override — useful for changing
+   the URL or user at runtime via telnet without redeploying:
 
    ```
    telnet <roku-ip> 8085
-   ' At the BrightScript Debugger prompt:
+   ' Ctrl-C to break in, then:
    sec = CreateObject("roRegistrySection", "whatson")
    sec.Write("apiUrl", "http://192.168.1.10:3001")
+   sec.Write("plexUserId", "1001793")
    sec.Flush()
    ```
+
+   Resolution order at boot: registry → `Config.brs::configApiUrl()`
+   / `configPlexUserId()`. Whichever is non-empty wins.
 
 3. **Node + npm** at the repo root for the deploy script.
 

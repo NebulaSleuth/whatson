@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 const KEYS = {
   API_URL: 'whatson_apiUrl',
   CONFIGURED: 'whatson_configured',
+  AUTH_KEY: 'whatson_authKey',
   SAVED_USER: 'whatson_savedUser',
   REMEMBER_USER: 'whatson_rememberUser',
   AUTO_SKIP_INTRO: 'whatson_autoSkipIntro',
@@ -43,6 +44,30 @@ export async function isAppConfigured(): Promise<boolean> {
 export async function setAppConfigured(configured: boolean): Promise<void> {
   try {
     await SecureStore.setItemAsync(KEYS.CONFIGURED, String(configured));
+  } catch {}
+}
+
+// ── Per-Device Auth Key (X-Whatson-Auth) ──
+//
+// Set after a successful pair via /api/auth/pair/*. When the backend has
+// no admin password configured, this stays null and the API middleware
+// is in open mode — same shape as Roku, see apps/roku/components/HomeScene.brs.
+
+export async function getStoredAuthKey(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(KEYS.AUTH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredAuthKey(key: string | null): Promise<void> {
+  try {
+    if (key) {
+      await SecureStore.setItemAsync(KEYS.AUTH_KEY, key);
+    } else {
+      await SecureStore.deleteItemAsync(KEYS.AUTH_KEY);
+    }
   } catch {}
 }
 

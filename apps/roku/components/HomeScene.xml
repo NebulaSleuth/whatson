@@ -6,6 +6,9 @@
 -->
 <component name="HomeScene" extends="Scene">
     <script type="text/brightscript" uri="HomeScene.brs" />
+    <!-- source/ files aren't auto-included in component threads — pull
+         Config.brs in explicitly so configApiUrl() is callable from init(). -->
+    <script type="text/brightscript" uri="pkg:/source/Config.brs" />
 
     <interface>
         <field id="apiUrl" type="string" />
@@ -14,28 +17,60 @@
     <children>
         <Rectangle width="1920" height="1080" color="0x0e0e0eff" />
 
-        <!-- ─── Home view: title + RowList of shelves ─── -->
-        <Group id="homeView">
-            <Label
-                id="title"
-                text="Whats On"
-                translation="[80, 60]"
-                font="font:LargeBoldSystemFont"
-                color="0xe5a00dff" />
+        <!-- Brand mark — top-left, above the tab bar. -->
+        <Label
+            id="title"
+            text="Whats On"
+            translation="[80, 14]"
+            font="font:MediumBoldSystemFont"
+            color="0xe5a00dff" />
 
+        <!-- Real-time clock — top-right, mirrors mobile's TopBar
+             clock. updateClock() in HomeScene.brs refreshes it on a
+             repeating Timer. -->
+        <Label
+            id="clockLabel"
+            translation="[1700, 14]"
+            width="160"
+            horizAlign="right"
+            font="font:MediumBoldSystemFont"
+            color="0xffffffff" />
+
+        <!-- ─── Tab bar — sits below the brand row. -->
+        <ButtonGroup
+            id="tabBar"
+            translation="[80, 60]"
+            layoutDirection="horiz"
+            itemSpacings="[16]">
+            <Button id="tabHome" text="Home" minWidth="180" />
+            <Button id="tabTv" text="TV Shows" minWidth="180" />
+            <Button id="tabMovies" text="Movies" minWidth="180" />
+            <Button id="tabSports" text="Sports" minWidth="180" />
+            <Button id="tabLibrary" text="Library" minWidth="180" />
+            <Button id="tabSearch" text="Search" minWidth="180" />
+            <Button id="tabSettings" text="Settings" minWidth="180" />
+        </ButtonGroup>
+
+        <!-- ─── Home view: status + RowList of shelves ─── -->
+        <Group id="homeView">
             <Label
                 id="status"
                 text="Loading…"
-                translation="[80, 130]"
+                translation="[80, 140]"
                 color="0xb0b0b0ff" />
 
+            <!-- numRows is the magic field — without it RowList renders
+                 one row at a time. floatingFocus keeps the focused
+                 row's brand styling. itemSize / rowItemSize tuned so
+                 three shelves fit comfortably on 1080p. -->
             <RowList
                 id="rowList"
-                translation="[80, 200]"
-                itemSize="[1760, 360]"
-                rowItemSize="[[200, 300]]"
+                translation="[80, 170]"
+                itemSize="[1760, 295]"
+                numRows="3"
+                rowItemSize="[[160, 240]]"
                 rowItemSpacing="[[16, 0]]"
-                rowSpacing="[40]"
+                vertFocusAnimationStyle="floatingFocus"
                 rowFocusAnimationStyle="floatingFocus"
                 rowLabelOffset="[[0, 0]]"
                 showRowLabel="[true]"
@@ -43,14 +78,420 @@
                 focusable="true" />
         </Group>
 
+        <!-- ─── TV Shows view: filtered home shelves (Downloading /
+             Ready to Watch / Coming Soon / Tracked). Mirrors the
+             mobile (tabs)/tv.tsx — same shelves, same source feeds. -->
+        <Group id="tvView" visible="false">
+            <Label
+                id="tvStatus"
+                text="Loading TV…"
+                translation="[80, 140]"
+                color="0xb0b0b0ff" />
+
+            <RowList
+                id="tvRowList"
+                translation="[80, 170]"
+                itemSize="[1760, 295]"
+                numRows="3"
+                rowItemSize="[[160, 240]]"
+                rowItemSpacing="[[16, 0]]"
+                vertFocusAnimationStyle="floatingFocus"
+                rowFocusAnimationStyle="floatingFocus"
+                rowLabelOffset="[[0, 0]]"
+                showRowLabel="[true]"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Movies view: filtered home shelves (Downloading /
+             Ready to Watch / Coming Soon). Mirrors mobile
+             (tabs)/movies.tsx. -->
+        <Group id="moviesView" visible="false">
+            <Label
+                id="moviesStatus"
+                text="Loading movies…"
+                translation="[80, 140]"
+                color="0xb0b0b0ff" />
+
+            <RowList
+                id="moviesRowList"
+                translation="[80, 170]"
+                itemSize="[1760, 295]"
+                numRows="3"
+                rowItemSize="[[160, 240]]"
+                rowItemSpacing="[[16, 0]]"
+                vertFocusAnimationStyle="floatingFocus"
+                rowFocusAnimationStyle="floatingFocus"
+                rowLabelOffset="[[0, 0]]"
+                showRowLabel="[true]"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Library view: type toggle + full library grid ─── -->
+        <Group id="libraryView" visible="false">
+            <!-- Two-button TV / Movies toggle, mirroring the mobile
+                 library tab. Selection swaps the dataset feeding the
+                 grid below. -->
+            <ButtonGroup
+                id="libraryTypeToggle"
+                translation="[80, 110]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <Button id="libraryTypeShow" text="TV Shows" minWidth="180" />
+                <Button id="libraryTypeMovie" text="Movies" minWidth="180" />
+            </ButtonGroup>
+
+            <Label
+                id="libraryStatus"
+                text="Loading library…"
+                translation="[80, 200]"
+                color="0xb0b0b0ff" />
+
+            <!-- itemComponentName tells MarkupGrid which custom component
+                 to render per cell. Without it MarkupGrid can't create
+                 children at all (Roku logs "Failed to create markup
+                 item"). PosterItem renders a poster + title label. -->
+            <MarkupGrid
+                id="libraryGrid"
+                itemComponentName="PosterItem"
+                translation="[80, 230]"
+                itemSize="[160, 270]"
+                itemSpacing="[16, 24]"
+                numRows="3"
+                numColumns="9"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Search view ─────────────────────────────────────────
+             Mirrors mobile (tabs)/search.tsx. v1 ships library search
+             only — Discover & Track requires Sonarr/Radarr add modals
+             which we'll build alongside the detail-sheet "Add to..."
+             actions in a follow-up. The search button doubles as the
+             input display: pressing it opens a KeyboardDialog modal,
+             results land in the MarkupGrid below. -->
+        <Group id="searchView" visible="false">
+            <Button
+                id="searchInputButton"
+                text="Tap to search your library…"
+                translation="[80, 110]"
+                minWidth="1200" />
+
+            <!-- Mode toggle — Library searches the user's
+                 plex/jellyfin/emby content via /api/search; Discover
+                 searches TMDB via /api/discover/search and lets you
+                 Track or Add to Sonarr/Radarr. Same chip pattern as
+                 mobile (tabs)/search.tsx. -->
+            <ButtonGroup
+                id="searchModeToggle"
+                translation="[80, 180]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <Button id="searchModeLibrary" text="My Library" minWidth="240" />
+                <Button id="searchModeDiscover" text="Discover &amp; Track" minWidth="280" />
+            </ButtonGroup>
+
+            <!-- Filter chips — Library mode only. /api/discover/search
+                 doesn't support a type filter so we hide this row in
+                 Discover mode (mirrors mobile's conditional render). -->
+            <ButtonGroup
+                id="searchFilterToggle"
+                translation="[80, 250]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <Button id="searchFilterAll" text="All" minWidth="180" />
+                <Button id="searchFilterTv" text="TV Shows" minWidth="180" />
+                <Button id="searchFilterMovie" text="Movies" minWidth="180" />
+            </ButtonGroup>
+
+            <Label
+                id="searchStatus"
+                text="Type to search your library."
+                translation="[80, 320]"
+                color="0xb0b0b0ff" />
+
+            <MarkupGrid
+                id="searchResultsGrid"
+                itemComponentName="PosterItem"
+                translation="[80, 360]"
+                itemSize="[160, 270]"
+                itemSpacing="[16, 24]"
+                numRows="2"
+                numColumns="9"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Sports view ────────────────────────────────────────
+             Mirrors mobile (tabs)/sports.tsx — two horizontal shelves
+             ("Sports On Now" + "Sports On Later") rendered with the
+             custom SportsCard component. The Home tab still shows the
+             same shelves when sports are configured, matching mobile;
+             this dedicated tab gives sports its own surface for
+             follow-up flows (sports detail, prefs editing).
+
+             itemComponentName (set in HomeScene.brs::init) tells the
+             RowList to render each cell with our SportsCard component
+             — same plumbing as the Library MarkupGrid using PosterItem. -->
+        <Group id="sportsView" visible="false">
+            <Label
+                id="sportsStatus"
+                text="Loading sports…"
+                translation="[80, 140]"
+                color="0xb0b0b0ff" />
+
+            <!-- itemComponentName (singular, inherited from ArrayGrid)
+                 is the right field on RowList — the per-row
+                 `rowItemComponentName` variant doesn't exist as a
+                 settable field. Set programmatically in init() so we
+                 keep the SportsCard wiring with the rest of the row
+                 setup. -->
+            <RowList
+                id="sportsRowList"
+                translation="[80, 170]"
+                itemSize="[1760, 220]"
+                numRows="2"
+                rowItemSize="[[340, 160]]"
+                rowItemSpacing="[[16, 0]]"
+                vertFocusAnimationStyle="floatingFocus"
+                rowFocusAnimationStyle="floatingFocus"
+                rowLabelOffset="[[0, 0]]"
+                showRowLabel="[true]"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Settings view ─── -->
+        <!-- Mirrors the mobile Settings tab: read-only current state +
+             actions. The user picker itself is a separate top-level
+             scene (userPickerView) shown at boot AND on Switch User. -->
+        <Group id="settingsView" visible="false">
+            <Label
+                id="settingsTitle"
+                text="Settings"
+                translation="[80, 110]"
+                font="font:LargeBoldSystemFont"
+                color="0xffffffff" />
+
+            <!-- API URL row — value Label + Edit button. Edit opens
+                 a KeyboardDialog with the current URL prefilled. -->
+            <Label
+                text="API URL"
+                translation="[80, 200]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsApiUrlValue"
+                translation="[380, 200]"
+                width="1300"
+                color="0xffffffff" />
+            <Button
+                id="editApiUrlButton"
+                text="Edit URL"
+                translation="[380, 240]"
+                minWidth="240" />
+
+            <!-- Plex user row -->
+            <Label
+                text="Plex User"
+                translation="[80, 320]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsUserValue"
+                translation="[380, 320]"
+                width="1300"
+                color="0xffffffff" />
+            <Button
+                id="switchUserButton"
+                text="Switch User"
+                translation="[380, 380]"
+                minWidth="280" />
+
+            <!-- Plex connection row — Local picks LAN-direct connections,
+                 Remote routes via plex.tv relay. Mirrors the mobile
+                 plexConnectionType store value, sent as
+                 X-Plex-Connection on every API request. -->
+            <Label
+                text="Connection"
+                translation="[80, 460]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsConnectionValue"
+                translation="[380, 460]"
+                width="800"
+                color="0xffffffff" />
+            <ButtonGroup
+                id="connectionToggle"
+                translation="[380, 500]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <Button id="connectionLocal" text="Local (LAN)" minWidth="240" />
+                <Button id="connectionRemote" text="Remote (plex.tv)" minWidth="280" />
+            </ButtonGroup>
+
+            <!-- ─── Server Updates ───
+                 Mirrors the mobile Settings → Server Updates section.
+                 Shows current vs. latest backend version, last-check time,
+                 and surfaces Check / Install actions. Hidden when the
+                 backend reports platformSupported=false (non-Windows). -->
+            <Label
+                id="settingsUpdateHeader"
+                text="Server Updates"
+                translation="[80, 600]"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                id="settingsUpdateCurrentLabel"
+                text="Current"
+                translation="[80, 650]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsUpdateCurrentValue"
+                translation="[380, 650]"
+                width="800"
+                color="0xffffffff" />
+
+            <Label
+                id="settingsUpdateLatestLabel"
+                text="Latest"
+                translation="[80, 690]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsUpdateLatestValue"
+                translation="[380, 690]"
+                width="800"
+                color="0xffffffff" />
+
+            <Label
+                id="settingsUpdateCheckedLabel"
+                text="Last checked"
+                translation="[80, 730]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsUpdateCheckedValue"
+                translation="[380, 730]"
+                width="800"
+                color="0xffffffff" />
+
+            <Label
+                id="settingsUpdateMessage"
+                translation="[80, 780]"
+                width="1700"
+                wrap="true"
+                color="0xff8080ff" />
+
+            <Button
+                id="checkUpdateButton"
+                text="Check for Updates"
+                translation="[80, 830]"
+                minWidth="320" />
+            <Button
+                id="installUpdateButton"
+                text="Install Update"
+                translation="[420, 830]"
+                minWidth="280"
+                visible="false" />
+        </Group>
+
+        <!-- ─── User picker view ─────────────────────────────────────
+             Shown at startup when no Plex user is saved, and on
+             Settings → Switch User. Mirrors the mobile select-user
+             screen: title + scrollable list of Plex Home users. -->
+        <Group id="userPickerView" visible="false">
+            <Label
+                id="userPickerTitle"
+                text="Who's Watching?"
+                translation="[80, 200]"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                id="userPickerSubtitle"
+                text="Choose a Plex Home user."
+                translation="[80, 280]"
+                color="0xb0b0b0ff" />
+
+            <Label
+                id="userPickerStatus"
+                text="Loading users…"
+                translation="[80, 360]"
+                color="0xb0b0b0ff" />
+
+            <LabelList
+                id="userList"
+                translation="[80, 360]"
+                itemSize="[600, 70]"
+                numRows="8"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+        </Group>
+
+        <!-- ─── Pair view: shown on first run when the backend has an
+             admin password and this device hasn't been paired yet.
+             User reads the 6-digit code, types it in /setup → Devices,
+             we poll /api/auth/pair/poll until the admin completes it,
+             then save the auth key to the registry. -->
+        <Group id="pairView" visible="false">
+            <Label
+                id="pairTitle"
+                text="Pair this device"
+                translation="[80, 200]"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                id="pairSubtitle"
+                translation="[80, 290]"
+                width="1700"
+                wrap="true"
+                font="font:MediumBoldSystemFont"
+                color="0xc0c0c0ff" />
+
+            <!-- Big monospaced-ish code. font size pushed via SystemFontFile
+                 so it dominates the screen — admin reads it off the TV
+                 and types it into /setup. -->
+            <Label
+                id="pairCode"
+                translation="[80, 400]"
+                width="1700"
+                font="font:LargeBoldSystemFont"
+                color="0xffffffff" />
+
+            <Label
+                id="pairStatus"
+                translation="[80, 560]"
+                width="1700"
+                wrap="true"
+                color="0xb0b0b0ff" />
+
+            <Label
+                id="pairHint"
+                text="Press OK to refresh the code. Press * to change the server URL."
+                translation="[80, 640]"
+                width="1700"
+                color="0x707070ff" />
+        </Group>
+
         <!-- ─── Detail view: hero + metadata + actions ─── -->
         <Group id="detailView" visible="false">
+            <!-- scaleToZoom centre-crops backdrops that aren't 16:9
+                 instead of stretching them across the full screen. -->
             <Poster
                 id="detailBackdrop"
                 width="1920"
                 height="1080"
                 opacity="0.4"
-                loadDisplayMode="scaleToFill" />
+                loadDisplayMode="scaleToZoom" />
 
             <Rectangle width="1920" height="1080" color="0x000000aa" />
 
@@ -82,19 +523,115 @@
                 maxLines="6"
                 color="0xe0e0e0ff" />
 
-            <LayoutGroup
+            <!-- ButtonGroup auto-handles D-pad navigation between Buttons.
+                 All buttons are present in XML; populateDetail in
+                 HomeScene.brs toggles their visibility per item type:
+                   - library items (plex/jellyfin/emby): Play, Mark*, Back
+                   - tracked TV: Add to Sonarr, Back
+                   - tracked Movie: Add to Radarr, Back
+                   - sports / sonarr / radarr: Back
+                 ButtonGroup skips invisible buttons in its focus chain
+                 so the user only steps through what's relevant. -->
+            <ButtonGroup
                 id="detailActions"
                 translation="[120, 720]"
                 layoutDirection="horiz"
                 itemSpacings="[24]">
                 <Button id="playButton" text="Play" minWidth="240" />
+                <Button id="markWatchedButton" text="Mark as Watched" minWidth="320" />
+                <Button id="markUnwatchedButton" text="Mark as Unwatched" minWidth="340" />
+                <Button id="trackButton" text="Track" minWidth="200" />
+                <Button id="addSonarrButton" text="Add to Sonarr" minWidth="280" />
+                <Button id="addRadarrButton" text="Add to Radarr" minWidth="280" />
                 <Button id="backButton" text="Back" minWidth="240" />
-            </LayoutGroup>
+            </ButtonGroup>
+
+            <!-- Inline status row for Add → "Adding…" / "Added to Sonarr" /
+                 error messages. Sits just below the action row. -->
+            <Label
+                id="detailAddStatus"
+                translation="[120, 800]"
+                width="1300"
+                color="0xe5a00dff"
+                visible="false" />
         </Group>
 
         <!-- ─── Player view: fullscreen Video ─── -->
+        <!-- enableUI=true gives us Roku's built-in transport overlay:
+             auto-shows when playback starts, auto-hides after a few
+             seconds of inactivity, re-shows on OK / Up / Down.
+             Focus targets the Video node directly so those keypresses
+             reach it. Back: first press dismisses the overlay, second
+             press bubbles up to Scene.onKeyEvent which returns to
+             detail (existing handler). -->
         <Group id="playerView" visible="false">
-            <Video id="video" width="1920" height="1080" />
+            <!-- Roku's enableUI=true provides the standard transport UI
+                 (scrub, time codes, title overlay). We layered a custom
+                 bar on top earlier and the two collided visually, so the
+                 channel now relies on Roku's built-in. Quality / subtitle
+                 / audio pickers are channel-side overlays since Roku's
+                 transport doesn't surface those. -->
+            <Video id="video" width="1920" height="1080" enableUI="true" />
+
+            <!-- Tracks picker overlay — opened by Down key during
+                 playback. Multi-select: user can change audio AND
+                 subtitle without dismissing, then presses Close to
+                 apply both as a single re-issue. Sits on top of the
+                 still-visible playerView (just toggles visible). -->
+            <Group id="tracksView" visible="false">
+                <Rectangle width="1920" height="1080" color="0x000000bb" />
+                <Rectangle translation="[460, 140]" width="1000" height="800" color="0x202020ff" />
+
+                <Label
+                    text="Tracks"
+                    translation="[500, 160]"
+                    font="font:LargeBoldSystemFont"
+                    color="0xe5a00dff" />
+
+                <Label
+                    text="Audio"
+                    translation="[500, 220]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xb0b0b0ff" />
+                <LabelList
+                    id="tracksAudioList"
+                    translation="[500, 260]"
+                    itemSize="[920, 50]"
+                    numRows="3"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
+
+                <Label
+                    text="Subtitle"
+                    translation="[500, 470]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xb0b0b0ff" />
+                <LabelList
+                    id="tracksSubtitleList"
+                    translation="[500, 510]"
+                    itemSize="[920, 50]"
+                    numRows="4"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
+
+                <Button
+                    id="tracksCloseButton"
+                    text="Close"
+                    translation="[840, 870]"
+                    minWidth="240" />
+            </Group>
+
+            <!-- Skip Intro / Skip Credits button. Auto-shows when the
+                 current Video.position is inside a Plex marker range
+                 and gets focus so OK fires it. Back dismisses for the
+                 remainder of that marker (so users can watch the intro
+                 if they want without the button popping back up). -->
+            <Button
+                id="skipButton"
+                text="Skip Intro"
+                translation="[1500, 820]"
+                minWidth="320"
+                visible="false" />
         </Group>
     </children>
 </component>

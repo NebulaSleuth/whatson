@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  SportsCard — per-cell renderer for the Sports tab's RowList. Mirrors
+  the mobile components/SportsShelf.tsx SportsCard at 340×160 (tvOS /
+  Android TV size).
+
+  Visual model:
+    - background Rectangle (team color for upcoming, surface dark for live)
+    - 6px team-color accent strip across the top for live games
+    - league label (top-left), LIVE pill (top-right)
+    - two team rows: logo + name + score (live only)
+    - footer: status text (formatted time for upcoming) + broadcast pill
+    - dark scrim across the bottom on coloured upcoming cards so the
+      footer text stays legible over bright primary colours
+    - 4px gold focus ring that peeks out from behind the card when focused
+
+  Field plumbing: HomeScene.brs builds the per-card ContentNode with a
+  flat set of strings (team1Name, team1LogoUrl, etc.). Layered colour
+  decisions (luminance, accent picks) happen there too — this component
+  just paints what it's told.
+-->
+<component name="SportsCard" extends="Group">
+    <script type="text/brightscript" uri="SportsCard.brs" />
+
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChanged" />
+        <field id="focusPercent" type="float" onChange="onFocusChanged" />
+    </interface>
+
+    <children>
+        <!-- Focus ring sits behind the card and peeks 4px on every side
+             when focused. Declared first so subsequent children draw
+             over the centre. -->
+        <Rectangle
+            id="focusRing"
+            translation="[-4, -4]"
+            width="348"
+            height="168"
+            color="0xe5a00d00" />
+
+        <!-- Card background. Color is overwritten in onContentChanged
+             based on whether the event is live (surface) or upcoming
+             (team primary colour, with a fallback to surface). -->
+        <Rectangle
+            id="bg"
+            width="340"
+            height="160"
+            color="0x1a1a1aff" />
+
+        <!-- Live accent bar across the top, hidden for upcoming. -->
+        <Rectangle
+            id="accentBar"
+            width="340"
+            height="6"
+            color="0xe5a00dff"
+            visible="false" />
+
+        <!-- Dark scrim behind the footer for upcoming-card legibility. -->
+        <Rectangle
+            id="scrim"
+            translation="[0, 120]"
+            width="340"
+            height="40"
+            color="0x00000058"
+            visible="false" />
+
+        <!-- Header: league + LIVE pill -->
+        <Label
+            id="leagueLabel"
+            translation="[12, 14]"
+            width="240"
+            wrap="false"
+            maxLines="1"
+            color="0xb0b0b0ff" />
+
+        <Group id="liveBadge" translation="[280, 10]" visible="false">
+            <Rectangle width="48" height="18" color="0xe53935ff" />
+            <Rectangle translation="[5, 6]" width="6" height="6" color="0xffffffff" />
+            <Label
+                translation="[14, 1]"
+                text="LIVE"
+                width="34"
+                wrap="false"
+                color="0xffffffff" />
+        </Group>
+
+        <!-- Team 1 row -->
+        <Poster
+            id="team1Logo"
+            translation="[12, 48]"
+            width="22"
+            height="22"
+            loadDisplayMode="scaleToFit" />
+        <Label
+            id="team1Name"
+            translation="[42, 48]"
+            width="216"
+            wrap="false"
+            maxLines="1"
+            color="0xffffffff" />
+        <Label
+            id="team1Score"
+            translation="[260, 46]"
+            width="64"
+            horizAlign="right"
+            wrap="false"
+            color="0xffffffff" />
+
+        <!-- Team 2 row -->
+        <Poster
+            id="team2Logo"
+            translation="[12, 78]"
+            width="22"
+            height="22"
+            loadDisplayMode="scaleToFit" />
+        <Label
+            id="team2Name"
+            translation="[42, 78]"
+            width="216"
+            wrap="false"
+            maxLines="1"
+            color="0xffffffff" />
+        <Label
+            id="team2Score"
+            translation="[260, 76]"
+            width="64"
+            horizAlign="right"
+            wrap="false"
+            color="0xffffffff" />
+
+        <!-- Tournament title (non-team sports like ATP) overlays the
+             team rows when shown. Hidden by default; live/upcoming
+             team-sport branches hide it explicitly. -->
+        <Label
+            id="tournamentTitle"
+            translation="[12, 60]"
+            width="316"
+            wrap="true"
+            maxLines="2"
+            color="0xffffffff"
+            visible="false" />
+
+        <!-- Footer: status + broadcast pill -->
+        <Label
+            id="statusLabel"
+            translation="[12, 130]"
+            width="216"
+            wrap="false"
+            maxLines="1"
+            color="0xc0c0c0ff" />
+
+        <Group id="broadcastPill" translation="[238, 128]" visible="false">
+            <Rectangle id="broadcastBg" width="92" height="20" color="0xe5a00d33" />
+            <Label
+                id="broadcastLabel"
+                translation="[8, 2]"
+                width="76"
+                wrap="false"
+                maxLines="1"
+                color="0xe5a00dff" />
+        </Group>
+    </children>
+</component>

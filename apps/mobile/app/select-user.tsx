@@ -114,7 +114,7 @@ export default function SelectUserScreen() {
                 source={{ uri: user.thumb }}
                 style={styles.avatar}
                 contentFit="cover"
-                cachePolicy="disk"
+                cachePolicy="memory-disk"
               />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>

@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey } from '@/lib/storage';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
@@ -39,9 +39,10 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       if (initDone.current) return;
       initDone.current = true;
-      const [storedUrl, configured, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw, liveChannels] = await Promise.all([
+      const [storedUrl, configured, authKey, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw, liveChannels] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
+        getStoredAuthKey(),
         getSavedUser(),
         getRememberUser(),
         getAutoSkipIntro(),
@@ -54,6 +55,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         setApiUrl(storedUrl);
       }
       setConfigured(configured);
+      useAppStore.getState().setAuthKey(authKey);
       useAppStore.getState().setRememberUser(rememberUser);
       useAppStore.getState().setAutoSkipIntro(skipIntro);
       useAppStore.getState().setAutoSkipCredits(skipCredits);
@@ -67,6 +69,41 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           const { TVEventControl } = require('react-native');
           TVEventControl?.disableTVPanGesture?.();
         } catch {}
+      }
+
+      // If the backend has an admin password set and we don't have a
+      // paired auth key locally, every /api/* call will 401. Route to
+      // the pair flow before doing anything else. /auth/admin-status
+      // is open and pre-dates the gate, so it works without a key.
+      let needsPair = false;
+      const effectiveUrl = storedUrl || useAppStore.getState().apiUrl;
+      if (!effectiveUrl) {
+        // Fresh install — no URL configured. Route to pair-device, which
+        // doubles as the server-URL setup screen.
+        console.log('[Init] no API URL configured → /pair-device');
+        needsPair = true;
+      } else {
+        try {
+          const adminStatus = await api.getAdminStatus();
+          if (adminStatus.hasAdminPassword && !authKey) {
+            needsPair = true;
+          }
+          console.log(`[Init] hasAdminPassword=${adminStatus.hasAdminPassword} authKey=${authKey ? 'set' : 'unset'}`);
+        } catch (err) {
+          // Backend unreachable — likely the API URL is wrong. Route to
+          // pair-device so the user can fix it.
+          console.warn('[Init] /auth/admin-status unavailable:', (err as Error).message);
+          needsPair = true;
+        }
+      }
+
+      if (needsPair) {
+        setReady(true);
+        console.log('[Init] needs pair → /pair-device');
+        setTimeout(() => {
+          router.replace('/pair-device' as any);
+        }, 100);
+        return;
       }
 
       // If "remember user" is on and we have a saved user, auto-login
@@ -165,6 +202,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: colors.background },
           }}
         >
+          <Stack.Screen name="pair-device" options={{ animation: 'fade' }} />
           <Stack.Screen name="select-user" options={{ animation: 'fade' }} />
           <Stack.Screen name="show-detail" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />

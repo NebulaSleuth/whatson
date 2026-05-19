@@ -19,6 +19,7 @@
         <field id="body" type="string" />
         <field id="userId" type="string" />
         <field id="connectionType" type="string" value="local" />
+        <field id="authKey" type="string" />
         <field id="response" type="assocarray" />
     </interface>
 </component>

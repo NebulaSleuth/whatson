@@ -86,7 +86,7 @@ function TeamBlock({ c }: { c: SportsCompetitor }) {
   return (
     <View style={styles.team}>
       {c.logo ? (
-        <Image source={{ uri: c.logo }} style={styles.teamLogoBig} contentFit="contain" cachePolicy="disk" />
+        <Image source={{ uri: c.logo }} style={styles.teamLogoBig} contentFit="contain" cachePolicy="memory-disk" />
       ) : (
         <View style={[styles.teamLogoBig, styles.teamLogoPlaceholder]} />
       )}

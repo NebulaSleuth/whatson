@@ -180,10 +180,10 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
       <View style={[styles.posterWrapper, isTV && focused && styles.posterWrapperFocused]}>
         <View style={styles.posterContainer}>
           <Image
-            source={{ uri: resolveArtworkUrl(item.artwork.poster) }}
+            source={{ uri: resolveArtworkUrl(item.artwork.poster, { w: 360 }) }}
             style={styles.poster}
             contentFit="cover"
-            cachePolicy="disk"
+            cachePolicy="memory-disk"
             transition={isTV ? 0 : 200}
           />
           <ProgressBar percentage={item.progress.percentage} />

@@ -18,7 +18,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels, setStoredAuthKey } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { isTV, isTVOS } from '@/lib/tv';
 import { useQuery } from '@tanstack/react-query';
@@ -408,6 +408,9 @@ export default function SettingsScreen() {
         {/* Server Updates */}
         <ServerUpdatesSection />
 
+        {/* Pairing */}
+        <PairingSection />
+
         {/* Server Configuration */}
         {serverConfig && (
           <View style={styles.section}>
@@ -603,6 +606,90 @@ const modalStyles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
 });
+
+function PairingSection() {
+  const authKey = useAppStore((s) => s.authKey);
+  const setAuthKey = useAppStore((s) => s.setAuthKey);
+  const [hasAdminPassword, setHasAdminPassword] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api
+      .getAdminStatus()
+      .then((s) => setHasAdminPassword(s.hasAdminPassword))
+      .catch(() => setHasAdminPassword(false));
+  }, []);
+
+  // Hide the section entirely when the backend has no admin password —
+  // pairing is a no-op in open mode and would just confuse the user.
+  if (hasAdminPassword === false) return null;
+  if (hasAdminPassword === null) return null;
+
+  function rePair() {
+    Alert.alert(
+      'Re-pair this device?',
+      'You will need the admin password for /setup to enter the new code.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Re-pair',
+          onPress: async () => {
+            await setStoredAuthKey(null);
+            setAuthKey(null);
+            router.push('/pair-device' as any);
+          },
+        },
+      ],
+    );
+  }
+
+  function unpair() {
+    Alert.alert(
+      'Unpair this device?',
+      'The auth key on this device will be removed. The server will keep the entry until you revoke it from /setup → Security & Devices.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unpair',
+          style: 'destructive',
+          onPress: async () => {
+            await setStoredAuthKey(null);
+            setAuthKey(null);
+          },
+        },
+      ],
+    );
+  }
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Pairing</Text>
+      <View style={styles.configRow}>
+        <Text style={styles.configLabel}>Status</Text>
+        <Text style={styles.configValue}>{authKey ? 'Paired' : 'Not paired'}</Text>
+      </View>
+      {authKey ? (
+        <>
+          <TVPressable
+            style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
+            onPress={rePair}>
+            <Text style={[styles.primaryButtonText, { color: colors.text }]}>Re-pair this device</Text>
+          </TVPressable>
+          <TVPressable
+            style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.sm }]}
+            onPress={unpair}>
+            <Text style={[styles.primaryButtonText, { color: colors.error }]}>Forget auth key on this device</Text>
+          </TVPressable>
+        </>
+      ) : (
+        <TVPressable
+          style={[styles.primaryButton, { marginTop: spacing.md }]}
+          onPress={() => router.push('/pair-device' as any)}>
+          <Text style={styles.primaryButtonText}>Pair this device</Text>
+        </TVPressable>
+      )}
+    </View>
+  );
+}
 
 function ServerUpdatesSection() {
   const [status, setStatus] = useState<{

@@ -167,7 +167,7 @@ function TeamPicker({ league, selectedIds, onToggle, onClose }: {
     return (
       <Pressable style={[styles.teamRow, selected && styles.teamRowSelected]} onPress={() => onToggle(item.id)} focusable>
         {item.logo ? (
-          <Image source={{ uri: item.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="disk" />
+          <Image source={{ uri: item.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="memory-disk" />
         ) : (
           <View style={[styles.teamLogo, { backgroundColor: '#222', borderRadius: 12 }]} />
         )}

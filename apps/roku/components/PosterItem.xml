@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Cell renderer for the Library MarkupGrid + the Home/TV/Movies/Search
+  result lists (set via itemComponentName).
+
+  Layout — driven by the rules:
+    * Poster aspect MUST be exactly 2:3. We size the poster 160×240
+      (the same dimensions mobile uses for TV cards) and let it fill
+      the cell. RowList/MarkupGrid's rowItemSize is [160, 240] so the
+      cell IS the poster — Roku's built-in `floatingFocus` then snaps
+      to the poster bounds, "starts below the title, ends at cell
+      bottom".
+    * The cell label sits BELOW the cell (translation y=246) so it
+      doesn't eat into the 2:3 poster area. The row's itemSize
+      includes enough vertical room for the label without spilling
+      into the next shelf.
+    * Source badge has a slightly bigger font (16px) and the text is
+      centered horizontally inside the rect.
+    * Top "padding" between the shelf title and the poster comes from
+      Roku's natural row layout — no extra padding added inside the
+      cell, which would push the poster out of 2:3.
+
+  Reads:
+    - HDPosterUrl   standard ContentNode field
+    - title         standard ContentNode field
+    - itemSource    custom string ("plex" | "jellyfin" | "emby" | ...)
+    - itemProgress  custom float, 0..100 — drives the progress strip
+    - itemWatched   custom boolean — when true, dims the poster
+-->
+<component name="PosterItem" extends="Group">
+    <script type="text/brightscript" uri="PosterItem.brs" />
+
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChanged" />
+        <field id="focusPercent" type="float" onChange="onFocusChanged" />
+    </interface>
+
+    <children>
+        <!-- Poster fills the 160×240 cell — exact 2:3. -->
+        <!-- scaleToZoom = aspect-fill from centre. Source images that
+             aren't the typical 2:3 ratio (square promo art, ultrawide
+             stills) get cropped to fill the cell instead of squeezed. -->
+        <Poster
+            id="poster"
+            width="160"
+            height="240"
+            loadDisplayMode="scaleToZoom" />
+
+        <!-- Watched dim overlay — covers the poster but sits below the
+             badges so source/progress remain legible on watched items. -->
+        <Rectangle
+            id="watchedDim"
+            width="160"
+            height="240"
+            color="0x00000088"
+            visible="false" />
+
+        <!-- Source badge (top-left). 16px text, centered both ways.
+             Label translation matches the rect so vertAlign="center"
+             lines the text up against the rect's vertical centre. -->
+        <Rectangle
+            id="sourceBadgeBg"
+            translation="[6, 6]"
+            width="68"
+            height="20"
+            color="0xe5a00dff"
+            visible="false" />
+        <Label
+            id="sourceBadgeLabel"
+            translation="[6, 6]"
+            width="68"
+            height="20"
+            horizAlign="center"
+            vertAlign="center"
+            wrap="false"
+            maxLines="1"
+            color="0x000000ff"
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="16" />
+        </Label>
+
+        <!-- Progress bar — pinned to the bottom edge of the poster. -->
+        <Rectangle
+            id="progressBarBg"
+            translation="[0, 234]"
+            width="160"
+            height="6"
+            color="0x000000aa"
+            visible="false" />
+        <Rectangle
+            id="progressBarFill"
+            translation="[0, 234]"
+            width="0"
+            height="6"
+            color="0xe5a00dff"
+            visible="false" />
+
+        <!-- Title label sits below the cell (y > 240). RowList's
+             itemSize must be tall enough to include this — see
+             HomeScene.xml. 14px size keeps it in one line. -->
+        <Label
+            id="label"
+            translation="[0, 246]"
+            width="160"
+            horizAlign="center"
+            wrap="false"
+            maxLines="1"
+            color="0xb0b0b0ff">
+            <Font role="font" uri="font:SystemFontFile" size="14" />
+        </Label>
+    </children>
+</component>
