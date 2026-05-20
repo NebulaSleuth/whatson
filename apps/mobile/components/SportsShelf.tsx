@@ -101,27 +101,44 @@ function TeamRow({
   c,
   variant,
   textColor,
+  loser,
 }: {
   c: SportsCompetitor;
-  variant: 'live' | 'upcoming';
+  variant: 'live' | 'upcoming' | 'completed';
   textColor: string;
+  /** Completed-card loser: render at reduced opacity so the winner pops. */
+  loser?: boolean;
 }) {
   // Upcoming cards show the full team name and never a score (ESPN sometimes
-  // returns "0" on pre-games). Live cards stay compact: abbreviation + score.
+  // returns "0" on pre-games). Live / completed cards stay compact:
+  // abbreviation + score.
   const name = variant === 'upcoming'
     ? (c.name || c.shortName || c.abbreviation || '')
     : (c.abbreviation || c.shortName || c.name);
-  const showScore = variant === 'live' && c.score != null;
+  const showScore = (variant === 'live' || variant === 'completed') && c.score != null;
+  // Winner emphasis: gold score on live + completed cards; bold name +
+  // unfaded row on completed cards specifically (we dim the loser instead
+  // of emphasising the winner, which is easier to read at a glance).
+  const isWinner = c.winner === true && (variant === 'live' || variant === 'completed');
   return (
-    <View style={styles.teamRow}>
+    <View style={[styles.teamRow, loser && styles.teamRowLoser]}>
       {c.logo ? (
         <Image source={{ uri: c.logo }} style={styles.teamLogo} contentFit="contain" cachePolicy="memory-disk" />
       ) : (
         <View style={[styles.teamLogo, styles.teamLogoPlaceholder]} />
       )}
-      <Text style={[styles.teamName, { color: textColor }]} numberOfLines={1}>{name}</Text>
+      <Text
+        style={[
+          styles.teamName,
+          { color: textColor },
+          isWinner && variant === 'completed' && styles.teamNameWinner,
+        ]}
+        numberOfLines={1}
+      >
+        {name}
+      </Text>
       {showScore ? (
-        <Text style={[styles.teamScore, { color: textColor }, styles.teamScoreLive, c.winner && styles.teamScoreWinner]}>
+        <Text style={[styles.teamScore, { color: textColor }, styles.teamScoreLive, isWinner && styles.teamScoreWinner]}>
           {c.score}
         </Text>
       ) : null}
@@ -141,6 +158,7 @@ export const SportsCard = React.memo(function SportsCard({
   const [focused, setFocused] = React.useState(false);
   const live = event.status === 'in';
   const upcoming = event.status === 'pre';
+  const completed = event.status === 'post';
 
   // For upcoming cards, detect if the background will be colored so we can
   // pick a contrasting text color. Live cards use the default surface tone.
@@ -186,14 +204,29 @@ export const SportsCard = React.memo(function SportsCard({
             <Text style={styles.liveText}>LIVE</Text>
           </View>
         )}
+        {completed && (
+          <View style={styles.finalBadge}>
+            <Text style={styles.finalText}>FINAL</Text>
+          </View>
+        )}
       </View>
 
       {/* Body */}
       <View style={styles.body}>
         {event.teamSport && event.competitors.length >= 2 ? (
           <>
-            <TeamRow c={event.competitors[0]} variant={upcoming ? 'upcoming' : 'live'} textColor={upcoming ? textColor : colors.text} />
-            <TeamRow c={event.competitors[1]} variant={upcoming ? 'upcoming' : 'live'} textColor={upcoming ? textColor : colors.text} />
+            <TeamRow
+              c={event.competitors[0]}
+              variant={upcoming ? 'upcoming' : completed ? 'completed' : 'live'}
+              textColor={upcoming ? textColor : colors.text}
+              loser={completed && event.competitors[0].winner !== true && event.competitors[1].winner === true}
+            />
+            <TeamRow
+              c={event.competitors[1]}
+              variant={upcoming ? 'upcoming' : completed ? 'completed' : 'live'}
+              textColor={upcoming ? textColor : colors.text}
+              loser={completed && event.competitors[1].winner !== true && event.competitors[0].winner === true}
+            />
           </>
         ) : (
           <Text style={[styles.tournamentTitle, upcoming && { color: textColor }]} numberOfLines={2}>
@@ -304,12 +337,21 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   liveText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  finalBadge: {
+    backgroundColor: 'rgba(229, 160, 13, 0.18)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  finalText: { color: colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
 
   body: { flex: 1, justifyContent: 'center', gap: 4 },
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  teamRowLoser: { opacity: 0.55 },
   teamLogo: { width: 22, height: 22 },
   teamLogoPlaceholder: { backgroundColor: '#222', borderRadius: 11 },
   teamName: { ...typography.body, color: colors.text, fontWeight: '600', flex: 1 },
+  teamNameWinner: { fontWeight: '800', color: colors.primary },
   teamScore: {
     fontSize: isTV ? 22 : 20,
     fontWeight: '800',

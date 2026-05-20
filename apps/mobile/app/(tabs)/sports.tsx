@@ -28,6 +28,13 @@ export default function SportsScreen() {
     queryFn: () => api.getSportsLater(168),
     refetchInterval: 5 * 60 * 1000,
   });
+  const completedQuery = useQuery({
+    queryKey: ['sports', 'completed'],
+    queryFn: () => api.getSportsCompleted(7),
+    // Completed games change rarely (only as new games finish), so the
+    // 5-min cadence catches new finals without hammering ESPN.
+    refetchInterval: 5 * 60 * 1000,
+  });
   const prefsQuery = useQuery({
     queryKey: ['sports', 'prefs'],
     queryFn: api.getSportsPrefs,
@@ -40,12 +47,14 @@ export default function SportsScreen() {
   const refetchAll = useCallback(() => {
     nowQuery.refetch();
     laterQuery.refetch();
-  }, [nowQuery, laterQuery]);
+    completedQuery.refetch();
+  }, [nowQuery, laterQuery, completedQuery]);
 
   const isLoading = nowQuery.isLoading || laterQuery.isLoading;
   const noPrefs = (prefsQuery.data?.leagues.length ?? 0) === 0;
   const hasNow = (nowQuery.data?.length ?? 0) > 0;
   const hasLater = (laterQuery.data?.length ?? 0) > 0;
+  const hasCompleted = (completedQuery.data?.length ?? 0) > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -59,7 +68,7 @@ export default function SportsScreen() {
         refreshControl={
           isTV ? undefined : (
             <RefreshControl
-              refreshing={nowQuery.isRefetching || laterQuery.isRefetching}
+              refreshing={nowQuery.isRefetching || laterQuery.isRefetching || completedQuery.isRefetching}
               onRefresh={refetchAll}
               tintColor={colors.primary}
             />
@@ -84,10 +93,11 @@ export default function SportsScreen() {
           <>
             {hasNow && <SportsShelf title="Sports On Now" events={nowQuery.data!} onItemPress={handlePress} />}
             {hasLater && <SportsShelf title="Sports On Later" events={laterQuery.data!} onItemPress={handlePress} />}
-            {!hasNow && !hasLater && (
+            {hasCompleted && <SportsShelf title="Recently Completed" events={completedQuery.data!} onItemPress={handlePress} />}
+            {!hasNow && !hasLater && !hasCompleted && (
               <View style={styles.empty}>
                 <Text style={styles.emptyTitle}>Nothing on right now</Text>
-                <Text style={styles.emptyBody}>No games are live or starting in the next 24 hours for your followed leagues.</Text>
+                <Text style={styles.emptyBody}>No games are live, starting soon, or recently finished for your followed leagues.</Text>
               </View>
             )}
           </>

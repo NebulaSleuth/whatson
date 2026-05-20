@@ -64,29 +64,15 @@ function yyyymmdd(d: Date): string {
   return `${y}${m}${day}`;
 }
 
-async function fetchFollowedEvents(
+async function fetchFollowedEventsForDates(
   prefs: SportsPrefs,
-  horizonHours = 48,
+  dates: (string | undefined)[],
 ): Promise<SportsEvent[]> {
   // Fetch scoreboards only for leagues the user follows — avoids polling
   // ESPN's entire catalog every 60 s.
   const followed: LeagueMeta[] = prefs.leagues
     .map((p) => getLeague(p.key))
     .filter((l: LeagueMeta | undefined): l is LeagueMeta => Boolean(l));
-
-  // ESPN's "default" scoreboard returns today in US-Eastern, and `dates=`
-  // params map to ET days too — not UTC. We fetch `no-date` (today ET) plus
-  // a UTC yyyymmdd for every day in the horizon window. UTC is always ≥ ET,
-  // so today-UTC's yyyymmdd maps to ET-tomorrow — giving us broad coverage
-  // without needing explicit ET-date math. Cache is per-date so repeated
-  // fetches within TTL are free.
-  const now = new Date();
-  const dayCount = Math.max(2, Math.ceil(horizonHours / 24) + 1);
-  const dates: (string | undefined)[] = [undefined];
-  for (let i = 0; i < dayCount; i++) {
-    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
-    dates.push(yyyymmdd(d));
-  }
 
   const results = await Promise.all(
     followed.flatMap((meta) =>
@@ -101,8 +87,8 @@ async function fetchFollowedEvents(
     ),
   );
   const all = results.flat();
-  // Dedupe across today/tomorrow — the same event can appear in both when
-  // it sits close to the UTC boundary.
+  // Dedupe — the same event can appear in multiple date buckets when it
+  // sits close to a UTC/ET day boundary.
   const seen = new Set<string>();
   const deduped = all.filter((e) => {
     if (seen.has(e.id)) return false;
@@ -110,6 +96,43 @@ async function fetchFollowedEvents(
     return true;
   });
   return filterByPrefs(deduped, prefs);
+}
+
+async function fetchFollowedEvents(
+  prefs: SportsPrefs,
+  horizonHours = 48,
+): Promise<SportsEvent[]> {
+  // ESPN's "default" scoreboard returns today in US-Eastern, and `dates=`
+  // params map to ET days too — not UTC. We fetch `no-date` (today ET) plus
+  // a UTC yyyymmdd for every day in the horizon window. UTC is always ≥ ET,
+  // so today-UTC's yyyymmdd maps to ET-tomorrow — giving us broad coverage
+  // without needing explicit ET-date math. Cache is per-date so repeated
+  // fetches within TTL are free.
+  const now = new Date();
+  const dayCount = Math.max(2, Math.ceil(horizonHours / 24) + 1);
+  const dates: (string | undefined)[] = [undefined];
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    dates.push(yyyymmdd(d));
+  }
+  return fetchFollowedEventsForDates(prefs, dates);
+}
+
+async function fetchFollowedEventsPast(
+  prefs: SportsPrefs,
+  daysBack: number,
+): Promise<SportsEvent[]> {
+  // Mirror of fetchFollowedEvents but walking BACKWARD. We fetch today
+  // (undefined → ET today) plus a yyyymmdd for each prior day so a game
+  // played yesterday ET is captured regardless of which UTC date it
+  // straddles.
+  const now = new Date();
+  const dates: (string | undefined)[] = [undefined];
+  for (let i = 1; i <= Math.max(1, daysBack); i++) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    dates.push(yyyymmdd(d));
+  }
+  return fetchFollowedEventsForDates(prefs, dates);
 }
 
 export async function getNow(prefs: SportsPrefs = loadPrefs()): Promise<SportsEvent[]> {
@@ -136,6 +159,25 @@ export async function getLater(
     })
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   return enrichEventsWithBadges(upcoming);
+}
+
+export async function getCompleted(
+  // 7 days matches the "this week's recap" UX. Callers can override.
+  daysBack = 7,
+  prefs: SportsPrefs = loadPrefs(),
+): Promise<SportsEvent[]> {
+  const all = await fetchFollowedEventsPast(prefs, daysBack);
+  const cutoffMs = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+  const completed = all
+    .filter((e) => e.status === 'post')
+    .filter((e) => {
+      if (!e.startsAt) return false;
+      const ts = new Date(e.startsAt).getTime();
+      return Number.isFinite(ts) && ts >= cutoffMs && ts <= Date.now();
+    })
+    // Latest finishes first — most recent recap at the top of the shelf.
+    .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime());
+  return enrichEventsWithBadges(completed);
 }
 
 export async function getEvent(id: string): Promise<SportsEvent | null> {

@@ -5,6 +5,7 @@ import {
   getTeamsForLeague,
   getNow,
   getLater,
+  getCompleted,
   getEvent,
   loadPrefs,
   savePrefs,
@@ -51,6 +52,18 @@ sportsRouter.get('/sports/later', async (req, res) => {
   try {
     const hours = req.query.hours ? parseInt(req.query.hours as string, 10) : 168;
     const events = await getLater(Number.isFinite(hours) && hours > 0 ? hours : 168);
+    const response: ApiResponse<SportsEvent[]> = { success: true, data: events };
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/** Recently completed games — past N days, sorted latest finish first. */
+sportsRouter.get('/sports/completed', async (req, res) => {
+  try {
+    const days = req.query.days ? parseInt(req.query.days as string, 10) : 7;
+    const events = await getCompleted(Number.isFinite(days) && days > 0 ? days : 7);
     const response: ApiResponse<SportsEvent[]> = { success: true, data: events };
     res.json(response);
   } catch (error) {

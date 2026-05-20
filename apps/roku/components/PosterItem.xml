@@ -108,5 +108,152 @@
             color="0xb0b0b0ff">
             <Font role="font" uri="font:SystemFontFile" size="14" />
         </Label>
+
+        <!-- Sports-mode card — landscape variant matching SportsCard's
+             340×160 layout used on the Sports tab. Hidden by default;
+             toggled on when itemContent.itemSource = "sports". Home's
+             rowList sets rowItemSize per-row so sports shelves get
+             340×160 cells while library / live shelves stay 160×240.
+             Reads the same flat fields buildSportsCardChild stamps on
+             each ContentNode (league, team1Name, team1LogoUrl,
+             statusText, bgColor, …) so home + Sports-tab cards share
+             data plumbing. -->
+        <Group id="sportsView" visible="false">
+            <Rectangle id="sportsBg" width="340" height="160" color="0x1a1a1aff" />
+            <Rectangle id="sportsAccent" width="340" height="6" color="0xe5a00dff" visible="false" />
+
+            <!-- Header: league + LIVE pill -->
+            <Label
+                id="sportsLeague"
+                translation="[12, 12]"
+                width="240"
+                wrap="false"
+                maxLines="1"
+                color="0xb0b0b0ff">
+                <Font role="font" uri="font:SystemFontFile" size="14" />
+            </Label>
+
+            <Group id="sportsLiveBadge" translation="[284, 12]" visible="false">
+                <Rectangle width="44" height="18" color="0xe53935ff" />
+                <Rectangle translation="[5, 6]" width="6" height="6" color="0xffffffff" />
+                <Label
+                    translation="[14, 1]"
+                    text="LIVE"
+                    width="30"
+                    height="18"
+                    wrap="false"
+                    vertAlign="center"
+                    color="0xffffffff">
+                    <Font role="font" uri="font:SystemFontFile" size="12" />
+                </Label>
+            </Group>
+
+            <!-- Team 1 row -->
+            <Poster
+                id="sportsT1Logo"
+                translation="[12, 46]"
+                width="24"
+                height="24"
+                loadDisplayMode="scaleToFit" />
+            <Label
+                id="sportsT1Name"
+                translation="[44, 48]"
+                width="200"
+                wrap="false"
+                maxLines="1"
+                color="0xffffffff">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
+            <Label
+                id="sportsT1Score"
+                translation="[252, 48]"
+                width="74"
+                horizAlign="right"
+                wrap="false"
+                color="0xffffffff"
+                visible="false">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
+
+            <!-- Team 2 row -->
+            <Poster
+                id="sportsT2Logo"
+                translation="[12, 76]"
+                width="24"
+                height="24"
+                loadDisplayMode="scaleToFit" />
+            <Label
+                id="sportsT2Name"
+                translation="[44, 78]"
+                width="200"
+                wrap="false"
+                maxLines="1"
+                color="0xffffffff">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
+            <Label
+                id="sportsT2Score"
+                translation="[252, 78]"
+                width="74"
+                horizAlign="right"
+                wrap="false"
+                color="0xffffffff"
+                visible="false">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
+
+            <!-- vs separator hidden in landscape (teams stack with logos). -->
+            <Label
+                id="sportsVs"
+                translation="[42, 56]"
+                width="0"
+                visible="false"
+                color="0x808080ff" />
+
+            <!-- Tournament title (non-team sports like ATP) -->
+            <Label
+                id="sportsTournament"
+                translation="[12, 56]"
+                width="316"
+                wrap="true"
+                maxLines="2"
+                color="0xffffffff"
+                visible="false">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
+
+            <!-- Footer scrim + status + broadcast pill -->
+            <Rectangle
+                id="sportsScrim"
+                translation="[0, 122]"
+                width="340"
+                height="38"
+                color="0x00000058"
+                visible="false" />
+            <Label
+                id="sportsStatus"
+                translation="[12, 132]"
+                width="200"
+                wrap="false"
+                maxLines="1"
+                color="0xc0c0c0ff">
+                <Font role="font" uri="font:SystemFontFile" size="13" />
+            </Label>
+
+            <Group id="sportsBroadcastPill" translation="[244, 130]" visible="false">
+                <Rectangle id="sportsBroadcastBg" width="84" height="20" color="0xe5a00d33" />
+                <Label
+                    id="sportsBroadcastLabel"
+                    translation="[6, 1]"
+                    width="72"
+                    height="20"
+                    wrap="false"
+                    horizAlign="center"
+                    vertAlign="center"
+                    color="0xe5a00dff">
+                    <Font role="font" uri="font:SystemFontFile" size="12" />
+                </Label>
+            </Group>
+        </Group>
     </children>
 </component>

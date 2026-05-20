@@ -554,6 +554,10 @@ sub buildHomeRows()
     end if
 
     rows = CreateObject("roSGNode", "ContentNode")
+    ' Per-row cell sizes — library/live shelves use portrait posters
+    ' (160×240), sports shelves use landscape cards (340×160). Roku's
+    ' RowList honours rowItemSize as a parallel array indexed by row.
+    rowSizes = []
 
     ' Standard /api/home shelves first.
     if sections <> invalid
@@ -573,23 +577,29 @@ sub buildHomeRows()
                     attachItemFields(child, item)
                 end for
             end if
+            rowSizes.push([160, 240])
         end for
     end if
 
     ' Sports shelves below — only when there's content. Mirrors mobile.
+    ' Use the same buildSportsCardChild the Sports tab uses so home
+    ' cards get the full league/team/status field set, which PosterItem
+    ' switches into its landscape sports layout when itemSource = "sports".
     if nowCount > 0
         row = rows.createChild("ContentNode")
         row.title = "Sports On Now"
         for each ev in sportsNow
-            buildSportsChild(row, ev)
+            buildSportsCardChild(row, ev, "live")
         end for
+        rowSizes.push([340, 160])
     end if
     if laterCount > 0
         row = rows.createChild("ContentNode")
         row.title = "Sports On Later"
         for each ev in sportsLater
-            buildSportsChild(row, ev)
+            buildSportsCardChild(row, ev, "upcoming")
         end for
+        rowSizes.push([340, 160])
     end if
 
     ' Live TV shelves last — only when the user has channels selected
@@ -616,6 +626,7 @@ sub buildHomeRows()
             end if
             attachItemFields(child, item)
         end for
+        rowSizes.push([160, 240])
     end if
     if liveLaterCount > 0
         row = rows.createChild("ContentNode")
@@ -631,61 +642,15 @@ sub buildHomeRows()
             end if
             attachItemFields(child, item)
         end for
+        rowSizes.push([160, 240])
     end if
 
+    m.rowList.rowItemSize = rowSizes
     m.rowList.content = rows
     m.rowList.visible = true
     m.status.visible = false
     m.rowList.setFocus(true)
 end sub
-
-' Sports cards reuse the RowList default poster + label. Phase 1.6 will
-' replace this with a custom SportsCard component (team logos + score
-' + LIVE pill / broadcast pill) to match the mobile SportsCard. For
-' now the home (or first) team's logo is the poster image.
-sub buildSportsChild(row as object, ev as object)
-    child = row.createChild("ContentNode")
-    child.title = stringField(ev, "title")
-    posterUrl = pickSportsLogo(ev)
-    if posterUrl <> ""
-        child.HDPosterUrl = posterUrl
-        child.SDPosterUrl = posterUrl
-    end if
-
-    child.AddField("itemSource", "string", false)
-    child.AddField("itemSourceId", "string", false)
-    child.AddField("itemTitle", "string", false)
-    child.AddField("itemShowTitle", "string", false)
-    child.AddField("itemSummary", "string", false)
-    child.AddField("itemYear", "string", false)
-    child.AddField("itemDuration", "string", false)
-    child.AddField("itemBackdropUrl", "string", false)
-    child.AddField("itemType", "string", false)
-    child.AddField("itemWatched", "boolean", false)
-    child.itemSource = "sports"
-    child.itemSourceId = stringField(ev, "id")
-    child.itemTitle = stringField(ev, "title")
-    child.itemSummary = stringField(ev, "statusDetail")
-    child.itemType = "sports"
-    child.itemWatched = false
-end sub
-
-' Pick the home team's logo (or first competitor with one) as the
-' poster — matches mobile SportsCard's "primary team" fallback when
-' the user follows neither side.
-function pickSportsLogo(ev as object) as string
-    if ev.competitors = invalid then return ""
-    homeLogo = ""
-    fallback = ""
-    for each c in ev.competitors
-        if c.logo <> invalid and c.logo <> ""
-            if c.homeAway = "home" then homeLogo = c.logo
-            if fallback = "" then fallback = c.logo
-        end if
-    end for
-    if homeLogo <> "" then return homeLogo
-    return fallback
-end function
 
 ' ─── Navigation ────────────────────────────────────────────────────
 
@@ -1087,11 +1052,12 @@ sub fetchSportsTabAll()
     m.sportsStatus.text = "Loading sports…"
     m.sportsStatus.visible = true
     m.sportsRowList.visible = false
-    m.sportsFetchPending = 3
-    m.sportsFetchData = { now: invalid, later: invalid, prefs: invalid }
+    m.sportsFetchPending = 4
+    m.sportsFetchData = { now: invalid, later: invalid, completed: invalid, prefs: invalid }
 
     m.sportsTabNowTask = startSportsTabFetch("/api/sports/now")
     m.sportsTabLaterTask = startSportsTabFetch("/api/sports/later?hours=168")
+    m.sportsTabCompletedTask = startSportsTabFetch("/api/sports/completed?days=7")
     m.sportsTabPrefsTask = startSportsTabFetch("/api/sports/prefs")
 end sub
 
@@ -1116,6 +1082,7 @@ sub onSportsTabFetchResponse(event as object)
     url = task.url
     if url = m.sportsTabNowTask.url then m.sportsFetchData.now = data
     if url = m.sportsTabLaterTask.url then m.sportsFetchData.later = data
+    if url = m.sportsTabCompletedTask.url then m.sportsFetchData.completed = data
     if url = m.sportsTabPrefsTask.url then m.sportsFetchData.prefs = data
 
     m.sportsFetchPending = m.sportsFetchPending - 1
@@ -1130,21 +1097,24 @@ sub buildSportsTabRows()
 
     nowEvents = m.sportsCache.now
     laterEvents = m.sportsCache.later
+    completedEvents = m.sportsCache.completed
     prefs = m.sportsCache.prefs
 
     nowCount = 0
     if nowEvents <> invalid then nowCount = nowEvents.Count()
     laterCount = 0
     if laterEvents <> invalid then laterCount = laterEvents.Count()
+    completedCount = 0
+    if completedEvents <> invalid then completedCount = completedEvents.Count()
 
     noPrefs = true
     if prefs <> invalid and prefs.leagues <> invalid and prefs.leagues.Count() > 0 then noPrefs = false
 
-    if nowCount = 0 and laterCount = 0
+    if nowCount = 0 and laterCount = 0 and completedCount = 0
         if noPrefs
             m.sportsStatus.text = "No teams or sports followed yet. Open Settings → Sports on the mobile app to pick leagues and teams."
         else
-            m.sportsStatus.text = "Nothing on right now. No games are live or starting in the next 7 days for your followed leagues."
+            m.sportsStatus.text = "Nothing on right now. No games are live, starting soon, or recently finished for your followed leagues."
         end if
         m.sportsStatus.visible = true
         m.sportsRowList.visible = false
@@ -1156,14 +1126,21 @@ sub buildSportsTabRows()
         row = rows.createChild("ContentNode")
         row.title = "Sports On Now"
         for each ev in nowEvents
-            buildSportsCardChild(row, ev, true)
+            buildSportsCardChild(row, ev, "live")
         end for
     end if
     if laterCount > 0
         row = rows.createChild("ContentNode")
         row.title = "Sports On Later"
         for each ev in laterEvents
-            buildSportsCardChild(row, ev, false)
+            buildSportsCardChild(row, ev, "upcoming")
+        end for
+    end if
+    if completedCount > 0
+        row = rows.createChild("ContentNode")
+        row.title = "Recently Completed"
+        for each ev in completedEvents
+            buildSportsCardChild(row, ev, "completed")
         end for
     end if
 
@@ -1183,7 +1160,12 @@ end sub
 ' HDPosterUrl + title are also populated so default RowList rendering
 ' has something to show if the rowItemComponentName binding ever fails
 ' to take effect — fail-soft instead of empty cards.
-sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
+'
+' `status` is "live" | "upcoming" | "completed" — drives card layout and
+' which header pill (LIVE / FINAL / none) shows. Completed cards also
+' set team{1,2}Winner so SportsCard / PosterItem can highlight the
+' winning side and dim the loser.
+sub buildSportsCardChild(row as object, ev as object, status as string)
     child = row.createChild("ContentNode")
 
     ' Standard fields — fallback for default rendering. Title shows
@@ -1199,6 +1181,7 @@ sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
 
     child.AddField("isLive", "boolean", false)
     child.AddField("isUpcoming", "boolean", false)
+    child.AddField("isCompleted", "boolean", false)
     child.AddField("isTeamSport", "boolean", false)
     child.AddField("league", "string", false)
     child.AddField("statusText", "string", false)
@@ -1208,9 +1191,11 @@ sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
     child.AddField("team1Name", "string", false)
     child.AddField("team1LogoUrl", "string", false)
     child.AddField("team1Score", "string", false)
+    child.AddField("team1Winner", "boolean", false)
     child.AddField("team2Name", "string", false)
     child.AddField("team2LogoUrl", "string", false)
     child.AddField("team2Score", "string", false)
+    child.AddField("team2Winner", "boolean", false)
     child.AddField("tournamentTitle", "string", false)
     ' Mirror the standard itemX fields so populateDetail (used by
     ' onSportsRowItemSelected → showView("detail")) doesn't crash on
@@ -1224,13 +1209,20 @@ sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
     child.AddField("itemBackdropUrl", "string", false)
     child.AddField("itemWatched", "boolean", false)
 
+    isLive = status = "live"
+    isCompleted = status = "completed"
     child.isLive = isLive
-    child.isUpcoming = not isLive
+    child.isCompleted = isCompleted
+    child.isUpcoming = (not isLive) and (not isCompleted)
     child.isTeamSport = ev.teamSport = true
     child.league = stringField(ev, "leagueLabel")
     child.broadcast = stringField(ev, "broadcast")
 
-    if isLive
+    ' Status footer text. Live = backend's "Q4 2:35" style detail.
+    ' Completed = "Final" (already in statusDetail from ESPN, but normalize).
+    ' Upcoming = formatted start time, falling back to whatever statusDetail
+    ' has if we can't parse the date.
+    if isLive or isCompleted
         child.statusText = stringField(ev, "statusDetail")
     else
         formatted = formatUpcomingTime(stringField(ev, "startsAt"))
@@ -1244,15 +1236,20 @@ sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
         child.accentColor = "0x" + bgHex + "ff"
     end if
 
+    ' Live cards show abbreviation, upcoming + completed cards show full
+    ' team name (more room because scores share the column on live only).
+    abbrevName = isLive
     if child.isTeamSport and ev.competitors <> invalid and ev.competitors.Count() >= 2
         c1 = ev.competitors[0]
         c2 = ev.competitors[1]
-        child.team1Name = sportsCompetitorName(c1, isLive)
+        child.team1Name = sportsCompetitorName(c1, abbrevName)
         child.team1LogoUrl = stringField(c1, "logo")
         child.team1Score = stringField(c1, "score")
-        child.team2Name = sportsCompetitorName(c2, isLive)
+        child.team1Winner = c1.winner = true
+        child.team2Name = sportsCompetitorName(c2, abbrevName)
         child.team2LogoUrl = stringField(c2, "logo")
         child.team2Score = stringField(c2, "score")
+        child.team2Winner = c2.winner = true
     else
         child.tournamentTitle = stringField(ev, "title")
     end if
@@ -1264,18 +1261,13 @@ sub buildSportsCardChild(row as object, ev as object, isLive as boolean)
     child.itemSummary = stringField(ev, "statusDetail")
     child.itemWatched = false
 
-    ' Diagnostic: verify the values made it onto the child node before
-    ' RowList hands it to the SportsCard. If these print but the
-    ' SportsCard reads them as empty, the issue is cross-component
-    ' field visibility, not data assembly.
-    print "[HomeScene] sportsChild league="; child.league; " team1="; child.team1Name; " isLive="; child.isLive
+    print "[HomeScene] sportsChild league="; child.league; " t1="; child.team1Name; " status="; status; " w1="; child.team1Winner; " w2="; child.team2Winner
 end sub
 
-' Live cards show abbreviation, upcoming cards show the full name —
-' matches mobile TeamRow.variant === 'upcoming' branch.
-function sportsCompetitorName(c as object, isLive as boolean) as string
+' Live cards show abbreviation, upcoming + completed show the full name.
+function sportsCompetitorName(c as object, abbrev as boolean) as string
     if c = invalid then return ""
-    if isLive
+    if abbrev
         if c.abbreviation <> invalid and c.abbreviation <> "" then return c.abbreviation
         if c.shortName <> invalid and c.shortName <> "" then return c.shortName
         if c.name <> invalid then return c.name
