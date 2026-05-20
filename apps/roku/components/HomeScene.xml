@@ -400,6 +400,28 @@
                 translation="[420, 830]"
                 minWidth="280"
                 visible="false" />
+
+            <!-- ─── What's on TV ───
+                 Mirrors the mobile Settings → What's on TV section.
+                 Pick TVmaze channels to drive the Home shelves
+                 "What's on TV" and "What's on TV Later". The picker
+                 itself lives in liveTvView (separate top-level group). -->
+            <Label
+                text="Live TV"
+                translation="[80, 920]"
+                width="280"
+                color="0xb0b0b0ff" />
+            <Label
+                id="settingsLiveTvValue"
+                text="No channels selected"
+                translation="[380, 920]"
+                width="800"
+                color="0xffffffff" />
+            <Button
+                id="configureChannelsButton"
+                text="Configure Channels"
+                translation="[380, 960]"
+                minWidth="320" />
         </Group>
 
         <!-- ─── User picker view ─────────────────────────────────────
@@ -478,6 +500,48 @@
                 id="pairHint"
                 text="Press OK to refresh the code. Press * to change the server URL."
                 translation="[80, 640]"
+                width="1700"
+                color="0x707070ff" />
+        </Group>
+
+        <!-- ─── Live TV channel picker ───────────────────────────────
+             Reached from Settings → Configure Channels. Loads the
+             available TVmaze channels from /api/live/channels, lets
+             the user toggle each one. Changes save immediately and
+             mark the home shelves stale; on Back we return to the
+             Settings view and the next visit to Home refetches. -->
+        <Group id="liveTvView" visible="false">
+            <Label
+                text="What's on TV"
+                translation="[80, 110]"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                text="Pick the channels you watch. Home will show what's on now and what's coming up on these channels."
+                translation="[80, 190]"
+                width="1700"
+                wrap="true"
+                color="0xb0b0b0ff" />
+
+            <Label
+                id="liveTvViewStatus"
+                text="Loading channels…"
+                translation="[80, 280]"
+                color="0xb0b0b0ff" />
+
+            <LabelList
+                id="channelList"
+                translation="[80, 280]"
+                itemSize="[800, 60]"
+                numRows="11"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+
+            <Label
+                text="OK toggles a channel. Press Back when done — your selection is saved automatically."
+                translation="[80, 970]"
                 width="1700"
                 color="0x707070ff" />
         </Group>

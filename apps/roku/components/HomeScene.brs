@@ -100,6 +100,17 @@ sub init()
     m.installUpdateButton = m.top.findNode("installUpdateButton")
     m.updateStatus = invalid
 
+    ' Live TV (What's on TV) — settings row + dedicated picker view.
+    m.settingsLiveTvValue = m.top.findNode("settingsLiveTvValue")
+    m.configureChannelsButton = m.top.findNode("configureChannelsButton")
+    m.liveTvView = m.top.findNode("liveTvView")
+    m.liveTvViewStatus = m.top.findNode("liveTvViewStatus")
+    m.channelList = m.top.findNode("channelList")
+    m.liveTvAvailable = invalid
+    m.liveTvChannelsTask = invalid
+    m.liveNowTask = invalid
+    m.liveLaterTask = invalid
+
     m.userPickerView = m.top.findNode("userPickerView")
     m.userPickerStatus = m.top.findNode("userPickerStatus")
     m.userList = m.top.findNode("userList")
@@ -301,6 +312,24 @@ sub init()
     if Len(authKey) >= 8 then keyHead = Left(authKey, 8) else keyHead = authKey
     print "[HomeScene] authKey: source="; keySource; " len="; Len(authKey); " head="; keyHead
 
+    ' Live TV channels — comma-separated TVmaze network names. Empty
+    ' by default; user picks them in Settings → Configure Channels.
+    ' When non-empty, Home fires extra /api/live/now and /api/live/later
+    ' fetches alongside the standard home + sports payloads.
+    liveCsv = ""
+    if section2 <> invalid and section2.Exists("liveTvChannels")
+        liveCsv = section2.Read("liveTvChannels")
+    end if
+    m.liveTvChannels = []
+    if liveCsv <> invalid and liveCsv <> ""
+        parts = liveCsv.Split(",")
+        for each p in parts
+            t = trimString(p)
+            if t <> "" then m.liveTvChannels.push(t)
+        end for
+    end if
+    print "[HomeScene] liveTvChannels count="; m.liveTvChannels.Count()
+
     ' Wire row-list selection + button presses.
     m.rowList.observeField("rowItemSelected", "onRowItemSelected")
     m.tvRowList.observeField("rowItemSelected", "onTvRowItemSelected")
@@ -319,6 +348,8 @@ sub init()
     m.connectionToggle.observeField("buttonSelected", "onConnectionTypeSelected")
     m.checkUpdateButton.observeField("buttonSelected", "onCheckUpdatePressed")
     m.installUpdateButton.observeField("buttonSelected", "onInstallUpdatePressed")
+    m.configureChannelsButton.observeField("buttonSelected", "onConfigureChannelsPressed")
+    m.channelList.observeField("itemSelected", "onChannelToggled")
     m.userList.observeField("itemSelected", "onUserPicked")
     m.video.observeField("state", "onVideoStateChanged")
     m.video.observeField("position", "onVideoPosition")
@@ -386,16 +417,24 @@ sub onAdminStatusResponse()
     end if
 end sub
 
-' Fire /api/home + /api/sports/{now,later} in parallel — mobile does the
-' same on Home tab so sports shelves appear when configured. We wait
-' for all three to finish before building the row list so the shelf
-' order is stable (sports always after the home aggregator shelves).
+' Fire /api/home + /api/sports/{now,later} (+ /api/live/{now,later} when
+' the user has live channels selected) in parallel — mobile does the
+' same on Home tab so sports/live shelves appear when configured. We
+' wait for everything to finish before building the row list so the
+' shelf order is stable: home sections, sports, live TV.
 sub startInitialFetches()
     if m.initialFetchDone then return
     m.initialFetchDone = true
+    fetchHomeShelves()
+end sub
 
-    m.homeFetchPending = 3
-    m.homeData = { sections: invalid, sportsNow: invalid, sportsLater: invalid }
+sub fetchHomeShelves()
+    hasLive = (m.liveTvChannels <> invalid and m.liveTvChannels.Count() > 0)
+    pending = 3
+    if hasLive then pending = pending + 2
+    m.homeFetchPending = pending
+    m.homeData = { sections: invalid, sportsNow: invalid, sportsLater: invalid, liveNow: invalid, liveLater: invalid }
+    print "[HomeScene] fetchHomeShelves pending="; pending; " hasLive="; hasLive
 
     m.task = CreateObject("roSGNode", "ApiTask")
     m.task.observeField("response", "onHomeResponse")
@@ -417,6 +456,24 @@ sub startInitialFetches()
     m.sportsLaterTask.url = m.apiUrl + "/api/sports/later"
     setApiTaskAuth(m.sportsLaterTask)
     m.sportsLaterTask.control = "RUN"
+
+    if hasLive
+        encChannels = urlEncodeQuery(joinStrings(m.liveTvChannels, ","))
+
+        m.liveNowTask = CreateObject("roSGNode", "ApiTask")
+        m.liveNowTask.observeField("response", "onLiveNowResponse")
+        m.liveNowTask.method = "GET"
+        m.liveNowTask.url = m.apiUrl + "/api/live/now?channels=" + encChannels
+        setApiTaskAuth(m.liveNowTask)
+        m.liveNowTask.control = "RUN"
+
+        m.liveLaterTask = CreateObject("roSGNode", "ApiTask")
+        m.liveLaterTask.observeField("response", "onLiveLaterResponse")
+        m.liveLaterTask.method = "GET"
+        m.liveLaterTask.url = m.apiUrl + "/api/live/later?channels=" + encChannels + "&hours=6"
+        setApiTaskAuth(m.liveLaterTask)
+        m.liveLaterTask.control = "RUN"
+    end if
 end sub
 
 ' ─── Home view ─────────────────────────────────────────────────────
@@ -449,6 +506,24 @@ sub onSportsLaterResponse()
     onHomeFetchComplete()
 end sub
 
+sub onLiveNowResponse()
+    if m.liveNowTask = invalid then return
+    response = m.liveNowTask.response
+    if response <> invalid and response.success = true and response.data <> invalid
+        m.homeData.liveNow = response.data
+    end if
+    onHomeFetchComplete()
+end sub
+
+sub onLiveLaterResponse()
+    if m.liveLaterTask = invalid then return
+    response = m.liveLaterTask.response
+    if response <> invalid and response.success = true and response.data <> invalid
+        m.homeData.liveLater = response.data
+    end if
+    onHomeFetchComplete()
+end sub
+
 sub onHomeFetchComplete()
     m.homeFetchPending = m.homeFetchPending - 1
     if m.homeFetchPending > 0 then return
@@ -466,10 +541,14 @@ sub buildHomeRows()
     if sportsNow <> invalid then nowCount = sportsNow.Count()
     laterCount = 0
     if sportsLater <> invalid then laterCount = sportsLater.Count()
+    liveNowPrecount = 0
+    if m.homeData.liveNow <> invalid then liveNowPrecount = m.homeData.liveNow.Count()
+    liveLaterPrecount = 0
+    if m.homeData.liveLater <> invalid then liveLaterPrecount = m.homeData.liveLater.Count()
 
     print "[HomeScene] home shelves — sections="; sectionCount; " sportsNow="; nowCount; " sportsLater="; laterCount
 
-    if sectionCount = 0 and nowCount = 0 and laterCount = 0
+    if sectionCount = 0 and nowCount = 0 and laterCount = 0 and liveNowPrecount = 0 and liveLaterPrecount = 0
         m.status.text = "Home is empty. Make sure your media servers are configured."
         return
     end if
@@ -510,6 +589,47 @@ sub buildHomeRows()
         row.title = "Sports On Later"
         for each ev in sportsLater
             buildSportsChild(row, ev)
+        end for
+    end if
+
+    ' Live TV shelves last — only when the user has channels selected
+    ' AND the backend returned items for those channels in the current
+    ' time window. Mirrors mobile (tabs)/index.tsx liveSections order.
+    liveNow = m.homeData.liveNow
+    liveLater = m.homeData.liveLater
+    liveNowCount = 0
+    if liveNow <> invalid then liveNowCount = liveNow.Count()
+    liveLaterCount = 0
+    if liveLater <> invalid then liveLaterCount = liveLater.Count()
+    print "[HomeScene] live shelves — now="; liveNowCount; " later="; liveLaterCount
+    if liveNowCount > 0
+        row = rows.createChild("ContentNode")
+        row.title = "What's on TV"
+        for each item in liveNow
+            child = row.createChild("ContentNode")
+            child.title = itemDisplayTitle(item)
+            child.description = itemDescription(item)
+            posterUrl = resolvePosterUrl(item)
+            if posterUrl <> ""
+                child.HDPosterUrl = posterUrl
+                child.SDPosterUrl = posterUrl
+            end if
+            attachItemFields(child, item)
+        end for
+    end if
+    if liveLaterCount > 0
+        row = rows.createChild("ContentNode")
+        row.title = "What's on TV Later"
+        for each item in liveLater
+            child = row.createChild("ContentNode")
+            child.title = itemDisplayTitle(item)
+            child.description = itemDescription(item)
+            posterUrl = resolvePosterUrl(item)
+            if posterUrl <> ""
+                child.HDPosterUrl = posterUrl
+                child.SDPosterUrl = posterUrl
+            end if
+            attachItemFields(child, item)
         end for
     end if
 
@@ -2161,7 +2281,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
             end if
         else if m.currentView = "settings"
             ' Up chain on Settings:
-            '   updateButtons ↑ connection ↑ switchUser ↑ editUrl ↑ tabBar
+            '   configureChannels ↑ updateButtons (when visible) ↑ connection
+            '   ↑ switchUser ↑ editUrl ↑ tabBar
+            if m.configureChannelsButton.isInFocusChain()
+                if m.checkUpdateButton.visible
+                    m.checkUpdateButton.setFocus(true)
+                else
+                    m.connectionToggle.setFocus(true)
+                end if
+                return true
+            end if
             if m.checkUpdateButton.isInFocusChain() or m.installUpdateButton.isInFocusChain()
                 m.connectionToggle.setFocus(true)
                 return true
@@ -2208,7 +2337,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
         if m.currentView = "settings"
             ' Down chain on Settings:
-            '   editUrl ↓ switchUser ↓ connection ↓ checkUpdate
+            '   editUrl ↓ switchUser ↓ connection ↓ checkUpdate (when visible)
+            '   ↓ configureChannels
             if m.editApiUrlButton.isInFocusChain()
                 m.switchUserButton.setFocus(true)
                 return true
@@ -2217,8 +2347,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 m.connectionToggle.setFocus(true)
                 return true
             end if
-            if m.connectionToggle.isInFocusChain() and m.checkUpdateButton.visible
-                m.checkUpdateButton.setFocus(true)
+            if m.connectionToggle.isInFocusChain()
+                if m.checkUpdateButton.visible
+                    m.checkUpdateButton.setFocus(true)
+                else
+                    m.configureChannelsButton.setFocus(true)
+                end if
+                return true
+            end if
+            if m.checkUpdateButton.isInFocusChain() or m.installUpdateButton.isInFocusChain()
+                m.configureChannelsButton.setFocus(true)
                 return true
             end if
         end if
@@ -2319,6 +2457,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
             showView("settings")
             return true
         end if
+        if m.currentView = "liveTv"
+            ' Channel picker — selections were saved as they were
+            ' toggled, so just return to Settings. Home will refetch on
+            ' next visit because saveLiveTvChannels marked it stale.
+            showView("settings")
+            return true
+        end if
         if m.currentView = "pair"
             ' First-run pair view — there's nothing to go back to.
             ' Eat the key so the channel doesn't exit.
@@ -2365,6 +2510,7 @@ sub showView(name as string)
     m.settingsView.visible = (name = "settings")
     m.userPickerView.visible = (name = "userPicker")
     m.pairView.visible = (name = "pair")
+    m.liveTvView.visible = (name = "liveTv")
     m.detailView.visible = (name = "detail")
     m.playerView.visible = (name = "player")
     ' Tab bar + brand mark are top-level chrome — visible on the tab
@@ -2407,19 +2553,17 @@ sub showView(name as string)
     if name = "settings"
         populateSettings()
     end if
+    if name = "liveTv"
+        ensureChannelsLoaded()
+    end if
 
     ' Defer setFocus by one tick — see init() for why.
     m.focusTimer.control = "start"
 end sub
 
 sub refetchHome()
-    print "[HomeScene] refetching /api/home"
-    m.task = CreateObject("roSGNode", "ApiTask")
-    m.task.observeField("response", "onHomeResponse")
-    m.task.method = "GET"
-    m.task.url = m.apiUrl + "/api/home"
-    setApiTaskAuth(m.task)
-    m.task.control = "RUN"
+    print "[HomeScene] refetching home shelves"
+    fetchHomeShelves()
 end sub
 
 sub applyDeferredFocus()
@@ -2462,6 +2606,11 @@ sub applyDeferredFocus()
         m.editApiUrlButton.setFocus(true)
     else if m.currentView = "userPicker"
         if m.userList.visible then m.userList.setFocus(true)
+    else if m.currentView = "liveTv"
+        ' Land on the channel list when it's already rendered. Before
+        ' the /api/live/channels call returns the list is still hidden,
+        ' so there's nothing to focus — eat the deferred focus.
+        if m.channelList.visible then m.channelList.setFocus(true)
     else if m.currentView = "detail"
         m.detailActions.setFocus(true)
     else if m.currentView = "player"
@@ -3045,6 +3194,7 @@ sub populateSettings()
     m.settingsApiUrlValue.text = m.apiUrl
     m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
     m.settingsConnectionValue.text = connectionDisplayName(m.connectionType)
+    updateLiveTvSettingsLabel()
     if m.usersData = invalid then fetchUsers()
 
     ' Re-fetch update status every visit — the backend's poller
@@ -3338,6 +3488,142 @@ end sub
 sub onSwitchUserPressed()
     showView("userPicker")
     if m.usersData = invalid then fetchUsers() else renderUserPickerList()
+end sub
+
+' ─── Live TV channel picker ───────────────────────────────────────
+'
+' Mirrors the mobile Settings → "Configure Channels" flow:
+'   1. GET /api/live/channels → flat array of TVmaze network names.
+'   2. Render a LabelList where each row shows "[X] Name" or "[ ] Name".
+'   3. OK on a row toggles inclusion, rewrites the row's title in place,
+'      and saves the updated CSV to the whatson registry section.
+'   4. Mark home stale so the next Home visit refetches /api/live/now
+'      and /api/live/later with the new channel set.
+
+sub onConfigureChannelsPressed()
+    showView("liveTv")
+end sub
+
+sub ensureChannelsLoaded()
+    if m.liveTvAvailable <> invalid
+        renderChannelList()
+        return
+    end if
+    fetchChannels()
+end sub
+
+sub fetchChannels()
+    m.liveTvViewStatus.visible = true
+    m.liveTvViewStatus.text = "Loading channels…"
+    m.channelList.visible = false
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onChannelsResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/live/channels"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.liveTvChannelsTask = task
+end sub
+
+sub onChannelsResponse()
+    if m.liveTvChannelsTask = invalid then return
+    resp = m.liveTvChannelsTask.response
+    m.liveTvChannelsTask = invalid
+
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        msg = "Couldn't load channels."
+        if resp <> invalid and resp.error <> invalid then msg = msg + " " + resp.error.toStr()
+        m.liveTvViewStatus.text = msg
+        return
+    end if
+
+    m.liveTvAvailable = resp.data
+    renderChannelList()
+end sub
+
+sub renderChannelList()
+    if m.liveTvAvailable = invalid then return
+
+    if m.liveTvAvailable.Count() = 0
+        m.liveTvViewStatus.visible = true
+        m.liveTvViewStatus.text = "No channels available. The backend hasn't seen any TVmaze schedule data yet."
+        m.channelList.visible = false
+        return
+    end if
+
+    rows = CreateObject("roSGNode", "ContentNode")
+    for each channel in m.liveTvAvailable
+        node = rows.createChild("ContentNode")
+        enabled = false
+        for each sel in m.liveTvChannels
+            if sel = channel then enabled = true
+        end for
+        prefix = "[ ]  "
+        if enabled then prefix = "[X]  "
+        node.title = prefix + channel
+    end for
+    m.channelList.content = rows
+    m.liveTvViewStatus.visible = false
+    m.channelList.visible = true
+    m.channelList.setFocus(true)
+end sub
+
+sub onChannelToggled()
+    idx = m.channelList.itemSelected
+    if idx < 0 or m.liveTvAvailable = invalid or idx >= m.liveTvAvailable.Count() then return
+    channel = m.liveTvAvailable[idx]
+
+    found = -1
+    for i = 0 to m.liveTvChannels.Count() - 1
+        if m.liveTvChannels[i] = channel then found = i
+    end for
+
+    if found >= 0
+        m.liveTvChannels.Delete(found)
+    else
+        m.liveTvChannels.push(channel)
+    end if
+
+    ' Repaint the row in place so the checkbox flips without losing
+    ' focus / scroll position. LabelList rows are plain strings — we
+    ' just rewrite the title field on the corresponding ContentNode.
+    rows = m.channelList.content
+    if rows <> invalid and idx < rows.getChildCount()
+        node = rows.getChild(idx)
+        prefix = "[ ]  "
+        if found < 0 then prefix = "[X]  "
+        node.title = prefix + channel
+    end if
+
+    saveLiveTvChannels()
+end sub
+
+sub saveLiveTvChannels()
+    csv = joinStrings(m.liveTvChannels, ",")
+    section = CreateObject("roRegistrySection", "whatson")
+    if section <> invalid
+        section.Write("liveTvChannels", csv)
+        section.Flush()
+    end if
+    updateLiveTvSettingsLabel()
+    ' Home aggregator + live shelves are now out of date. Mark stale
+    ' so the next Home visit refetches with the new channel set.
+    m.homeStale = true
+    print "[HomeScene] liveTvChannels saved: "; csv
+end sub
+
+sub updateLiveTvSettingsLabel()
+    if m.settingsLiveTvValue = invalid then return
+    count = 0
+    if m.liveTvChannels <> invalid then count = m.liveTvChannels.Count()
+    if count = 0
+        m.settingsLiveTvValue.text = "No channels selected"
+    else if count = 1
+        m.settingsLiveTvValue.text = "1 channel selected"
+    else
+        m.settingsLiveTvValue.text = count.toStr() + " channels selected"
+    end if
 end sub
 
 ' ─── Pair view ────────────────────────────────────────────────────
