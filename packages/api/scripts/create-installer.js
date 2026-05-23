@@ -118,6 +118,12 @@ function createWindowsInstaller() {
   const hasAdmin = existsSync(adminSrc) || existsSync(adminStaging);
   const adminDir = existsSync(adminStaging) ? adminStaging : adminSrc;
 
+  // Web SPA bundle — apps/web/dist gets copied to STANDALONE/web/ by
+  // build-standalone.js. Include it recursively here so the installed
+  // backend can serve it at /.
+  const webStaging = join(STANDALONE, 'web');
+  const hasWeb = existsSync(webStaging);
+
   const nsisScript = `
 !include "MUI2.nsh"
 
@@ -152,6 +158,11 @@ Section "Install"
   SetOutPath "$INSTDIR\\\\admin"
   File "${join(adminDir, 'index.html').replace(/\\/g, '\\\\')}"
   SetOutPath "$INSTDIR"` : ''}
+  ${hasWeb ? `
+  ; Web SPA (apps/web/dist)
+  SetOutPath "$INSTDIR\\\\web"
+  File /r "${webStaging.replace(/\\/g, '\\\\')}\\\\*.*"
+  SetOutPath "$INSTDIR"` : ''}
 
   ; Create .env from example if it doesn't exist
   IfFileExists "$INSTDIR\\\\.env" +2
@@ -180,6 +191,7 @@ Section "Uninstall"
   Delete "$INSTDIR\\\\uninstall.exe"
   Delete "$INSTDIR\\\\admin\\\\index.html"
   RMDir "$INSTDIR\\\\admin"
+  RMDir /r "$INSTDIR\\\\web"
   RMDir "$INSTDIR"
 
   DeleteRegKey HKLM "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\WhatsOnAPI"
@@ -388,6 +400,13 @@ function createPortableZip() {
     for (const file of readdirSync(portableAdminSrc)) {
       copyFileSync(join(portableAdminSrc, file), join(portableAdminDest, file));
     }
+  }
+
+  // Copy web SPA build (recursive — has nested asset dirs).
+  const portableWebSrc = join(STANDALONE, 'web');
+  if (existsSync(portableWebSrc)) {
+    const { cpSync } = require('fs');
+    cpSync(portableWebSrc, join(archiveDir, 'web'), { recursive: true });
   }
 
   // Create a README for portable usage

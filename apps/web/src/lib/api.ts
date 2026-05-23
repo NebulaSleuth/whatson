@@ -104,6 +104,32 @@ export const api = {
   // Home
   getHome: () => fetchApi<HomeResponse>('/api/home'),
 
+  // TV / Movies shelves
+  getTvRecent: () => fetchApi<ContentItem[]>('/api/tv/recent'),
+  getTvUpcoming: (days = 7) => fetchApi<ContentItem[]>(`/api/tv/upcoming?days=${days}`),
+  getTvDownloading: () => fetchApi<ContentItem[]>('/api/tv/downloading'),
+  getMoviesRecent: () => fetchApi<ContentItem[]>('/api/movies/recent'),
+  getMoviesUpcoming: (days = 30) => fetchApi<ContentItem[]>(`/api/movies/upcoming?days=${days}`),
+  getMoviesDownloading: () => fetchApi<ContentItem[]>('/api/movies/downloading'),
+
+  // Library
+  getLibrary: (type: 'movie' | 'show', source: string = 'plex') =>
+    fetchApi<ContentItem[]>(`/api/library/${type}?source=${source}`),
+
+  // Search
+  searchLibrary: (query: string, type?: 'tv' | 'movie') => {
+    const params = new URLSearchParams({ q: query });
+    if (type) params.set('type', type);
+    return fetchApi<{ items: ContentItem[] }>(`/api/search?${params.toString()}`);
+  },
+  searchDiscover: (query: string) =>
+    fetchApi<Array<{ id: string; tmdbId: number; title: string; type: 'tv' | 'movie'; year?: number; poster?: string; isTracked?: boolean }>>(
+      `/api/discover/search?q=${encodeURIComponent(query)}`,
+    ),
+
+  // Tracked
+  getAllTrackedTv: () => fetchApi<Array<{ id: string; title: string; tmdbId: number; year?: number; rating?: number; poster: string; backdrop?: string; overview?: string; provider: string; addedAt: string }>>('/api/tracked?all=true&type=tv'),
+
   // Sports
   getSportsNow: () => fetchApi<SportsEvent[]>('/api/sports/now'),
   getSportsLater: (hours = 168) => fetchApi<SportsEvent[]>(`/api/sports/later?hours=${hours}`),
@@ -119,6 +145,27 @@ export const api = {
   // Health
   getHealth: () =>
     fetchApi<{ status: string; version?: string; services: Record<string, string> }>('/api/health'),
+
+  // Server config + updates
+  getConfig: () => fetchApi<Record<string, { url?: string; configured?: boolean }>>('/api/config'),
+  getUpdateStatus: () =>
+    fetchApi<{
+      currentVersion: string;
+      latestVersion: string | null;
+      updateAvailable: boolean;
+      platformSupported?: boolean;
+      lastCheckedAt: string | null;
+      lastError: string | null;
+    }>('/api/update/status'),
+  checkUpdate: () =>
+    fetchApi<{ currentVersion: string; latestVersion: string | null; updateAvailable: boolean; lastCheckedAt: string | null; lastError: string | null }>(
+      '/api/update/check',
+      { method: 'POST' },
+    ),
+  applyUpdate: () => fetchApi<{ started: boolean }>('/api/update/apply', { method: 'POST' }),
+
+  // Live TV
+  getLiveChannels: () => fetchApi<string[]>('/api/live/channels'),
 };
 
 /** Rewrite a relative /api/artwork URL to an absolute one — the SPA

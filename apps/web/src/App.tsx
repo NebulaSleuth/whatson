@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { TopBar } from './components/TopBar';
 import Home from './pages/Home';
+import TV from './pages/TV';
+import Movies from './pages/Movies';
+import Sports from './pages/Sports';
+import Library from './pages/Library';
+import Search from './pages/Search';
+import Settings from './pages/Settings';
 import SelectUser from './pages/SelectUser';
 import PairDevice from './pages/PairDevice';
-import { Placeholder } from './pages/Placeholder';
 import { api, getAuthKey, getCurrentUserId } from './lib/api';
 
 type BootStatus = 'checking' | 'needsPair' | 'needsUser' | 'ready';
@@ -65,12 +70,12 @@ export default function App() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/tv" element={<Placeholder title="TV Shows" />} />
-          <Route path="/movies" element={<Placeholder title="Movies" />} />
-          <Route path="/sports" element={<Placeholder title="Sports" />} />
-          <Route path="/library" element={<Placeholder title="Library" />} />
-          <Route path="/search" element={<Placeholder title="Search" />} />
-          <Route path="/settings" element={<Placeholder title="Settings" />} />
+          <Route path="/tv" element={<TV />} />
+          <Route path="/movies" element={<Movies />} />
+          <Route path="/sports" element={<Sports />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/select-user" element={<SelectUser />} />
           <Route path="/pair" element={<PairDevice />} />
         </Routes>
