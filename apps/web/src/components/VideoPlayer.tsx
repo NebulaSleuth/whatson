@@ -208,15 +208,19 @@ export function VideoPlayer({ item, onClose }: Props) {
     if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
     if ('bitrate' in opts) setMaxBitrate(opts.bitrate);
 
-    // CRITICAL: terminate the prior transcode session before asking
+    // CRITICAL: terminate the prior transcode session BEFORE asking
     // Plex for a new one. Without this the second /api/playback call
     // inherits the still-active session's audio / subtitle / bitrate
-    // and our UI selection has no effect. Mobile + Roku do the same
-    // dance — but FIRE AND FORGET. Awaiting the stop response races
-    // Plex's actual session teardown and can wedge the next start.
+    // and our UI selection has no effect (the v0.1.49 bug).
+    // Awaiting the stop also gives Plex a moment to actually tear
+    // the session down before we race a new request at it.
     if (v) v.pause();
     if (sessionRef.current) {
-      api.stopPlayback(sessionRef.current, item.source).catch(() => {});
+      try {
+        await api.stopPlayback(sessionRef.current, item.source);
+      } catch {
+        /* best-effort — even if stop fails we'll try the new stream */
+      }
       sessionRef.current = null;
     }
 
