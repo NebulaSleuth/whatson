@@ -102,58 +102,27 @@ export function VideoPlayer({ item, onClose }: Props) {
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
 
-      // Register listeners BEFORE attaching the new source — hls.js
-      // can fire loadedmetadata synchronously after a fast manifest
-      // load, and a listener added afterwards would miss it.
+      // Register the seek-and-play listener BEFORE attaching the new
+      // source — hls.js can fire loadedmetadata synchronously after a
+      // fast manifest load, and a listener added afterwards would
+      // miss it. `once: true` keeps it from re-firing on subsequent
+      // manifest reloads within the same stream.
       //
       // Seek logic: when we asked the backend for `offset`, Plex
       // returns a stream that already starts at that point — its
-      // internal t=0 is our position, so we MUST NOT seek the
+      // internal t=0 IS our position, so we MUST NOT seek the
       // element again or we'd land far past the end. Only seek on
       // the first load where the server-reported viewOffset > 0.
       const isSwap = opts.offset !== undefined;
       const seekToMs = isSwap ? 0 : (next.viewOffset > 0 ? next.viewOffset : 0);
-
-      let started = false;
       const onLoaded = () => {
         if (seekToMs > 0) {
           try { video.currentTime = seekToMs / 1000; } catch {}
         }
-        // First .play() attempt — may reject if the buffer isn't
-        // populated yet. We fall back to the canplay listener.
-        video.play().catch((err) => console.warn('[player] initial play rejected', err.name));
-      };
-      const onCanPlay = () => {
-        if (video.paused && !started) {
-          video.play().catch((err) => console.warn('[player] canplay play rejected', err.name));
-        }
-      };
-      const onPlaying = () => {
-        started = true;
-        setStatus('');
+        video.play().catch((err) => console.warn('[player] play rejected', err.name));
         requestAnimationFrame(() => { swappingRef.current = false; });
       };
       video.addEventListener('loadedmetadata', onLoaded, { once: true });
-      video.addEventListener('canplay', onCanPlay);
-      video.addEventListener('playing', onPlaying, { once: true });
-
-      // Stall watchdog — if 'playing' never fires within 20 s after
-      // attachMedia, surface a clear error so the user can retry.
-      const stallTimer = window.setTimeout(() => {
-        if (!started) {
-          console.warn('[player] stall — playback never started');
-          setError("This stream isn't responding. Try a lower quality or close and reopen.");
-          swappingRef.current = false;
-        }
-      }, 20_000);
-
-      // Clean both listeners + the watchdog when the listener fires
-      // playing or when the player unmounts via the destroy hook.
-      const cleanup = () => {
-        video.removeEventListener('canplay', onCanPlay);
-        window.clearTimeout(stallTimer);
-      };
-      video.addEventListener('playing', cleanup, { once: true });
 
       if (canNativeHls) {
         video.src = url;
@@ -239,19 +208,15 @@ export function VideoPlayer({ item, onClose }: Props) {
     if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
     if ('bitrate' in opts) setMaxBitrate(opts.bitrate);
 
-    // CRITICAL: terminate the prior transcode session BEFORE asking
+    // CRITICAL: terminate the prior transcode session before asking
     // Plex for a new one. Without this the second /api/playback call
     // inherits the still-active session's audio / subtitle / bitrate
     // and our UI selection has no effect. Mobile + Roku do the same
-    // dance. We pause the local <video> first so it doesn't keep
-    // hammering the buffer while we wait on the server.
+    // dance — but FIRE AND FORGET. Awaiting the stop response races
+    // Plex's actual session teardown and can wedge the next start.
     if (v) v.pause();
     if (sessionRef.current) {
-      try {
-        await api.stopPlayback(sessionRef.current, item.source);
-      } catch {
-        /* best-effort — even if stop fails we'll try the new stream */
-      }
+      api.stopPlayback(sessionRef.current, item.source).catch(() => {});
       sessionRef.current = null;
     }
 
