@@ -73,50 +73,77 @@ export function VideoPlayer({ item, onClose }: Props) {
       if (!video) return;
 
       // Detach the old source cleanly before attaching a new one.
-      // Order matters: stop the element (which stops the network
-      // request), tear down hls.js, then clear any leftover src.
+      // For the hls.js path, destroying the instance also detaches
+      // its MediaSource. For native HLS (Safari) we'll overwrite
+      // video.src below, no extra reset needed.
       try { video.pause(); } catch {}
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      video.removeAttribute('src');
-      video.load();
 
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
+
+      // Register the seek-and-play listener BEFORE attaching the new
+      // source — otherwise hls.js can fire loadedmetadata between
+      // attachMedia and our addEventListener call, and the seek/play
+      // never runs. Use `once: true` so the swap path doesn't
+      // re-trigger on subsequent manifest reloads.
+      //
+      // Seek logic: when we asked the backend for `offset`, Plex
+      // returns a stream that already starts at that point — its
+      // internal t=0 is our position, so we MUST NOT seek the
+      // element again or we'd land far past the end. Only seek on
+      // the first load where the server-reported viewOffset > 0.
+      const isSwap = opts.offset !== undefined;
+      const seekToMs = isSwap ? 0 : (next.viewOffset > 0 ? next.viewOffset : 0);
+      const onLoaded = () => {
+        if (seekToMs > 0) {
+          try { video.currentTime = seekToMs / 1000; } catch {}
+        }
+        video.play().catch(() => {});
+        requestAnimationFrame(() => { swappingRef.current = false; });
+      };
+      video.addEventListener('loadedmetadata', onLoaded, { once: true });
+
       if (canNativeHls) {
         video.src = url;
       } else if (Hls.isSupported()) {
-        const hls = new Hls({ enableWorker: true });
+        // Jellyfin / Emby transcode segments on demand. The HLS
+        // manifest lists every segment up front, but if the
+        // transcoder hasn't reached one yet the request 404s.
+        // Bump retry budgets and recover from transient network
+        // errors instead of bubbling them to the user as fatal.
+        const hls = new Hls({
+          enableWorker: true,
+          manifestLoadingMaxRetry: 6,
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingMaxRetry: 6,
+          levelLoadingRetryDelay: 1000,
+          fragLoadingMaxRetry: 12,
+          fragLoadingRetryDelay: 1000,
+          fragLoadingMaxRetryTimeout: 30_000,
+        });
         hlsRef.current = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.ERROR, (_e, data) => {
-          if (data.fatal) {
-            setError(`Playback error: ${data.type} / ${data.details}`);
+          if (!data.fatal) return;
+          // Try to recover from common transient failures before
+          // surfacing an error to the user.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            console.warn('[hls] network error — retrying', data.details);
+            try { hls.startLoad(); return; } catch {}
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            console.warn('[hls] media error — recovering', data.details);
+            try { hls.recoverMediaError(); return; } catch {}
           }
+          setError(`Playback error: ${data.type} / ${data.details}`);
         });
       } else {
         setError("This browser cannot play HLS streams.");
         return;
-      }
-
-      const seekTo = opts.offset ?? (next.viewOffset > 0 ? next.viewOffset : 0);
-      if (seekTo > 0) {
-        const onLoaded = () => {
-          video.currentTime = seekTo / 1000;
-          video.removeEventListener('loadedmetadata', onLoaded);
-          video.play().catch(() => {});
-          // Re-arm the error guard a frame after the first chunk
-          // appears — by then any stale error events from the swap
-          // have already fired and been ignored.
-          requestAnimationFrame(() => { swappingRef.current = false; });
-        };
-        video.addEventListener('loadedmetadata', onLoaded);
-      } else {
-        video.play().catch(() => {});
-        requestAnimationFrame(() => { swappingRef.current = false; });
       }
       setStatus('');
     } catch (e) {
@@ -274,7 +301,11 @@ export function VideoPlayer({ item, onClose }: Props) {
             controls
             autoPlay
             playsInline
-            className="max-w-full max-h-full"
+            // Fill the viewport regardless of source resolution. A
+            // 720p / SD transcode would otherwise render in its
+            // natural size in a corner — object-contain scales the
+            // frame to fit while preserving aspect ratio.
+            className="w-screen h-screen object-contain bg-black"
             onError={() => {
               // Ignore the transient error events that fire as we
               // detach the previous source mid-swap.
