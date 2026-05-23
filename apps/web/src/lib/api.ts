@@ -89,7 +89,7 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ deviceLabel }) },
     ),
   pairPoll: (code: string) =>
-    fetchApi<{ authKey?: string; status: 'pending' | 'paired' | 'expired' }>(
+    fetchApi<{ key?: string; status: 'pending' | 'completed' | 'expired' }>(
       `/api/auth/pair/poll?code=${encodeURIComponent(code)}`,
     ),
 

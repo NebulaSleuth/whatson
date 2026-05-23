@@ -1,59 +1,72 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api, setAuthKey } from '@/lib/api';
 
 export default function PairDevice() {
-  const navigate = useNavigate();
   const [code, setCode] = useState<string | null>(null);
   const [status, setStatus] = useState('Requesting pair code…');
   const pollHandle = useRef<number | null>(null);
 
-  async function start() {
+  async function requestCode() {
+    setCode(null);
+    setStatus('Requesting pair code…');
     try {
       const res = await api.pairStart('Web');
       setCode(res.code);
       setStatus('Waiting for the admin to enter this code…');
-      pollHandle.current = window.setInterval(poll, 3000);
     } catch (e) {
       setStatus(`Couldn't request a pair code: ${(e as Error).message}`);
     }
   }
 
-  async function poll() {
-    if (!code) return;
-    try {
-      const res = await api.pairPoll(code);
-      if (res.status === 'paired' && res.authKey) {
-        if (pollHandle.current) window.clearInterval(pollHandle.current);
-        setAuthKey(res.authKey);
-        navigate('/', { replace: true });
-      } else if (res.status === 'expired') {
-        if (pollHandle.current) window.clearInterval(pollHandle.current);
-        setStatus('Code expired. Click Refresh to get a new one.');
-        setCode(null);
-      }
-    } catch (e) {
-      console.warn('pair poll error', e);
-    }
-  }
-
+  // Kick off the first request on mount.
   useEffect(() => {
-    start();
+    requestCode();
     return () => {
       if (pollHandle.current) window.clearInterval(pollHandle.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-arm polling whenever a new code lands.
+  // Poll the backend while we have an active code. Putting the
+  // interval and the poll body together in one effect avoids stale-
+  // closure bugs around `code` — every re-arm uses the latest value.
   useEffect(() => {
     if (!code) return;
-    if (pollHandle.current) window.clearInterval(pollHandle.current);
+
+    async function poll() {
+      try {
+        const res = await api.pairPoll(code!);
+        if (res.status === 'completed' && res.key) {
+          if (pollHandle.current) window.clearInterval(pollHandle.current);
+          setAuthKey(res.key);
+          // Hard reload — new auth header on every future request,
+          // and React Query starts fresh.
+          window.location.replace('/');
+        } else if (res.status === 'expired') {
+          if (pollHandle.current) window.clearInterval(pollHandle.current);
+          setStatus('Code expired. Click Refresh to get a new one.');
+          setCode(null);
+        }
+      } catch (e) {
+        // Backend returns 410 when the code's gone — fetchApi turns
+        // that into a thrown Error.
+        if (e instanceof Error && /expired/i.test(e.message)) {
+          if (pollHandle.current) window.clearInterval(pollHandle.current);
+          setStatus('Code expired. Click Refresh to get a new one.');
+          setCode(null);
+        } else {
+          console.warn('pair poll error', e);
+        }
+      }
+    }
+
+    // Fire one poll immediately so the user doesn't wait 3 seconds
+    // after entering the code, then settle into the polling cadence.
+    poll();
     pollHandle.current = window.setInterval(poll, 3000);
     return () => {
       if (pollHandle.current) window.clearInterval(pollHandle.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   return (
@@ -67,7 +80,7 @@ export default function PairDevice() {
         <div className="text-6xl font-bold tracking-[0.3em] my-10">{code ?? '······'}</div>
         <p className="text-text-muted">{status}</p>
         <button
-          onClick={start}
+          onClick={requestCode}
           className="mt-6 px-6 py-2 bg-primary text-black font-semibold rounded hover:bg-primary/90"
         >
           Refresh code
