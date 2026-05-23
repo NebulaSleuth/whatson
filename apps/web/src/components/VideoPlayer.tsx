@@ -32,6 +32,12 @@ export function VideoPlayer({ item, onClose }: Props) {
   // when the source is yanked out from under it — without this guard
   // we'd surface "couldn't play this stream" on every track swap.
   const swappingRef = useRef(false);
+  // The original-timeline position (in seconds) that the current
+  // stream's t=0 represents. After a swap with offset=N, video.currentTime
+  // resets to 0 but the user is still at original position N. Adding
+  // baseSecondsRef + video.currentTime gives the true position for
+  // the next swap's offset.
+  const baseSecondsRef = useRef(0);
 
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [status, setStatus] = useState('Loading…');
@@ -61,6 +67,17 @@ export function VideoPlayer({ item, onClose }: Props) {
       sessionRef.current = next.sessionId;
       setInfo(next);
 
+      // Record the base offset for this stream so the next swap can
+      // pass the right absolute position. If we requested an offset
+      // the new stream represents that point at t=0. First loads
+      // have no offset; the seek-to-viewOffset path below leaves
+      // baseSecondsRef at 0 and currentTime carries the position.
+      if (opts.offset !== undefined) {
+        baseSecondsRef.current = Math.floor(opts.offset / 1000);
+      } else {
+        baseSecondsRef.current = 0;
+      }
+
       // Initialise selections only on the first load.
       if (!info) {
         const sel = next.audioTracks.find((t) => t.selected);
@@ -85,11 +102,9 @@ export function VideoPlayer({ item, onClose }: Props) {
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
 
-      // Register the seek-and-play listener BEFORE attaching the new
-      // source — otherwise hls.js can fire loadedmetadata between
-      // attachMedia and our addEventListener call, and the seek/play
-      // never runs. Use `once: true` so the swap path doesn't
-      // re-trigger on subsequent manifest reloads.
+      // Register listeners BEFORE attaching the new source — hls.js
+      // can fire loadedmetadata synchronously after a fast manifest
+      // load, and a listener added afterwards would miss it.
       //
       // Seek logic: when we asked the backend for `offset`, Plex
       // returns a stream that already starts at that point — its
@@ -98,14 +113,47 @@ export function VideoPlayer({ item, onClose }: Props) {
       // the first load where the server-reported viewOffset > 0.
       const isSwap = opts.offset !== undefined;
       const seekToMs = isSwap ? 0 : (next.viewOffset > 0 ? next.viewOffset : 0);
+
+      let started = false;
       const onLoaded = () => {
         if (seekToMs > 0) {
           try { video.currentTime = seekToMs / 1000; } catch {}
         }
-        video.play().catch(() => {});
+        // First .play() attempt — may reject if the buffer isn't
+        // populated yet. We fall back to the canplay listener.
+        video.play().catch((err) => console.warn('[player] initial play rejected', err.name));
+      };
+      const onCanPlay = () => {
+        if (video.paused && !started) {
+          video.play().catch((err) => console.warn('[player] canplay play rejected', err.name));
+        }
+      };
+      const onPlaying = () => {
+        started = true;
+        setStatus('');
         requestAnimationFrame(() => { swappingRef.current = false; });
       };
       video.addEventListener('loadedmetadata', onLoaded, { once: true });
+      video.addEventListener('canplay', onCanPlay);
+      video.addEventListener('playing', onPlaying, { once: true });
+
+      // Stall watchdog — if 'playing' never fires within 20 s after
+      // attachMedia, surface a clear error so the user can retry.
+      const stallTimer = window.setTimeout(() => {
+        if (!started) {
+          console.warn('[player] stall — playback never started');
+          setError("This stream isn't responding. Try a lower quality or close and reopen.");
+          swappingRef.current = false;
+        }
+      }, 20_000);
+
+      // Clean both listeners + the watchdog when the listener fires
+      // playing or when the player unmounts via the destroy hook.
+      const cleanup = () => {
+        video.removeEventListener('canplay', onCanPlay);
+        window.clearTimeout(stallTimer);
+      };
+      video.addEventListener('playing', cleanup, { once: true });
 
       if (canNativeHls) {
         video.src = url;
@@ -181,7 +229,11 @@ export function VideoPlayer({ item, onClose }: Props) {
 
   async function swap(opts: { audio?: number; subtitle?: number; bitrate?: number }) {
     const v = videoRef.current;
-    const currentOffsetMs = v ? Math.floor(v.currentTime * 1000) : undefined;
+    // Absolute original-timeline position = current base + the
+    // local video.currentTime within the active stream.
+    const currentOffsetMs = v
+      ? Math.floor((baseSecondsRef.current + v.currentTime) * 1000)
+      : undefined;
     setMenu('none');
     if (opts.audio !== undefined) setAudioId(opts.audio);
     if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
