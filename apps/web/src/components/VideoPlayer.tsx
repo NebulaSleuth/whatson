@@ -134,13 +134,30 @@ export function VideoPlayer({ item, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
 
-  function swap(opts: { audio?: number; subtitle?: number; bitrate?: number }) {
+  async function swap(opts: { audio?: number; subtitle?: number; bitrate?: number }) {
     const v = videoRef.current;
     const currentOffsetMs = v ? Math.floor(v.currentTime * 1000) : undefined;
     setMenu('none');
     if (opts.audio !== undefined) setAudioId(opts.audio);
     if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
     if ('bitrate' in opts) setMaxBitrate(opts.bitrate);
+
+    // CRITICAL: terminate the prior transcode session BEFORE asking
+    // Plex for a new one. Without this the second /api/playback call
+    // inherits the still-active session's audio / subtitle / bitrate
+    // and our UI selection has no effect. Mobile + Roku do the same
+    // dance. We pause the local <video> first so it doesn't keep
+    // hammering the buffer while we wait on the server.
+    if (v) v.pause();
+    if (sessionRef.current) {
+      try {
+        await api.stopPlayback(sessionRef.current, item.source);
+      } catch {
+        /* best-effort — even if stop fails we'll try the new stream */
+      }
+      sessionRef.current = null;
+    }
+
     loadStream({
       offset: currentOffsetMs,
       audio: opts.audio !== undefined ? opts.audio : audioId ?? undefined,
