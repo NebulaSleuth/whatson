@@ -161,10 +161,27 @@ export const api = {
     }),
 
   // Playback
-  getPlaybackInfo: (ratingKey: string, opts?: { offset?: number; source?: string }) => {
-    const { offset, source = 'plex' } = opts || {};
+  getPlaybackInfo: (
+    ratingKey: string,
+    opts?: {
+      offset?: number;
+      source?: string;
+      maxBitrate?: number;
+      resolution?: string;
+      subtitleStreamID?: number;
+      audioStreamID?: number;
+    },
+  ) => {
+    const { offset, source = 'plex', maxBitrate, resolution, subtitleStreamID, audioStreamID } = opts || {};
     const params = new URLSearchParams({ source });
     if (offset) params.set('offset', String(Math.floor(offset / 1000)));
+    if (maxBitrate) {
+      params.set('maxBitrate', String(maxBitrate));
+      params.set('forceTranscode', '1');
+    }
+    if (resolution) params.set('resolution', resolution);
+    if (subtitleStreamID != null) params.set('subtitleStreamID', String(subtitleStreamID));
+    if (audioStreamID != null) params.set('audioStreamID', String(audioStreamID));
     return fetchApi<{
       streamUrl: string;
       directPlayUrl: string | null;
@@ -173,6 +190,9 @@ export const api = {
       showTitle: string | null;
       duration: number;
       viewOffset: number;
+      subtitles: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
+      audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
+      markers: Array<{ type: 'intro' | 'credits'; startMs: number; endMs: number }>;
       serverUrl: string;
     }>(`/api/playback/${encodeURIComponent(ratingKey)}?${params.toString()}`);
   },
