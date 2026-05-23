@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+body {
+  background-color: #0F0F0F;
+  color: #FFFFFF;
+}
+
+/* Hide the scrollbar on horizontal shelves while keeping wheel/touch scroll. */
+.shelf-scroll::-webkit-scrollbar {
+  display: none;
+}
+.shelf-scroll {
+  scrollbar-width: none;
+}

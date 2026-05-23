@@ -123,6 +123,35 @@ app.use('/api', authRouter);
 app.use('/api', sportsRouter);
 app.use('/api', logsRouter);
 
+// Serve the web SPA at /. Mounted AFTER /api/* and /setup so those
+// take precedence; the SPA fallback below catches anything else and
+// returns index.html so client-side routes (/tv, /movies, …) work
+// on hard refresh.
+const webCandidates = [
+  pathJoin(__dirname, '..', '..', '..', 'apps', 'web', 'dist'),  // dev mode (packages/api/dist/../../../apps/web/dist)
+  pathJoin(__dirname, '..', 'web'),                              // bundled alongside admin/
+  pathJoin(pathDirname(process.execPath), 'web'),                // standalone (next to .exe)
+  pathJoin(process.cwd(), 'web'),
+];
+let webDir: string | undefined;
+for (const dir of webCandidates) {
+  if (fileExists(dir)) {
+    webDir = dir;
+    break;
+  }
+}
+if (webDir) {
+  console.log(`[Whats On API] Web UI dir: ${webDir}`);
+  app.use(express.static(webDir));
+  // SPA fallback: any GET that isn't /api or /setup and didn't match
+  // a static file → serve index.html so React Router can handle it.
+  app.get(/^\/(?!api\/|setup\/?|ws\/?).*/, (_req, res) => {
+    res.sendFile(pathJoin(webDir!, 'index.html'));
+  });
+} else {
+  console.log('[Whats On API] Web UI dir not found — / will 404 until apps/web/dist exists or web/ is bundled.');
+}
+
 // Create HTTP server and attach WebSocket
 const server = createServer(app);
 initWebSocket(server);

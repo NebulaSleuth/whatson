@@ -174,6 +174,19 @@ if (existsSync(adminSrc)) {
   console.log('   ⚠ admin/ directory not found, skipping');
 }
 
+// ── Step 5: Copy web SPA build ──
+console.log('\n5. Copying web SPA...');
+const webSrc = join(ROOT, '..', '..', 'apps', 'web', 'dist');
+const webDest = join(DIST, 'web');
+if (existsSync(webSrc)) {
+  // Recursive copy — the SPA build has nested asset directories.
+  const { cpSync } = require('fs');
+  cpSync(webSrc, webDest, { recursive: true });
+  console.log('   ✓ Web SPA copied to standalone/web/');
+} else {
+  console.log('   ⚠ apps/web/dist not found — run `npm run build:web` first');
+}
+
 const { statSync } = require('fs');
 const size = (statSync(OUTPUT).size / (1024 * 1024)).toFixed(1);
 
