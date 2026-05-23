@@ -42,6 +42,19 @@ sub init()
     m.tabBar = m.top.findNode("tabBar")
     m.titleLabel = m.top.findNode("title")
     m.clockLabel = m.top.findNode("clockLabel")
+    ' Tab strip — array indexed in XML order (home=0 through settings=6).
+    ' Used by left/right traversal, focus restoration after showView,
+    ' and selected-state propagation.
+    m.tabButtons = [
+        m.top.findNode("tabHome"),
+        m.top.findNode("tabTv"),
+        m.top.findNode("tabMovies"),
+        m.top.findNode("tabSports"),
+        m.top.findNode("tabLibrary"),
+        m.top.findNode("tabSearch"),
+        m.top.findNode("tabSettings")
+    ]
+    m.activeTabIndex = 0
     m.tvView = m.top.findNode("tvView")
     m.tvStatus = m.top.findNode("tvStatus")
     m.tvRowList = m.top.findNode("tvRowList")
@@ -50,13 +63,20 @@ sub init()
     m.moviesRowList = m.top.findNode("moviesRowList")
     m.libraryView = m.top.findNode("libraryView")
     m.libraryTypeToggle = m.top.findNode("libraryTypeToggle")
+    m.libraryTypeShow = m.top.findNode("libraryTypeShow")
+    m.libraryTypeMovie = m.top.findNode("libraryTypeMovie")
     m.libraryStatus = m.top.findNode("libraryStatus")
     m.libraryGrid = m.top.findNode("libraryGrid")
 
     m.searchView = m.top.findNode("searchView")
     m.searchInputButton = m.top.findNode("searchInputButton")
     m.searchModeToggle = m.top.findNode("searchModeToggle")
+    m.searchModeLibrary = m.top.findNode("searchModeLibrary")
+    m.searchModeDiscover = m.top.findNode("searchModeDiscover")
     m.searchFilterToggle = m.top.findNode("searchFilterToggle")
+    m.searchFilterAll = m.top.findNode("searchFilterAll")
+    m.searchFilterTv = m.top.findNode("searchFilterTv")
+    m.searchFilterMovie = m.top.findNode("searchFilterMovie")
     m.searchStatus = m.top.findNode("searchStatus")
     m.searchResultsGrid = m.top.findNode("searchResultsGrid")
 
@@ -86,6 +106,45 @@ sub init()
     m.editApiUrlButton = m.top.findNode("editApiUrlButton")
     m.settingsConnectionValue = m.top.findNode("settingsConnectionValue")
     m.connectionToggle = m.top.findNode("connectionToggle")
+    m.connectionLocal = m.top.findNode("connectionLocal")
+    m.connectionRemote = m.top.findNode("connectionRemote")
+
+    m.settingsContent = m.top.findNode("settingsContent")
+    m.rememberLoginToggle = m.top.findNode("rememberLoginToggle")
+    m.autoSkipIntroToggle = m.top.findNode("autoSkipIntroToggle")
+    m.autoSkipCreditsToggle = m.top.findNode("autoSkipCreditsToggle")
+    m.showBywToggle = m.top.findNode("showBywToggle")
+    m.configureSportsButton = m.top.findNode("configureSportsButton")
+    m.repairButton = m.top.findNode("repairButton")
+    m.aboutVersionLabel = m.top.findNode("aboutVersionLabel")
+
+    ' Service status indicators.
+    m.serviceStatusPlexDot = m.top.findNode("serviceStatusPlexDot")
+    m.serviceStatusPlex = m.top.findNode("serviceStatusPlex")
+    m.serviceStatusJellyfinDot = m.top.findNode("serviceStatusJellyfinDot")
+    m.serviceStatusJellyfin = m.top.findNode("serviceStatusJellyfin")
+    m.serviceStatusEmbyDot = m.top.findNode("serviceStatusEmbyDot")
+    m.serviceStatusEmby = m.top.findNode("serviceStatusEmby")
+    m.serviceStatusSonarrDot = m.top.findNode("serviceStatusSonarrDot")
+    m.serviceStatusSonarr = m.top.findNode("serviceStatusSonarr")
+    m.serviceStatusRadarrDot = m.top.findNode("serviceStatusRadarrDot")
+    m.serviceStatusRadarr = m.top.findNode("serviceStatusRadarr")
+
+    ' Server config labels.
+    m.serverConfigPlex = m.top.findNode("serverConfigPlex")
+    m.serverConfigJellyfin = m.top.findNode("serverConfigJellyfin")
+    m.serverConfigEmby = m.top.findNode("serverConfigEmby")
+    m.serverConfigSonarr = m.top.findNode("serverConfigSonarr")
+    m.serverConfigRadarr = m.top.findNode("serverConfigRadarr")
+
+    ' Sports settings sub-view.
+    m.sportsSettingsView = m.top.findNode("sportsSettingsView")
+    m.sportsSettingsStatus = m.top.findNode("sportsSettingsStatus")
+    m.sportsLeagueList = m.top.findNode("sportsLeagueList")
+    m.sportsLeaguesAvailable = invalid
+    m.sportsLeaguesFollowed = []
+    m.sportsLeaguesTask = invalid
+    m.sportsPrefsSaveTask = invalid
 
     ' Server Updates section (settings view).
     m.settingsUpdateHeader = m.top.findNode("settingsUpdateHeader")
@@ -330,22 +389,120 @@ sub init()
     end if
     print "[HomeScene] liveTvChannels count="; m.liveTvChannels.Count()
 
+    ' Playback + login prefs — boolean toggles persisted in the same
+    ' whatson registry section. Defaults match mobile (skip-intros and
+    ' skip-credits OFF, BYW recommendations ON, remember-login OFF).
+    m.autoSkipIntro = readRegistryBool(section2, "autoSkipIntro", false)
+    m.autoSkipCredits = readRegistryBool(section2, "autoSkipCredits", false)
+    m.showBecauseYouWatched = readRegistryBool(section2, "showBecauseYouWatched", true)
+    m.rememberLogin = readRegistryBool(section2, "rememberLogin", false)
+    print "[HomeScene] playback prefs — skipIntro="; m.autoSkipIntro; " skipCredits="; m.autoSkipCredits; " byw="; m.showBecauseYouWatched; " remember="; m.rememberLogin
+
     ' Wire row-list selection + button presses.
     m.rowList.observeField("rowItemSelected", "onRowItemSelected")
     m.tvRowList.observeField("rowItemSelected", "onTvRowItemSelected")
     m.moviesRowList.observeField("rowItemSelected", "onMoviesRowItemSelected")
     m.detailActions.observeField("buttonSelected", "onDetailButtonSelected")
-    m.tabBar.observeField("buttonSelected", "onTabSelected")
-    m.libraryTypeToggle.observeField("buttonSelected", "onLibraryTypeSelected")
+    ' Each custom TabButton fires `buttonSelected` on OK press. Wire a
+    ' single shared handler that walks m.tabButtons to find the source.
+    for each btn in m.tabButtons
+        btn.observeField("buttonSelected", "onTabSelected")
+    end for
+    ' LayoutGroup doesn't auto-traverse focusable siblings the way
+    ' ButtonGroup did — wire each TabButton's nextFocusLeft / Right
+    ' to its neighbour so D-pad left/right walks the strip.
+    for i = 0 to m.tabButtons.Count() - 1
+        if i > 0 then m.tabButtons[i].nextFocusLeft = m.tabButtons[i - 1]
+        if i < m.tabButtons.Count() - 1 then m.tabButtons[i].nextFocusRight = m.tabButtons[i + 1]
+    end for
+    ' Home is the default landing view (homeView.visible=true in XML)
+    ' but boot never calls showView("home"), so paint Home as selected.
+    updateTabSelection("home")
+    ' Each TabButton fires buttonSelected on OK press. Wire both to the
+    ' same handler which figures out which one fired. Default selection
+    ' tracks m.libraryType = "show".
+    m.libraryTypeShow.observeField("buttonSelected", "onLibraryTypeSelected")
+    m.libraryTypeMovie.observeField("buttonSelected", "onLibraryTypeSelected")
+    m.libraryTypeShow.selected = true
+    m.libraryTypeShow.nextFocusRight = m.libraryTypeMovie
+    m.libraryTypeMovie.nextFocusLeft = m.libraryTypeShow
     m.libraryGrid.observeField("itemSelected", "onLibraryItemSelected")
     m.searchInputButton.observeField("buttonSelected", "onSearchInputPressed")
-    m.searchModeToggle.observeField("buttonSelected", "onSearchModeSelected")
-    m.searchFilterToggle.observeField("buttonSelected", "onSearchFilterSelected")
+    ' Each TabButton in the mode + filter toggles fires its own
+    ' buttonSelected. Observe all of them with a shared handler that
+    ' inspects which one fired. Wire L/R nextFocus so D-pad steps
+    ' between them.
+    m.searchModeLibrary.observeField("buttonSelected", "onSearchModeSelected")
+    m.searchModeDiscover.observeField("buttonSelected", "onSearchModeSelected")
+    m.searchModeLibrary.selected = true
+    m.searchModeLibrary.nextFocusRight = m.searchModeDiscover
+    m.searchModeDiscover.nextFocusLeft = m.searchModeLibrary
+    m.searchFilterAll.observeField("buttonSelected", "onSearchFilterSelected")
+    m.searchFilterTv.observeField("buttonSelected", "onSearchFilterSelected")
+    m.searchFilterMovie.observeField("buttonSelected", "onSearchFilterSelected")
+    m.searchFilterAll.selected = true
+    m.searchFilterAll.nextFocusRight = m.searchFilterTv
+    m.searchFilterTv.nextFocusLeft = m.searchFilterAll
+    m.searchFilterTv.nextFocusRight = m.searchFilterMovie
+    m.searchFilterMovie.nextFocusLeft = m.searchFilterTv
     m.searchResultsGrid.observeField("itemSelected", "onSearchItemSelected")
     m.sportsRowList.observeField("rowItemSelected", "onSportsRowItemSelected")
     m.switchUserButton.observeField("buttonSelected", "onSwitchUserPressed")
     m.editApiUrlButton.observeField("buttonSelected", "onEditApiUrlPressed")
-    m.connectionToggle.observeField("buttonSelected", "onConnectionTypeSelected")
+    ' connectionToggle is a LayoutGroup of two TabButtons. Observe each
+    ' and wire L/R navigation; initial selection mirrors m.connectionType
+    ' which was resolved earlier in init from registry.
+    m.connectionLocal.observeField("buttonSelected", "onConnectionTypeSelected")
+    m.connectionRemote.observeField("buttonSelected", "onConnectionTypeSelected")
+    m.connectionLocal.nextFocusRight = m.connectionRemote
+    m.connectionRemote.nextFocusLeft = m.connectionLocal
+    m.connectionLocal.selected = (m.connectionType = "local")
+    m.connectionRemote.selected = (m.connectionType = "remote")
+
+    ' Playback / login toggle rows — observe valueChanged to persist.
+    m.rememberLoginToggle.value = m.rememberLogin
+    m.rememberLoginToggle.observeField("valueChanged", "onRememberLoginToggled")
+    m.autoSkipIntroToggle.value = m.autoSkipIntro
+    m.autoSkipIntroToggle.observeField("valueChanged", "onAutoSkipIntroToggled")
+    m.autoSkipCreditsToggle.value = m.autoSkipCredits
+    m.autoSkipCreditsToggle.observeField("valueChanged", "onAutoSkipCreditsToggled")
+    m.showBywToggle.value = m.showBecauseYouWatched
+    m.showBywToggle.observeField("valueChanged", "onShowBywToggled")
+
+    ' Other settings buttons.
+    m.configureSportsButton.observeField("buttonSelected", "onConfigureSportsPressed")
+    m.repairButton.observeField("buttonSelected", "onRepairPressed")
+    m.sportsLeagueList.observeField("itemSelected", "onSportsLeagueToggled")
+
+    ' Settings is a long scrolling list — wire nextFocusUp/Down between
+    ' every focusable row top-to-bottom, plus observe focus to scroll the
+    ' settingsContent container so the focused row stays in view.
+    settingsChain = [
+        m.switchUserButton,
+        m.rememberLoginToggle,
+        m.editApiUrlButton,
+        m.connectionLocal,
+        m.autoSkipIntroToggle,
+        m.autoSkipCreditsToggle,
+        m.showBywToggle,
+        m.configureChannelsButton,
+        m.configureSportsButton,
+        m.checkUpdateButton,
+        m.repairButton
+    ]
+    for i = 0 to settingsChain.Count() - 1
+        if i > 0 then settingsChain[i].nextFocusUp = settingsChain[i - 1]
+        if i < settingsChain.Count() - 1 then settingsChain[i].nextFocusDown = settingsChain[i + 1]
+    end for
+    ' connectionRemote shares the connection row with connectionLocal —
+    ' point its up/down at the same neighbours.
+    m.connectionRemote.nextFocusUp = m.editApiUrlButton
+    m.connectionRemote.nextFocusDown = m.autoSkipIntroToggle
+    ' installUpdateButton shares the row with checkUpdateButton.
+    m.installUpdateButton.nextFocusUp = m.configureSportsButton
+    m.installUpdateButton.nextFocusDown = m.repairButton
+
+    m.settingsContent.observeField("focusedChild", "adjustSettingsScroll")
     m.checkUpdateButton.observeField("buttonSelected", "onCheckUpdatePressed")
     m.installUpdateButton.observeField("buttonSelected", "onInstallUpdatePressed")
     m.configureChannelsButton.observeField("buttonSelected", "onConfigureChannelsPressed")
@@ -555,9 +712,13 @@ sub buildHomeRows()
 
     rows = CreateObject("roSGNode", "ContentNode")
     ' Per-row cell sizes — library/live shelves use portrait posters
-    ' (160×240), sports shelves use landscape cards (340×160). Roku's
-    ' RowList honours rowItemSize as a parallel array indexed by row.
+    ' (220×330), sports shelves use landscape cards (340×160). Roku's
+    ' RowList honours rowItemSize / rowHeights as parallel arrays
+    ' indexed by row, so we track both and apply them together.
     rowSizes = []
+    rowHeights = []
+    libraryRowHeight = 400  ' cell shift 16 + poster 330 + label 36 + breathing
+    sportsRowHeight = 200   ' cell shift 16 + card 160 + breathing
 
     ' Standard /api/home shelves first.
     if sections <> invalid
@@ -577,7 +738,8 @@ sub buildHomeRows()
                     attachItemFields(child, item)
                 end for
             end if
-            rowSizes.push([160, 240])
+            rowSizes.push([220, 330])
+            rowHeights.push(libraryRowHeight)
         end for
     end if
 
@@ -592,6 +754,7 @@ sub buildHomeRows()
             buildSportsCardChild(row, ev, "live")
         end for
         rowSizes.push([340, 160])
+        rowHeights.push(sportsRowHeight)
     end if
     if laterCount > 0
         row = rows.createChild("ContentNode")
@@ -600,6 +763,7 @@ sub buildHomeRows()
             buildSportsCardChild(row, ev, "upcoming")
         end for
         rowSizes.push([340, 160])
+        rowHeights.push(sportsRowHeight)
     end if
 
     ' Live TV shelves last — only when the user has channels selected
@@ -626,7 +790,8 @@ sub buildHomeRows()
             end if
             attachItemFields(child, item)
         end for
-        rowSizes.push([160, 240])
+        rowSizes.push([220, 330])
+        rowHeights.push(libraryRowHeight)
     end if
     if liveLaterCount > 0
         row = rows.createChild("ContentNode")
@@ -642,10 +807,21 @@ sub buildHomeRows()
             end if
             attachItemFields(child, item)
         end for
-        rowSizes.push([160, 240])
+        rowSizes.push([220, 330])
+        rowHeights.push(libraryRowHeight)
     end if
 
+    ' rowSpacings is interpreted positionally — Roku only applies an
+    ' explicit value to the first gap unless we provide one per row.
+    ' Build a matching-length array so every shelf gets the same gap.
+    rowSpacingsList = []
+    for i = 0 to rows.getChildCount() - 1
+        rowSpacingsList.push(20)
+    end for
+
     m.rowList.rowItemSize = rowSizes
+    m.rowList.rowHeights = rowHeights
+    m.rowList.rowSpacings = rowSpacingsList
     m.rowList.content = rows
     m.rowList.visible = true
     m.status.visible = false
@@ -672,8 +848,16 @@ sub onRowItemSelected()
 end sub
 
 sub onTabSelected()
-    idx = m.tabBar.buttonSelected
+    ' Find which TabButton fired by checking buttonSelected on each.
+    idx = -1
+    for i = 0 to m.tabButtons.Count() - 1
+        if m.tabButtons[i].buttonSelected = true then idx = i
+    end for
+    if idx < 0 then return
     print "[HomeScene] tab selected: "; idx
+    ' Reset the source's buttonSelected so the next OK press notifies
+    ' again (alwaysNotify only fires on transitions).
+    m.tabButtons[idx].buttonSelected = false
     ' Indices match XML order: 0=Home, 1=TV, 2=Movies, 3=Sports,
     ' 4=Library, 5=Search, 6=Settings.
     if idx = 0
@@ -691,6 +875,34 @@ sub onTabSelected()
     else if idx = 6
         showView("settings")
     end if
+end sub
+
+' LayoutGroup doesn't auto-delegate focus to a focusable child the
+' way ButtonGroup did, so route every "focus the tab strip" call
+' through this helper. We always land on the currently-active tab
+' so the gold highlight matches the visible view.
+sub focusActiveTab()
+    idx = m.activeTabIndex
+    if idx = invalid or idx < 0 or idx >= m.tabButtons.Count() then idx = 0
+    m.tabButtons[idx].setFocus(true)
+end sub
+
+' Mark the active tab on the strip so its TabButton paints the gold
+' "selected" treatment even when focus has moved to the content area.
+sub updateTabSelection(viewName as string)
+    idx = -1
+    if viewName = "home" then idx = 0
+    if viewName = "tv" then idx = 1
+    if viewName = "movies" then idx = 2
+    if viewName = "sports" then idx = 3
+    if viewName = "library" then idx = 4
+    if viewName = "search" then idx = 5
+    if viewName = "settings" then idx = 6
+    if idx < 0 then return
+    m.activeTabIndex = idx
+    for i = 0 to m.tabButtons.Count() - 1
+        m.tabButtons[i].selected = (i = idx)
+    end for
 end sub
 
 sub onLibraryItemSelected()
@@ -717,13 +929,32 @@ sub ensureLibraryLoaded()
 end sub
 
 sub onLibraryTypeSelected()
-    idx = m.libraryTypeToggle.buttonSelected
-    newType = "show"
-    if idx = 1 then newType = "movie"
+    ' Each TabButton sets its own buttonSelected field; figure out
+    ' which one fired and reset both so the next press notifies.
+    newType = invalid
+    if m.libraryTypeShow.buttonSelected = true
+        newType = "show"
+        m.libraryTypeShow.buttonSelected = false
+    end if
+    if m.libraryTypeMovie.buttonSelected = true
+        newType = "movie"
+        m.libraryTypeMovie.buttonSelected = false
+    end if
+    if newType = invalid then return
+    m.libraryTypeShow.selected = (newType = "show")
+    m.libraryTypeMovie.selected = (newType = "movie")
     if newType = m.libraryType then return
     m.libraryType = newType
     print "[HomeScene] library type -> "; newType
     ensureLibraryLoaded()
+end sub
+
+sub focusActiveLibraryType()
+    if m.libraryType = "movie"
+        m.libraryTypeMovie.setFocus(true)
+    else
+        m.libraryTypeShow.setFocus(true)
+    end if
 end sub
 
 ' Fan out to every library-server source in parallel, mirroring how the
@@ -1466,10 +1697,23 @@ sub onSearchKeyboardClosed()
 end sub
 
 sub onSearchFilterSelected()
-    idx = m.searchFilterToggle.buttonSelected
-    newFilter = "all"
-    if idx = 1 then newFilter = "tv"
-    if idx = 2 then newFilter = "movie"
+    newFilter = invalid
+    if m.searchFilterAll.buttonSelected = true
+        newFilter = "all"
+        m.searchFilterAll.buttonSelected = false
+    end if
+    if m.searchFilterTv.buttonSelected = true
+        newFilter = "tv"
+        m.searchFilterTv.buttonSelected = false
+    end if
+    if m.searchFilterMovie.buttonSelected = true
+        newFilter = "movie"
+        m.searchFilterMovie.buttonSelected = false
+    end if
+    if newFilter = invalid then return
+    m.searchFilterAll.selected = (newFilter = "all")
+    m.searchFilterTv.selected = (newFilter = "tv")
+    m.searchFilterMovie.selected = (newFilter = "movie")
     if newFilter = m.searchFilter then return
     m.searchFilter = newFilter
     print "[HomeScene] search filter -> "; newFilter
@@ -1482,9 +1726,18 @@ end sub
 ' Library / Discover mode toggle. Library searches plex/jellyfin/emby
 ' and is filterable by type; Discover hits TMDB and only takes a query.
 sub onSearchModeSelected()
-    idx = m.searchModeToggle.buttonSelected
-    newMode = "library"
-    if idx = 1 then newMode = "discover"
+    newMode = invalid
+    if m.searchModeLibrary.buttonSelected = true
+        newMode = "library"
+        m.searchModeLibrary.buttonSelected = false
+    end if
+    if m.searchModeDiscover.buttonSelected = true
+        newMode = "discover"
+        m.searchModeDiscover.buttonSelected = false
+    end if
+    if newMode = invalid then return
+    m.searchModeLibrary.selected = (newMode = "library")
+    m.searchModeDiscover.selected = (newMode = "discover")
     if newMode = m.searchMode then return
     m.searchMode = newMode
     print "[HomeScene] search mode -> "; newMode
@@ -1496,13 +1749,31 @@ sub onSearchModeSelected()
     if m.searchQuery <> "" then performSearch()
 end sub
 
+sub focusSearchModeToggle()
+    if m.searchMode = "discover"
+        m.searchModeDiscover.setFocus(true)
+    else
+        m.searchModeLibrary.setFocus(true)
+    end if
+end sub
+
+sub focusSearchFilterToggle()
+    if m.searchFilter = "movie"
+        m.searchFilterMovie.setFocus(true)
+    else if m.searchFilter = "tv"
+        m.searchFilterTv.setFocus(true)
+    else
+        m.searchFilterAll.setFocus(true)
+    end if
+end sub
+
 sub updateSearchPlaceholder()
     if m.searchQuery <> ""
-        m.searchInputButton.text = chr(34) + m.searchQuery + chr(34)
+        m.searchInputButton.label = chr(34) + m.searchQuery + chr(34)
     else if m.searchMode = "discover"
-        m.searchInputButton.text = "Tap to search shows & movies to track…"
+        m.searchInputButton.label = "Tap to search shows & movies to track…"
     else
-        m.searchInputButton.text = "Tap to search your library…"
+        m.searchInputButton.label = "Tap to search your library…"
     end if
     if m.searchQuery = ""
         if m.searchMode = "discover"
@@ -2187,6 +2458,111 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
     end if
 
+    ' Left/Right inside the tab strip — LayoutGroup doesn't forward
+    ' directional input to siblings the way ButtonGroup did, so step
+    ' the focus manually. Find which TabButton currently holds focus
+    ' and jump to its neighbour.
+    if (key = "left" or key = "right") and m.tabBar.isInFocusChain()
+        currentIdx = -1
+        for i = 0 to m.tabButtons.Count() - 1
+            if m.tabButtons[i].isInFocusChain() then currentIdx = i
+        end for
+        if currentIdx >= 0
+            delta = -1
+            if key = "right" then delta = 1
+            nextIdx = currentIdx + delta
+            if nextIdx >= 0 and nextIdx < m.tabButtons.Count()
+                m.tabButtons[nextIdx].setFocus(true)
+            end if
+            return true
+        end if
+    end if
+
+    ' Same fallback for the Library TV/Movies toggle — also a
+    ' LayoutGroup of two TabButtons.
+    if (key = "left" or key = "right") and m.libraryTypeToggle.isInFocusChain()
+        if key = "right" and m.libraryTypeShow.isInFocusChain()
+            m.libraryTypeMovie.setFocus(true)
+            return true
+        end if
+        if key = "left" and m.libraryTypeMovie.isInFocusChain()
+            m.libraryTypeShow.setFocus(true)
+            return true
+        end if
+    end if
+
+    ' Search Mode + Filter toggles are also LayoutGroups of TabButtons.
+    if (key = "left" or key = "right") and m.searchModeToggle.isInFocusChain()
+        if key = "right" and m.searchModeLibrary.isInFocusChain()
+            m.searchModeDiscover.setFocus(true)
+            return true
+        end if
+        if key = "left" and m.searchModeDiscover.isInFocusChain()
+            m.searchModeLibrary.setFocus(true)
+            return true
+        end if
+    end if
+    if (key = "left" or key = "right") and m.searchFilterToggle.isInFocusChain()
+        order = [m.searchFilterAll, m.searchFilterTv, m.searchFilterMovie]
+        currentIdx = -1
+        for i = 0 to order.Count() - 1
+            if order[i].isInFocusChain() then currentIdx = i
+        end for
+        if currentIdx >= 0
+            delta = -1
+            if key = "right" then delta = 1
+            nextIdx = currentIdx + delta
+            if nextIdx >= 0 and nextIdx < order.Count()
+                order[nextIdx].setFocus(true)
+            end if
+            return true
+        end if
+    end if
+
+    ' Settings connection toggle — LayoutGroup of two TabButtons.
+    if (key = "left" or key = "right") and m.connectionToggle.isInFocusChain()
+        if key = "right" and m.connectionLocal.isInFocusChain()
+            m.connectionRemote.setFocus(true)
+            return true
+        end if
+        if key = "left" and m.connectionRemote.isInFocusChain()
+            m.connectionLocal.setFocus(true)
+            return true
+        end if
+    end if
+
+    ' Manual up/down through the Settings focus chain. nextFocusUp /
+    ' nextFocusDown alone doesn't reliably propagate between custom
+    ' Group-based components (TabButton, ToggleRow), so step through
+    ' the chain explicitly when the focus is anywhere in settingsContent.
+    if m.currentView = "settings" and (key = "up" or key = "down")
+        chain = settingsFocusChain()
+        currentIdx = -1
+        for i = 0 to chain.Count() - 1
+            if chain[i] <> invalid and chain[i].isInFocusChain() then currentIdx = i
+        end for
+        if currentIdx >= 0
+            delta = -1
+            if key = "down" then delta = 1
+            nextIdx = currentIdx + delta
+            if nextIdx < 0
+                ' Top of the chain — bounce back to the tab bar.
+                focusActiveTab()
+                return true
+            end if
+            if nextIdx >= chain.Count() then return true
+            ' Skip rows that aren't visible (e.g. installUpdateButton
+            ' when no update available).
+            while nextIdx >= 0 and nextIdx < chain.Count() and (chain[nextIdx] = invalid or not chain[nextIdx].visible)
+                nextIdx = nextIdx + delta
+            end while
+            if nextIdx >= 0 and nextIdx < chain.Count() and chain[nextIdx] <> invalid
+                chain[nextIdx].setFocus(true)
+            end if
+            return true
+        end if
+    end if
+
     ' Up arrow during playback opens the Quality picker. Down opens
     ' the Tracks picker. Guarded against firing while the Tracks
     ' overlay itself is already open — otherwise Down on the close
@@ -2209,30 +2585,30 @@ function onKeyEvent(key as string, press as boolean) as boolean
         if m.currentView = "home"
             sel = m.rowList.rowItemFocused
             if sel <> invalid and sel.Count() >= 2 and sel[0] = 0
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
         else if m.currentView = "tv"
             sel = m.tvRowList.rowItemFocused
             if sel <> invalid and sel.Count() >= 2 and sel[0] = 0
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
         else if m.currentView = "movies"
             sel = m.moviesRowList.rowItemFocused
             if sel <> invalid and sel.Count() >= 2 and sel[0] = 0
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
         else if m.currentView = "sports"
             sel = m.sportsRowList.rowItemFocused
             if sel <> invalid and sel.Count() >= 2 and sel[0] = 0
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
         else if m.currentView = "library"
             if m.libraryTypeToggle.isInFocusChain()
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
             ' Grid handles row 1+ → row 0 internally; the up event
@@ -2242,14 +2618,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
             if m.libraryGrid.isInFocusChain()
                 idx = m.libraryGrid.itemFocused
                 if idx = invalid or idx < 9
-                    m.libraryTypeToggle.setFocus(true)
+                    focusActiveLibraryType()
                     return true
                 end if
             end if
         else if m.currentView = "search"
             ' Up chain on Search: grid → filter (library only) → mode → input → tabBar
             if m.searchInputButton.isInFocusChain()
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
             if m.searchModeToggle.isInFocusChain()
@@ -2257,46 +2633,29 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 return true
             end if
             if m.searchFilterToggle.isInFocusChain()
-                m.searchModeToggle.setFocus(true)
+                focusSearchModeToggle()
                 return true
             end if
             if m.searchResultsGrid.isInFocusChain()
                 sIdx = m.searchResultsGrid.itemFocused
                 if sIdx = invalid or sIdx < 9
                     if m.searchMode = "library"
-                        m.searchFilterToggle.setFocus(true)
+                        focusSearchFilterToggle()
                     else
-                        m.searchModeToggle.setFocus(true)
+                        focusSearchModeToggle()
                     end if
                     return true
                 end if
             end if
         else if m.currentView = "settings"
-            ' Up chain on Settings:
-            '   configureChannels ↑ updateButtons (when visible) ↑ connection
-            '   ↑ switchUser ↑ editUrl ↑ tabBar
-            if m.configureChannelsButton.isInFocusChain()
-                if m.checkUpdateButton.visible
-                    m.checkUpdateButton.setFocus(true)
-                else
-                    m.connectionToggle.setFocus(true)
-                end if
-                return true
-            end if
-            if m.checkUpdateButton.isInFocusChain() or m.installUpdateButton.isInFocusChain()
-                m.connectionToggle.setFocus(true)
-                return true
-            end if
-            if m.connectionToggle.isInFocusChain()
-                m.switchUserButton.setFocus(true)
-                return true
-            end if
+            ' Most up/down traversal between settings rows is handled
+            ' declaratively via nextFocusUp / nextFocusDown wired in
+            ' init(). The only edge cases we still handle here are
+            ' the boundaries: the first row hopping back to the tab
+            ' bar and the connection/update toggles where nextFocus
+            ' needs to know which side currently has focus.
             if m.switchUserButton.isInFocusChain()
-                m.editApiUrlButton.setFocus(true)
-                return true
-            end if
-            if m.editApiUrlButton.isInFocusChain()
-                m.tabBar.setFocus(true)
+                focusActiveTab()
                 return true
             end if
         end if
@@ -2314,7 +2673,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 m.moviesRowList.setFocus(true)
                 return true
             else if m.currentView = "library"
-                m.libraryTypeToggle.setFocus(true)
+                focusActiveLibraryType()
                 return true
             else if m.currentView = "search"
                 m.searchInputButton.setFocus(true)
@@ -2323,32 +2682,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 m.sportsRowList.setFocus(true)
                 return true
             else if m.currentView = "settings"
-                m.editApiUrlButton.setFocus(true)
-                return true
-            end if
-        end if
-        if m.currentView = "settings"
-            ' Down chain on Settings:
-            '   editUrl ↓ switchUser ↓ connection ↓ checkUpdate (when visible)
-            '   ↓ configureChannels
-            if m.editApiUrlButton.isInFocusChain()
                 m.switchUserButton.setFocus(true)
-                return true
-            end if
-            if m.switchUserButton.isInFocusChain()
-                m.connectionToggle.setFocus(true)
-                return true
-            end if
-            if m.connectionToggle.isInFocusChain()
-                if m.checkUpdateButton.visible
-                    m.checkUpdateButton.setFocus(true)
-                else
-                    m.configureChannelsButton.setFocus(true)
-                end if
-                return true
-            end if
-            if m.checkUpdateButton.isInFocusChain() or m.installUpdateButton.isInFocusChain()
-                m.configureChannelsButton.setFocus(true)
                 return true
             end if
         end if
@@ -2359,12 +2693,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
         if m.currentView = "search"
             ' Down chain: input → mode → filter (library only) → grid
             if m.searchInputButton.isInFocusChain()
-                m.searchModeToggle.setFocus(true)
+                focusSearchModeToggle()
                 return true
             end if
             if m.searchModeToggle.isInFocusChain()
                 if m.searchMode = "library"
-                    m.searchFilterToggle.setFocus(true)
+                    focusSearchFilterToggle()
                 else if m.searchResultsGrid.content <> invalid and m.searchResultsGrid.content.getChildCount() > 0
                     m.searchResultsGrid.setFocus(true)
                 end if
@@ -2456,6 +2790,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
             showView("settings")
             return true
         end if
+        if m.currentView = "sportsSettings"
+            ' League picker — selections saved on each toggle.
+            showView("settings")
+            return true
+        end if
         if m.currentView = "pair"
             ' First-run pair view — there's nothing to go back to.
             ' Eat the key so the channel doesn't exit.
@@ -2503,13 +2842,20 @@ sub showView(name as string)
     m.userPickerView.visible = (name = "userPicker")
     m.pairView.visible = (name = "pair")
     m.liveTvView.visible = (name = "liveTv")
+    m.sportsSettingsView.visible = (name = "sportsSettings")
     m.detailView.visible = (name = "detail")
     m.playerView.visible = (name = "player")
     ' Tab bar + brand mark are top-level chrome — visible on the tab
     ' surfaces, hidden during fullscreen detail / player / userPicker / pair views.
     showChrome = (name = "home" or name = "tv" or name = "movies" or name = "library" or name = "search" or name = "sports" or name = "settings")
     m.tabBar.visible = showChrome
-    m.titleLabel.visible = showChrome
+    m.titleLabel.visible = false
+    ' Surface strip + bottom border follow tab-bar visibility.
+    surface = m.top.findNode("tabBarSurface")
+    border = m.top.findNode("tabBarBorder")
+    if surface <> invalid then surface.visible = showChrome
+    if border <> invalid then border.visible = showChrome
+    if showChrome then updateTabSelection(name)
 
     ' Refetch tabs whose data was invalidated by a scrobble or user
     ' switch. Each tab maintains its own stale flag so we only refetch
@@ -2548,6 +2894,9 @@ sub showView(name as string)
     if name = "liveTv"
         ensureChannelsLoaded()
     end if
+    if name = "sportsSettings"
+        ensureSportsSettingsLoaded()
+    end if
 
     ' Defer setFocus by one tick — see init() for why.
     m.focusTimer.control = "start"
@@ -2566,13 +2915,13 @@ sub applyDeferredFocus()
         if m.tvRowList.content <> invalid and m.tvRowList.content.getChildCount() > 0
             m.tvRowList.setFocus(true)
         else
-            m.tabBar.setFocus(true)
+            focusActiveTab()
         end if
     else if m.currentView = "movies"
         if m.moviesRowList.content <> invalid and m.moviesRowList.content.getChildCount() > 0
             m.moviesRowList.setFocus(true)
         else
-            m.tabBar.setFocus(true)
+            focusActiveTab()
         end if
     else if m.currentView = "library"
         ' Fall back to tab bar if grid hasn't loaded yet — empty grids
@@ -2580,7 +2929,7 @@ sub applyDeferredFocus()
         if m.libraryGrid.content <> invalid and m.libraryGrid.content.getChildCount() > 0
             m.libraryGrid.setFocus(true)
         else
-            m.tabBar.setFocus(true)
+            focusActiveTab()
         end if
     else if m.currentView = "search"
         ' Land on the input button so the user's first OK press opens
@@ -2591,11 +2940,11 @@ sub applyDeferredFocus()
         if m.sportsRowList.content <> invalid and m.sportsRowList.content.getChildCount() > 0
             m.sportsRowList.setFocus(true)
         else
-            m.tabBar.setFocus(true)
+            focusActiveTab()
         end if
     else if m.currentView = "settings"
-        ' Land on Edit URL — first interactive control on the page.
-        m.editApiUrlButton.setFocus(true)
+        ' Land on Switch User — first interactive row on the page.
+        m.switchUserButton.setFocus(true)
     else if m.currentView = "userPicker"
         if m.userList.visible then m.userList.setFocus(true)
     else if m.currentView = "liveTv"
@@ -2603,6 +2952,8 @@ sub applyDeferredFocus()
         ' the /api/live/channels call returns the list is still hidden,
         ' so there's nothing to focus — eat the deferred focus.
         if m.channelList.visible then m.channelList.setFocus(true)
+    else if m.currentView = "sportsSettings"
+        if m.sportsLeagueList.visible then m.sportsLeagueList.setFocus(true)
     else if m.currentView = "detail"
         m.detailActions.setFocus(true)
     else if m.currentView = "player"
@@ -3193,7 +3544,66 @@ sub populateSettings()
     ' refreshes lastCheckedAt asynchronously, so the user sees the
     ' current view rather than stale numbers from the last open.
     fetchUpdateStatus()
+    ' Service Status + Server Configuration sections pull from /api/health,
+    ' /api/auth/providers, /api/config. Re-run every visit.
+    fetchServiceStatus()
+
+    ' Reset scroll position so a fresh visit lands at the top.
+    m.settingsContent.translation = [0, 160]
 end sub
+
+' Settings is a tall scrollable list. When focus moves to a row that's
+' off-screen we translate settingsContent up/down so the focused row
+' stays roughly in the middle of the visible viewport.
+sub adjustSettingsScroll()
+    if m.currentView <> "settings" then return
+    focused = findFocusedSettingsChild()
+    if focused = invalid then return
+
+    ' Translate settingsContent so the focused row's centre lands
+    ' between y=300 and y=700 on screen.
+    rowY = focused.translation[1]
+    contentY = m.settingsContent.translation[1]
+    screenY = contentY + rowY
+    target = contentY
+    if screenY < 200 then target = contentY + (200 - screenY)
+    if screenY > 700 then target = contentY - (screenY - 700)
+    ' Clamp upper bound to a sensible top.
+    if target > 160 then target = 160
+    if target = contentY then return
+    m.settingsContent.translation = [0, target]
+end sub
+
+' Walk the small fixed list of settings focusables and return whichever
+' currently holds the focus. Avoids a tree walk of every child.
+function findFocusedSettingsChild() as object
+    chain = settingsFocusChain()
+    for each c in chain
+        if c <> invalid and c.isInFocusChain() then return c
+    end for
+    return invalid
+end function
+
+' Top-to-bottom ordered focus chain for the Settings page. Used by
+' adjustSettingsScroll, findFocusedSettingsChild, and the up/down
+' onKeyEvent handler. connectionRemote / installUpdateButton sit on
+' the same row as their pair and are reached via L/R, so they're not
+' standalone entries here.
+function settingsFocusChain() as object
+    return [
+        m.switchUserButton,
+        m.rememberLoginToggle,
+        m.editApiUrlButton,
+        m.connectionLocal,
+        m.autoSkipIntroToggle,
+        m.autoSkipCreditsToggle,
+        m.showBywToggle,
+        m.configureChannelsButton,
+        m.configureSportsButton,
+        m.checkUpdateButton,
+        m.repairButton
+    ]
+end function
 
 ' ─── Server Updates section ───────────────────────────────────────
 '
@@ -3328,7 +3738,7 @@ function formatLastChecked(iso as string) as string
 end function
 
 sub onCheckUpdatePressed()
-    m.checkUpdateButton.text = "Checking…"
+    m.checkUpdateButton.label = "Checking…"
     m.settingsUpdateMessage.text = ""
 
     task = CreateObject("roSGNode", "ApiTask")
@@ -3345,7 +3755,7 @@ sub onCheckUpdateResponse()
     if m.checkUpdateTask = invalid then return
     resp = m.checkUpdateTask.response
     m.checkUpdateTask = invalid
-    m.checkUpdateButton.text = "Check for Updates"
+    m.checkUpdateButton.label = "Check for Updates"
 
     if resp = invalid or resp.success <> true or resp.data = invalid
         msg = "Update check failed."
@@ -3359,7 +3769,7 @@ sub onCheckUpdateResponse()
 end sub
 
 sub onInstallUpdatePressed()
-    m.installUpdateButton.text = "Starting…"
+    m.installUpdateButton.label = "Starting…"
     m.settingsUpdateMessage.text = "Installer launching — server will restart in ~30 seconds."
 
     task = CreateObject("roSGNode", "ApiTask")
@@ -3376,7 +3786,7 @@ sub onInstallUpdateResponse()
     if m.installUpdateTask = invalid then return
     resp = m.installUpdateTask.response
     m.installUpdateTask = invalid
-    m.installUpdateButton.text = "Install Update"
+    m.installUpdateButton.label = "Install Update"
 
     if resp = invalid or resp.success <> true
         msg = "Couldn't start installer."
@@ -3452,9 +3862,18 @@ sub onApiUrlKeyboardClosed()
 end sub
 
 sub onConnectionTypeSelected()
-    idx = m.connectionToggle.buttonSelected
-    newType = "local"
-    if idx = 1 then newType = "remote"
+    newType = invalid
+    if m.connectionLocal.buttonSelected = true
+        newType = "local"
+        m.connectionLocal.buttonSelected = false
+    end if
+    if m.connectionRemote.buttonSelected = true
+        newType = "remote"
+        m.connectionRemote.buttonSelected = false
+    end if
+    if newType = invalid then return
+    m.connectionLocal.selected = (newType = "local")
+    m.connectionRemote.selected = (newType = "remote")
     if newType = m.connectionType then return
     print "[HomeScene] connectionType -> "; newType
 
@@ -3473,6 +3892,14 @@ sub onConnectionTypeSelected()
     m.tvStale = true
     m.moviesStale = true
     m.libraryCache = { show: invalid, movie: invalid }
+end sub
+
+sub focusConnectionToggle()
+    if m.connectionType = "remote"
+        m.connectionRemote.setFocus(true)
+    else
+        m.connectionLocal.setFocus(true)
+    end if
 end sub
 
 ' Switch User on Settings just navigates to the dedicated user picker
@@ -3616,6 +4043,49 @@ sub updateLiveTvSettingsLabel()
     else
         m.settingsLiveTvValue.text = count.toStr() + " channels selected"
     end if
+end sub
+
+' ─── Playback / login prefs ──────────────────────────────────────
+
+function readRegistryBool(section as object, key as string, defaultValue as boolean) as boolean
+    if section = invalid or not section.Exists(key) then return defaultValue
+    v = section.Read(key)
+    if v = "true" then return true
+    if v = "false" then return false
+    return defaultValue
+end function
+
+sub writeRegistryBool(key as string, value as boolean)
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid then return
+    v = "false"
+    if value then v = "true"
+    section.Write(key, v)
+    section.Flush()
+end sub
+
+sub onAutoSkipIntroToggled()
+    m.autoSkipIntro = (m.autoSkipIntroToggle.value = true)
+    writeRegistryBool("autoSkipIntro", m.autoSkipIntro)
+    print "[HomeScene] autoSkipIntro -> "; m.autoSkipIntro
+end sub
+
+sub onAutoSkipCreditsToggled()
+    m.autoSkipCredits = (m.autoSkipCreditsToggle.value = true)
+    writeRegistryBool("autoSkipCredits", m.autoSkipCredits)
+    print "[HomeScene] autoSkipCredits -> "; m.autoSkipCredits
+end sub
+
+sub onShowBywToggled()
+    m.showBecauseYouWatched = (m.showBywToggle.value = true)
+    writeRegistryBool("showBecauseYouWatched", m.showBecauseYouWatched)
+    print "[HomeScene] showBecauseYouWatched -> "; m.showBecauseYouWatched
+end sub
+
+sub onRememberLoginToggled()
+    m.rememberLogin = (m.rememberLoginToggle.value = true)
+    writeRegistryBool("rememberLogin", m.rememberLogin)
+    print "[HomeScene] rememberLogin -> "; m.rememberLogin
 end sub
 
 ' ─── Pair view ────────────────────────────────────────────────────
@@ -3910,6 +4380,10 @@ sub attachItemFields(child as object, item as object)
     ' on Continue Watching cards. Plex/Jellyfin/Emby items report this
     ' directly; non-library items leave it at 0 → no bar rendered.
     child.AddField("itemProgress", "float", false)
+    ' status + availability.availableAt drive PosterItem's bottom
+    ' overlay (coming-soon date, downloading badge, live air time).
+    child.AddField("itemStatus", "string", false)
+    child.AddField("itemAvailableAt", "string", false)
 
     child.itemSource = stringField(item, "source")
     child.itemSourceId = stringField(item, "sourceId")
@@ -3920,6 +4394,10 @@ sub attachItemFields(child as object, item as object)
     child.itemDuration = stringField(item, "duration")
     child.itemType = stringField(item, "type")
     child.itemBackdropUrl = resolveBackdropUrl(item)
+    child.itemStatus = stringField(item, "status")
+    availableAt = ""
+    if item.availability <> invalid then availableAt = stringField(item.availability, "availableAt")
+    child.itemAvailableAt = availableAt
 
     watched = false
     progress = 0
@@ -4026,3 +4504,251 @@ function normalizeApiUrl(url as dynamic) as string
     return s
 end function
 
+' ─── Settings sub-features ───────────────────────────────────────
+
+sub onConfigureSportsPressed()
+    showView("sportsSettings")
+end sub
+
+sub onRepairPressed()
+    ' Wipe the registry auth key and restart the pair flow.
+    section = CreateObject("roRegistrySection", "whatson")
+    if section <> invalid
+        section.Delete("authKey")
+        section.Flush()
+    end if
+    m.authKey = ""
+    showView("pair")
+    startPair()
+end sub
+
+' Sports settings — fetch leagues, render with checkbox prefixes,
+' toggle to add/remove from prefs (mode="all" per league for v1).
+sub ensureSportsSettingsLoaded()
+    if m.sportsLeaguesAvailable <> invalid
+        renderSportsLeagueList()
+        return
+    end if
+    fetchSportsLeagues()
+end sub
+
+sub fetchSportsLeagues()
+    m.sportsSettingsStatus.visible = true
+    m.sportsSettingsStatus.text = "Loading leagues…"
+    m.sportsLeagueList.visible = false
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onSportsLeaguesResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/sports/leagues"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.sportsLeaguesTask = task
+
+    ' Also fetch current prefs so the initial checkbox state is correct.
+    prefsTask = CreateObject("roSGNode", "ApiTask")
+    prefsTask.observeField("response", "onSportsPrefsLoaded")
+    prefsTask.method = "GET"
+    prefsTask.url = m.apiUrl + "/api/sports/prefs"
+    setApiTaskAuth(prefsTask)
+    prefsTask.control = "RUN"
+    m.sportsPrefsLoadTask = prefsTask
+end sub
+
+sub onSportsLeaguesResponse()
+    if m.sportsLeaguesTask = invalid then return
+    resp = m.sportsLeaguesTask.response
+    m.sportsLeaguesTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        m.sportsSettingsStatus.text = "Couldn't load leagues."
+        return
+    end if
+    m.sportsLeaguesAvailable = resp.data
+    renderSportsLeagueList()
+end sub
+
+sub onSportsPrefsLoaded()
+    if m.sportsPrefsLoadTask = invalid then return
+    resp = m.sportsPrefsLoadTask.response
+    m.sportsPrefsLoadTask = invalid
+    m.sportsLeaguesFollowed = []
+    if resp <> invalid and resp.success = true and resp.data <> invalid and resp.data.leagues <> invalid
+        for each lp in resp.data.leagues
+            if lp.key <> invalid then m.sportsLeaguesFollowed.push(lp.key)
+        end for
+    end if
+    renderSportsLeagueList()
+end sub
+
+sub renderSportsLeagueList()
+    if m.sportsLeaguesAvailable = invalid then return
+    if m.sportsLeaguesAvailable.Count() = 0
+        m.sportsSettingsStatus.visible = true
+        m.sportsSettingsStatus.text = "No leagues available."
+        m.sportsLeagueList.visible = false
+        return
+    end if
+    rows = CreateObject("roSGNode", "ContentNode")
+    for each league in m.sportsLeaguesAvailable
+        node = rows.createChild("ContentNode")
+        enabled = false
+        for each k in m.sportsLeaguesFollowed
+            if k = league.key then enabled = true
+        end for
+        prefix = "[ ]  "
+        if enabled then prefix = "[X]  "
+        node.title = prefix + league.label
+    end for
+    m.sportsLeagueList.content = rows
+    m.sportsSettingsStatus.visible = false
+    m.sportsLeagueList.visible = true
+    m.sportsLeagueList.setFocus(true)
+end sub
+
+sub onSportsLeagueToggled()
+    idx = m.sportsLeagueList.itemSelected
+    if idx < 0 or m.sportsLeaguesAvailable = invalid or idx >= m.sportsLeaguesAvailable.Count() then return
+    league = m.sportsLeaguesAvailable[idx]
+    key = league.key
+
+    found = -1
+    for i = 0 to m.sportsLeaguesFollowed.Count() - 1
+        if m.sportsLeaguesFollowed[i] = key then found = i
+    end for
+    if found >= 0
+        m.sportsLeaguesFollowed.Delete(found)
+    else
+        m.sportsLeaguesFollowed.push(key)
+    end if
+
+    rows = m.sportsLeagueList.content
+    if rows <> invalid and idx < rows.getChildCount()
+        node = rows.getChild(idx)
+        prefix = "[ ]  "
+        if found < 0 then prefix = "[X]  "
+        node.title = prefix + league.label
+    end if
+
+    saveSportsPrefs()
+end sub
+
+sub saveSportsPrefs()
+    ' Build the prefs payload — mode="all" per followed league.
+    ' Per-team selection is a follow-up; for now the Roku UI matches
+    ' "Follow whole league" from the mobile picker.
+    leaguesArr = []
+    for each k in m.sportsLeaguesFollowed
+        leaguesArr.push({ key: k, mode: "all", teamIds: [] })
+    end for
+    body = FormatJson({ leagues: leaguesArr })
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.method = "PUT"
+    task.url = m.apiUrl + "/api/sports/prefs"
+    task.body = body
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.sportsPrefsSaveTask = task
+
+    ' Mark sports caches stale so the next visit refetches with the
+    ' new follow set.
+    m.sportsCache = invalid
+    m.sportsStale = true
+    m.homeStale = true
+    print "[HomeScene] sports prefs saved: leagues="; leaguesArr.Count()
+end sub
+
+' ─── Service Status + Server Configuration loaders ─────────────
+
+sub fetchServiceStatus()
+    healthTask = CreateObject("roSGNode", "ApiTask")
+    healthTask.observeField("response", "onHealthResponse")
+    healthTask.method = "GET"
+    healthTask.url = m.apiUrl + "/api/health"
+    setApiTaskAuth(healthTask)
+    healthTask.control = "RUN"
+    m.healthTask = healthTask
+
+    providersTask = CreateObject("roSGNode", "ApiTask")
+    providersTask.observeField("response", "onAuthProvidersResponse")
+    providersTask.method = "GET"
+    providersTask.url = m.apiUrl + "/api/auth/providers"
+    setApiTaskAuth(providersTask)
+    providersTask.control = "RUN"
+    m.authProvidersTask = providersTask
+
+    configTask = CreateObject("roSGNode", "ApiTask")
+    configTask.observeField("response", "onServerConfigResponse")
+    configTask.method = "GET"
+    configTask.url = m.apiUrl + "/api/config"
+    setApiTaskAuth(configTask)
+    configTask.control = "RUN"
+    m.serverConfigTask = configTask
+end sub
+
+sub onHealthResponse()
+    if m.healthTask = invalid then return
+    resp = m.healthTask.response
+    m.healthTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid or resp.data.services = invalid then return
+    svc = resp.data.services
+    setServiceDot(m.serviceStatusPlexDot, m.serviceStatusPlex, "Plex", svc.plex)
+    setServiceDot(m.serviceStatusSonarrDot, m.serviceStatusSonarr, "Sonarr", svc.sonarr)
+    setServiceDot(m.serviceStatusRadarrDot, m.serviceStatusRadarr, "Radarr", svc.radarr)
+    ' Cache the version for the About section.
+    if resp.data.version <> invalid then m.aboutVersionLabel.text = "Version " + resp.data.version.toStr()
+end sub
+
+sub onAuthProvidersResponse()
+    if m.authProvidersTask = invalid then return
+    resp = m.authProvidersTask.response
+    m.authProvidersTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid then return
+    p = resp.data
+    setServiceDotBool(m.serviceStatusJellyfinDot, m.serviceStatusJellyfin, "Jellyfin", p.jellyfin = true)
+    setServiceDotBool(m.serviceStatusEmbyDot, m.serviceStatusEmby, "Emby", p.emby = true)
+end sub
+
+sub onServerConfigResponse()
+    if m.serverConfigTask = invalid then return
+    resp = m.serverConfigTask.response
+    m.serverConfigTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid then return
+    d = resp.data
+    m.serverConfigPlex.text = "Plex: " + configLine(d.plex)
+    if d.jellyfin <> invalid then m.serverConfigJellyfin.text = "Jellyfin: " + configLine(d.jellyfin) else m.serverConfigJellyfin.text = "Jellyfin: not configured"
+    if d.emby <> invalid then m.serverConfigEmby.text = "Emby: " + configLine(d.emby) else m.serverConfigEmby.text = "Emby: not configured"
+    m.serverConfigSonarr.text = "Sonarr: " + configLine(d.sonarr)
+    m.serverConfigRadarr.text = "Radarr: " + configLine(d.radarr)
+end sub
+
+function configLine(cfg as object) as string
+    if cfg = invalid then return "not configured"
+    if cfg.configured = true and cfg.url <> invalid and cfg.url <> "" then return cfg.url.toStr()
+    if cfg.url <> invalid and cfg.url <> "" then return cfg.url.toStr() + " (not configured)"
+    return "not configured"
+end function
+
+sub setServiceDot(dot as object, label as object, name as string, state as dynamic)
+    connected = (state = "connected")
+    if connected
+        dot.color = "0x52b54bff"
+        label.text = name + " — connected"
+    else if state = invalid or state = "" or state = "not_configured"
+        dot.color = "0x666666ff"
+        label.text = name + " — not configured"
+    else
+        dot.color = "0xe53935ff"
+        label.text = name + " — " + state.toStr()
+    end if
+end sub
+
+sub setServiceDotBool(dot as object, label as object, name as string, present as boolean)
+    if present
+        dot.color = "0x52b54bff"
+        label.text = name + " — configured"
+    else
+        dot.color = "0x666666ff"
+        label.text = name + " — not configured"
+    end if
+end sub

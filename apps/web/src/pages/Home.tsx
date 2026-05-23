@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { ContentItem } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
+import { DetailSheet } from '@/components/DetailSheet';
 
 export default function Home() {
+  const [selected, setSelected] = useState<ContentItem | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['home'],
     queryFn: () => api.getHome(),
@@ -55,8 +59,9 @@ export default function Home() {
   return (
     <div className="py-6">
       {sections.map((s) => (
-        <Shelf key={s.id} section={s} />
+        <Shelf key={s.id} section={s} onItemClick={setSelected} />
       ))}
+      {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

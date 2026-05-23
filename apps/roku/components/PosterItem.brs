@@ -20,6 +20,19 @@ sub init()
     m.sourceBadgeLabel = m.top.findNode("sourceBadgeLabel")
     m.progressBarBg = m.top.findNode("progressBarBg")
     m.progressBarFill = m.top.findNode("progressBarFill")
+    m.focusRingTop = m.top.findNode("focusRingTop")
+    m.focusRingBottom = m.top.findNode("focusRingBottom")
+    m.focusRingLeft = m.top.findNode("focusRingLeft")
+    m.focusRingRight = m.top.findNode("focusRingRight")
+    m.statusOverlayBg = m.top.findNode("statusOverlayBg")
+    m.statusOverlayLabel = m.top.findNode("statusOverlayLabel")
+
+    ' MarkupGrid (Library / Search) has no per-row focus concept and
+    ' never writes to rowFocusPercent, so default to 1.0 — the focus
+    ' ring then keys off focusPercent alone in those grids. RowList
+    ' overwrites this field as it animates row focus, so the dual-
+    ' gate behaviour still kicks in there.
+    m.top.rowFocusPercent = 1.0
 
     ' Sports-mode nodes — populated only for itemSource = "sports".
     m.sportsView = m.top.findNode("sportsView")
@@ -52,11 +65,15 @@ sub onContentChanged()
     ' Home Sports On Now / Later use SportsShelf with the full card
     ' design rather than poster cells.
     if src = "sports"
+        ' Reshape the inset focus ring to wrap the 340×160 sports card.
+        layoutFocusRing(340, 160)
         renderSportsCard(content)
         return
     end if
 
     ' Standard library / tracked / discover cell: poster + title below.
+    ' Restore the focus ring to portrait poster dimensions.
+    layoutFocusRing(220, 330)
     m.sportsView.visible = false
     m.poster.visible = true
     m.label.visible = true
@@ -117,10 +134,34 @@ sub onContentChanged()
     m.progressBarBg.visible = showProgress
     m.progressBarFill.visible = showProgress
     if showProgress
-        fillWidth = Int(160 * progress / 100)
+        fillWidth = Int(220 * progress / 100)
         if fillWidth < 2 then fillWidth = 2
-        if fillWidth > 160 then fillWidth = 160
+        if fillWidth > 220 then fillWidth = 220
         m.progressBarFill.width = fillWidth
+    end if
+
+    ' Status overlay — matches the mobile ContentCard:
+    '   downloading  → "Downloading" in cyan
+    '   coming_soon  → formatted air date in gold
+    '   ready+live   → formatted air time in gold
+    statusText = ""
+    statusColor = "0xe5a00dff"
+    if content.itemStatus = "downloading"
+        statusText = "Downloading"
+        statusColor = "0x52c1d6ff"
+    else if content.itemStatus = "coming_soon" and content.itemAvailableAt <> invalid and content.itemAvailableAt <> ""
+        statusText = formatAvailableDate(content.itemAvailableAt)
+    else if content.itemStatus = "ready" and src = "live" and content.itemAvailableAt <> invalid and content.itemAvailableAt <> ""
+        statusText = formatAvailableDate(content.itemAvailableAt)
+    end if
+    if statusText <> ""
+        m.statusOverlayLabel.text = statusText
+        m.statusOverlayLabel.color = statusColor
+        m.statusOverlayBg.visible = true
+        m.statusOverlayLabel.visible = true
+    else
+        m.statusOverlayBg.visible = false
+        m.statusOverlayLabel.visible = false
     end if
 
     ' Watched dim overlay. We only dim items the user has explicitly
@@ -130,22 +171,106 @@ sub onContentChanged()
 end sub
 
 sub onFocusChanged()
-    ' RowList / MarkupGrid handles the focus visual itself via the
-    ' `floatingFocus` animation style — we only swap the title colour
-    ' between dim grey (unfocused) and bright white (focused) so the
-    ' active cell's label pops.
+    ' Swap the gold focus ring strips on/off and brighten the title.
+    ' Combine focusPercent (per-row) with rowFocusPercent (which row
+    ' is the focused row) so the ring only renders on the truly
+    ' active cell — otherwise every row the user has previously
+    ' visited keeps showing its last cell's ring at focusPercent=1.0.
     pct = m.top.focusPercent
+    rowPct = m.top.rowFocusPercent
     if pct = invalid then pct = 0
-    if pct >= 0.5
+    if rowPct = invalid then rowPct = 0
+    if pct >= 0.5 and rowPct >= 0.5
         m.label.color = "0xffffffff"
+        setFocusRingColor("0xe5a00dff")
     else
         m.label.color = "0xb0b0b0ff"
+        setFocusRingColor("0x00000000")
     end if
+end sub
+
+sub setFocusRingColor(c as string)
+    m.focusRingTop.color = c
+    m.focusRingBottom.color = c
+    m.focusRingLeft.color = c
+    m.focusRingRight.color = c
+end sub
+
+' Size + position the 4 focus-ring strips to wrap an arbitrary
+' cell-content rectangle (w × h). Strips are 4px thick and sit on
+' the inside of the boundary, overlaying the outer ~4px of the
+' content (poster art / sports card). RowList clips at the cell's
+' left edge so we cannot draw an external outline.
+sub layoutFocusRing(w as integer, h as integer)
+    m.focusRingTop.translation = [0, 0]
+    m.focusRingTop.width = w
+    m.focusRingTop.height = 4
+    m.focusRingBottom.translation = [0, h - 4]
+    m.focusRingBottom.width = w
+    m.focusRingBottom.height = 4
+    m.focusRingLeft.translation = [0, 4]
+    m.focusRingLeft.width = 4
+    m.focusRingLeft.height = h - 8
+    m.focusRingRight.translation = [w - 4, 4]
+    m.focusRingRight.width = 4
+    m.focusRingRight.height = h - 8
 end sub
 
 function stringOrEmpty(v as dynamic) as string
     if v = invalid then return ""
     return v
+end function
+
+' Mirrors apps/mobile/components/ContentCard.tsx → formatAvailableDate.
+' Today → time of day; ±1 → Tomorrow / Yesterday; within a week →
+' short weekday; otherwise → "Mon Day".
+function formatAvailableDate(iso as string) as string
+    if iso = "" then return ""
+    dt = CreateObject("roDateTime")
+    dt.FromISO8601String(iso)
+    if dt.AsSeconds() = 0 then return ""
+    dt.ToLocalTime()
+
+    now = CreateObject("roDateTime")
+    now.Mark()
+    now.ToLocalTime()
+
+    nowDay = floor_div(now.AsSeconds(), 86400)
+    evtDay = floor_div(dt.AsSeconds(), 86400)
+    diff = evtDay - nowDay
+
+    weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    if diff = 0
+        hours24 = dt.GetHours()
+        suffix = "AM"
+        hours12 = hours24
+        if hours24 = 0
+            hours12 = 12
+        else if hours24 = 12
+            suffix = "PM"
+        else if hours24 > 12
+            hours12 = hours24 - 12
+            suffix = "PM"
+        end if
+        minutes = dt.GetMinutes().toStr()
+        if Len(minutes) = 1 then minutes = "0" + minutes
+        return hours12.toStr() + ":" + minutes + " " + suffix
+    end if
+    if diff = 1 then return "Tomorrow"
+    if diff > 1 and diff <= 7 then return weekdays[dt.GetDayOfWeek()]
+    if diff = -1 then return "Yesterday"
+    if diff < 0 and diff >= -6 then return "Last " + weekdays[dt.GetDayOfWeek()]
+    monthIdx = dt.GetMonth() - 1
+    if monthIdx < 0 or monthIdx > 11 then monthIdx = 0
+    return months[monthIdx] + " " + dt.GetDayOfMonth().toStr()
+end function
+
+function floor_div(a as longinteger, b as longinteger) as longinteger
+    q = a / b
+    if q < 0 and (q * b) <> a then q = q - 1
+    return q
 end function
 
 ' ─── Sports-mode rendering ────────────────────────────────────────
@@ -165,6 +290,8 @@ sub renderSportsCard(content as object)
     m.sourceBadgeLabel.visible = false
     m.progressBarBg.visible = false
     m.progressBarFill.visible = false
+    m.statusOverlayBg.visible = false
+    m.statusOverlayLabel.visible = false
     m.sportsView.visible = true
 
     isLive = content.isLive = true

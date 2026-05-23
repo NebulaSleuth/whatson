@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SportsEvent } from '@whatson/shared';
 import { SportsCard } from './SportsCard';
 
@@ -10,6 +10,27 @@ interface Props {
 
 export function SportsShelf({ title, events, onItemClick }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      setAtStart(el.scrollLeft <= 1);
+      setAtEnd(el.scrollLeft >= maxScroll - 1);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [events.length]);
+
   if (events.length === 0) return null;
 
   function onWheel(e: React.WheelEvent<HTMLDivElement>) {
@@ -39,8 +60,8 @@ export function SportsShelf({ title, events, onItemClick }: Props) {
           <SportsCard key={event.id} event={event} onClick={onItemClick} />
         ))}
       </div>
-      <ScrollButton direction="left" onClick={() => scrollBy(-1)} />
-      <ScrollButton direction="right" onClick={() => scrollBy(1)} />
+      {!atStart && <ScrollButton direction="left" onClick={() => scrollBy(-1)} />}
+      {!atEnd && <ScrollButton direction="right" onClick={() => scrollBy(1)} />}
     </section>
   );
 }

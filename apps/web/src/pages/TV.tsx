@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
+import { DetailSheet } from '@/components/DetailSheet';
 
 function trackedShowToContentItem(t: Awaited<ReturnType<typeof api.getAllTrackedTv>>[number]): ContentItem {
   return {
@@ -25,6 +26,7 @@ function trackedShowToContentItem(t: Awaited<ReturnType<typeof api.getAllTracked
 }
 
 export default function TV() {
+  const [selected, setSelected] = useState<ContentItem | null>(null);
   const recent = useQuery({ queryKey: ['tv', 'recent'], queryFn: api.getTvRecent });
   const upcoming = useQuery({ queryKey: ['tv', 'upcoming'], queryFn: () => api.getTvUpcoming(7) });
   const downloading = useQuery({ queryKey: ['tv', 'downloading'], queryFn: api.getTvDownloading });
@@ -67,8 +69,9 @@ export default function TV() {
       {sections.length === 0 ? (
         <p className="px-6 text-text-muted">Nothing to show yet.</p>
       ) : (
-        sections.map((s) => <Shelf key={s.id} section={s} />)
+        sections.map((s) => <Shelf key={s.id} section={s} onItemClick={setSelected} />)
       )}
+      {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

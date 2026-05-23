@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { PosterCard } from './PosterCard';
 
@@ -9,6 +9,28 @@ interface Props {
 
 export function Shelf({ section, onItemClick }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      setAtStart(el.scrollLeft <= 1);
+      // Tolerate sub-pixel rounding at the right edge.
+      setAtEnd(el.scrollLeft >= maxScroll - 1);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [section.items.length]);
+
   if (!section.items || section.items.length === 0) return null;
 
   // Convert vertical mouse-wheel ticks into horizontal scroll so a
@@ -41,8 +63,8 @@ export function Shelf({ section, onItemClick }: Props) {
           <PosterCard key={item.id} item={item} onClick={onItemClick} />
         ))}
       </div>
-      <ScrollButton direction="left" onClick={() => scrollBy(-1)} />
-      <ScrollButton direction="right" onClick={() => scrollBy(1)} />
+      {!atStart && <ScrollButton direction="left" onClick={() => scrollBy(-1)} />}
+      {!atEnd && <ScrollButton direction="right" onClick={() => scrollBy(1)} />}
     </section>
   );
 }

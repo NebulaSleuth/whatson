@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { ContentItem } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Grid } from '@/components/Grid';
+import { DetailSheet } from '@/components/DetailSheet';
 
 type LibType = 'show' | 'movie';
 type LibSource = 'plex' | 'jellyfin' | 'emby';
@@ -9,6 +11,7 @@ type LibSource = 'plex' | 'jellyfin' | 'emby';
 export default function Library() {
   const [type, setType] = useState<LibType>('show');
   const [source, setSource] = useState<LibSource>('plex');
+  const [selected, setSelected] = useState<ContentItem | null>(null);
   const providers = useQuery({ queryKey: ['auth', 'providers'], queryFn: api.getAuthProviders });
   const lib = useQuery({
     queryKey: ['library', type, source],
@@ -37,8 +40,9 @@ export default function Library() {
       ) : lib.error ? (
         <p className="px-6 text-red-400">{(lib.error as Error).message}</p>
       ) : (
-        <Grid items={lib.data ?? []} emptyMessage="Nothing in this library." />
+        <Grid items={lib.data ?? []} onItemClick={setSelected} emptyMessage="Nothing in this library." />
       )}
+      {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

@@ -97,6 +97,7 @@ rokuDeploy
       'source/**/*',
       'components/**/*',
       'images/**/*',
+      'fonts/**/*',
     ],
     incrementBuildNumber: false,
     // roku-deploy's default is `true` (wipes channel + registry).

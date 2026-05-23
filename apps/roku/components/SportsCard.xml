@@ -25,19 +25,14 @@
     <interface>
         <field id="itemContent" type="node" onChange="onContentChanged" />
         <field id="focusPercent" type="float" onChange="onFocusChanged" />
+        <!-- Row-level focus: paired with focusPercent so only the
+             actively-focused cell in the actively-focused row paints
+             the ring (RowList keeps each row's last-focused cell at
+             focusPercent=1.0 otherwise, leaving stale rings behind). -->
+        <field id="rowFocusPercent" type="float" onChange="onFocusChanged" />
     </interface>
 
     <children>
-        <!-- Focus ring sits behind the card and peeks 4px on every side
-             when focused. Declared first so subsequent children draw
-             over the centre. -->
-        <Rectangle
-            id="focusRing"
-            translation="[-4, -4]"
-            width="348"
-            height="168"
-            color="0xe5a00d00" />
-
         <!-- Card background. Color is overwritten in onContentChanged
              based on whether the event is live (surface) or upcoming
              (team primary colour, with a fallback to surface). -->
@@ -64,100 +59,134 @@
             color="0x00000058"
             visible="false" />
 
-        <!-- Header: league + LIVE pill -->
+        <!-- Header: league + LIVE pill. Explicit font sizes match
+             PosterItem.xml's sportsView on the Home tab so cards look
+             identical on both surfaces: league 18, team names + scores
+             20, status 16, LIVE / broadcast pills 14. -->
         <Label
             id="leagueLabel"
-            translation="[12, 14]"
+            translation="[12, 12]"
             width="240"
             wrap="false"
             maxLines="1"
-            color="0xb0b0b0ff" />
+            color="0xb0b0b0ff">
+            <Font role="font" uri="font:SystemFontFile" size="20" />
+        </Label>
 
-        <Group id="liveBadge" translation="[280, 10]" visible="false">
-            <Rectangle width="48" height="18" color="0xe53935ff" />
-            <Rectangle translation="[5, 6]" width="6" height="6" color="0xffffffff" />
+        <Group id="liveBadge" translation="[278, 10]" visible="false">
+            <Rectangle width="50" height="20" color="0xe53935ff" />
+            <Rectangle translation="[5, 7]" width="6" height="6" color="0xffffffff" />
             <Label
                 translation="[14, 1]"
                 text="LIVE"
-                width="34"
+                width="36"
+                height="20"
                 wrap="false"
-                color="0xffffffff" />
+                vertAlign="center"
+                color="0xffffffff">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
         </Group>
 
         <!-- Team 1 row -->
         <Poster
             id="team1Logo"
-            translation="[12, 48]"
-            width="22"
-            height="22"
+            translation="[12, 46]"
+            width="26"
+            height="26"
             loadDisplayMode="scaleToFit" />
         <Label
             id="team1Name"
-            translation="[42, 48]"
-            width="216"
+            translation="[44, 46]"
+            width="200"
             wrap="false"
             maxLines="1"
-            color="0xffffffff" />
+            color="0xffffffff">
+            <Font role="font" uri="font:SystemFontFile" size="22" />
+        </Label>
         <Label
             id="team1Score"
-            translation="[260, 46]"
-            width="64"
+            translation="[252, 46]"
+            width="74"
             horizAlign="right"
             wrap="false"
-            color="0xffffffff" />
+            color="0xffffffff">
+            <Font role="font" uri="font:SystemFontFile" size="22" />
+        </Label>
 
         <!-- Team 2 row -->
         <Poster
             id="team2Logo"
             translation="[12, 78]"
-            width="22"
-            height="22"
+            width="26"
+            height="26"
             loadDisplayMode="scaleToFit" />
         <Label
             id="team2Name"
-            translation="[42, 78]"
-            width="216"
+            translation="[44, 78]"
+            width="200"
             wrap="false"
             maxLines="1"
-            color="0xffffffff" />
+            color="0xffffffff">
+            <Font role="font" uri="font:SystemFontFile" size="22" />
+        </Label>
         <Label
             id="team2Score"
-            translation="[260, 76]"
-            width="64"
+            translation="[252, 78]"
+            width="74"
             horizAlign="right"
             wrap="false"
-            color="0xffffffff" />
+            color="0xffffffff">
+            <Font role="font" uri="font:SystemFontFile" size="22" />
+        </Label>
 
         <!-- Tournament title (non-team sports like ATP) overlays the
              team rows when shown. Hidden by default; live/upcoming
              team-sport branches hide it explicitly. -->
         <Label
             id="tournamentTitle"
-            translation="[12, 60]"
+            translation="[12, 56]"
             width="316"
             wrap="true"
             maxLines="2"
             color="0xffffffff"
-            visible="false" />
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="22" />
+        </Label>
 
         <!-- Footer: status + broadcast pill -->
         <Label
             id="statusLabel"
             translation="[12, 130]"
-            width="216"
+            width="200"
             wrap="false"
             maxLines="1"
-            color="0xc0c0c0ff" />
+            color="0xc0c0c0ff">
+            <Font role="font" uri="font:SystemFontFile" size="18" />
+        </Label>
 
-        <Group id="broadcastPill" translation="[238, 128]" visible="false">
-            <Rectangle id="broadcastBg" width="92" height="20" color="0xe5a00d33" />
+        <Group id="broadcastPill" translation="[240, 128]" visible="false">
+            <Rectangle id="broadcastBg" width="88" height="22" color="0xe5a00d33" />
             <Label
                 id="broadcastLabel"
-                translation="[8, 2]"
+                translation="[6, 1]"
                 width="76"
+                height="22"
                 wrap="false"
-                maxLines="1"
-                color="0xe5a00dff" />
+                horizAlign="center"
+                vertAlign="center"
+                color="0xe5a00dff">
+                <Font role="font" uri="font:SystemFontFile" size="16" />
+            </Label>
         </Group>
+
+        <!-- Inset 4-strip focus ring drawn LAST so the strips overlay
+             the outer ~4px of the card. RowList clips an outer ring
+             at the row's left edge for the first cell, so the strips
+             stay inside the cell bounds. -->
+        <Rectangle id="focusRingTop"    translation="[0, 0]"   width="340" height="4"   color="0x00000000" />
+        <Rectangle id="focusRingBottom" translation="[0, 156]" width="340" height="4"   color="0x00000000" />
+        <Rectangle id="focusRingLeft"   translation="[0, 4]"   width="4"   height="152" color="0x00000000" />
+        <Rectangle id="focusRingRight"  translation="[336, 4]" width="4"   height="152" color="0x00000000" />
     </children>
 </component>

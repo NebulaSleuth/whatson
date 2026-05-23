@@ -17,46 +17,68 @@
     <children>
         <Rectangle width="1920" height="1080" color="0x0e0e0eff" />
 
-        <!-- Brand mark — top-left, above the tab bar. -->
+        <!-- Surface strip behind the tab bar — matches mobile's
+             tabBarStyle.backgroundColor (#1A1A1A) with a 1px
+             cardBorder line at the bottom edge (#2A2A2A). -->
+        <Rectangle
+            id="tabBarSurface"
+            width="1920"
+            height="80"
+            translation="[0, 0]"
+            color="0x1a1a1aff" />
+        <Rectangle
+            id="tabBarBorder"
+            width="1920"
+            height="1"
+            translation="[0, 80]"
+            color="0x2a2a2aff" />
+
+        <!-- Brand mark — top-left, kept above (not in) the tab bar
+             since the mobile tab bar has no brand. Hidden views can
+             still toggle it via showChrome. -->
         <Label
             id="title"
             text="Whats On"
-            translation="[80, 14]"
+            translation="[80, 70]"
+            visible="false"
             font="font:MediumBoldSystemFont"
             color="0xe5a00dff" />
 
-        <!-- Real-time clock — top-right, mirrors mobile's TopBar
-             clock. updateClock() in HomeScene.brs refreshes it on a
-             repeating Timer. -->
+        <!-- Real-time clock — overlays the right edge of the tab
+             bar strip (matches the mobile Clock overlay top-right). -->
         <Label
             id="clockLabel"
-            translation="[1700, 14]"
+            translation="[1700, 26]"
             width="160"
             horizAlign="right"
             font="font:MediumBoldSystemFont"
             color="0xffffffff" />
 
-        <!-- ─── Tab bar — sits below the brand row. -->
-        <ButtonGroup
+        <!-- ─── Tab bar ───
+             Custom TabButton components (icon-above-text, gold
+             bottom-border focus indicator). Roku's built-in Button
+             only supports inline icons and a rectangular focus
+             bitmap, so the mobile look requires this custom node. -->
+        <LayoutGroup
             id="tabBar"
-            translation="[80, 60]"
+            translation="[80, 0]"
             layoutDirection="horiz"
-            itemSpacings="[16]">
-            <Button id="tabHome" text="Home" minWidth="180" />
-            <Button id="tabTv" text="TV Shows" minWidth="180" />
-            <Button id="tabMovies" text="Movies" minWidth="180" />
-            <Button id="tabSports" text="Sports" minWidth="180" />
-            <Button id="tabLibrary" text="Library" minWidth="180" />
-            <Button id="tabSearch" text="Search" minWidth="180" />
-            <Button id="tabSettings" text="Settings" minWidth="180" />
-        </ButtonGroup>
+            itemSpacings="[8]">
+            <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" focusable="true" />
+            <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" focusable="true" />
+            <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" focusable="true" />
+            <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" focusable="true" />
+            <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" focusable="true" />
+            <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" focusable="true" />
+            <TabButton id="tabSettings" label="Settings" iconFocused="⚙" iconUnfocused="⚙" iconFontUri="pkg:/fonts/NotoSansSymbols.ttf" iconYOffset="-6" focusable="true" />
+        </LayoutGroup>
 
         <!-- ─── Home view: status + RowList of shelves ─── -->
         <Group id="homeView">
             <Label
                 id="status"
                 text="Loading…"
-                translation="[80, 140]"
+                translation="[80, 100]"
                 color="0xb0b0b0ff" />
 
             <!-- numRows is the magic field — without it RowList renders
@@ -65,15 +87,18 @@
                  three shelves fit comfortably on 1080p. -->
             <RowList
                 id="rowList"
-                translation="[80, 170]"
-                itemSize="[1760, 295]"
-                numRows="3"
-                rowItemSize="[[160, 240]]"
+                translation="[80, 120]"
+                itemSize="[1760, 400]"
+                numRows="2"
+                rowItemSize="[[220, 330]]"
                 rowItemSpacing="[[16, 0]]"
+                rowSpacings="[20, 20, 20, 20, 20, 20, 20, 20]"
                 vertFocusAnimationStyle="floatingFocus"
                 rowFocusAnimationStyle="floatingFocus"
                 rowLabelOffset="[[0, 0]]"
                 showRowLabel="[true]"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -85,20 +110,23 @@
             <Label
                 id="tvStatus"
                 text="Loading TV…"
-                translation="[80, 140]"
+                translation="[80, 100]"
                 color="0xb0b0b0ff" />
 
             <RowList
                 id="tvRowList"
-                translation="[80, 170]"
-                itemSize="[1760, 295]"
-                numRows="3"
-                rowItemSize="[[160, 240]]"
+                translation="[80, 120]"
+                itemSize="[1760, 400]"
+                numRows="2"
+                rowItemSize="[[220, 330]]"
                 rowItemSpacing="[[16, 0]]"
+                rowSpacings="[20, 20, 20, 20, 20, 20, 20, 20]"
                 vertFocusAnimationStyle="floatingFocus"
                 rowFocusAnimationStyle="floatingFocus"
                 rowLabelOffset="[[0, 0]]"
                 showRowLabel="[true]"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -110,20 +138,23 @@
             <Label
                 id="moviesStatus"
                 text="Loading movies…"
-                translation="[80, 140]"
+                translation="[80, 100]"
                 color="0xb0b0b0ff" />
 
             <RowList
                 id="moviesRowList"
-                translation="[80, 170]"
-                itemSize="[1760, 295]"
-                numRows="3"
-                rowItemSize="[[160, 240]]"
+                translation="[80, 120]"
+                itemSize="[1760, 400]"
+                numRows="2"
+                rowItemSize="[[220, 330]]"
                 rowItemSpacing="[[16, 0]]"
+                rowSpacings="[20, 20, 20, 20, 20, 20, 20, 20]"
                 vertFocusAnimationStyle="floatingFocus"
                 rowFocusAnimationStyle="floatingFocus"
                 rowLabelOffset="[[0, 0]]"
                 showRowLabel="[true]"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -133,14 +164,14 @@
             <!-- Two-button TV / Movies toggle, mirroring the mobile
                  library tab. Selection swaps the dataset feeding the
                  grid below. -->
-            <ButtonGroup
+            <LayoutGroup
                 id="libraryTypeToggle"
                 translation="[80, 110]"
                 layoutDirection="horiz"
-                itemSpacings="[16]">
-                <Button id="libraryTypeShow" text="TV Shows" minWidth="180" />
-                <Button id="libraryTypeMovie" text="Movies" minWidth="180" />
-            </ButtonGroup>
+                itemSpacings="[8]">
+                <TabButton id="libraryTypeShow" label="TV Shows" hideIcon="true" focusable="true" />
+                <TabButton id="libraryTypeMovie" label="Movies" hideIcon="true" focusable="true" />
+            </LayoutGroup>
 
             <Label
                 id="libraryStatus"
@@ -155,12 +186,14 @@
             <MarkupGrid
                 id="libraryGrid"
                 itemComponentName="PosterItem"
-                translation="[80, 230]"
-                itemSize="[160, 270]"
+                translation="[80, 200]"
+                itemSize="[220, 400]"
                 itemSpacing="[16, 24]"
-                numRows="3"
-                numColumns="9"
+                numRows="2"
+                numColumns="7"
                 vertFocusAnimationStyle="floatingFocus"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -173,54 +206,58 @@
              input display: pressing it opens a KeyboardDialog modal,
              results land in the MarkupGrid below. -->
         <Group id="searchView" visible="false">
-            <Button
+            <TabButton
                 id="searchInputButton"
-                text="Tap to search your library…"
-                translation="[80, 110]"
-                minWidth="1200" />
+                label="Tap to search your library…"
+                hideIcon="true"
+                buttonWidth="1200"
+                translation="[80, 100]"
+                focusable="true" />
 
             <!-- Mode toggle — Library searches the user's
                  plex/jellyfin/emby content via /api/search; Discover
                  searches TMDB via /api/discover/search and lets you
                  Track or Add to Sonarr/Radarr. Same chip pattern as
                  mobile (tabs)/search.tsx. -->
-            <ButtonGroup
+            <LayoutGroup
                 id="searchModeToggle"
-                translation="[80, 180]"
+                translation="[80, 200]"
                 layoutDirection="horiz"
-                itemSpacings="[16]">
-                <Button id="searchModeLibrary" text="My Library" minWidth="240" />
-                <Button id="searchModeDiscover" text="Discover &amp; Track" minWidth="280" />
-            </ButtonGroup>
+                itemSpacings="[8]">
+                <TabButton id="searchModeLibrary" label="My Library" hideIcon="true" buttonWidth="260" focusable="true" />
+                <TabButton id="searchModeDiscover" label="Discover &amp; Track" hideIcon="true" buttonWidth="320" focusable="true" />
+            </LayoutGroup>
 
             <!-- Filter chips — Library mode only. /api/discover/search
                  doesn't support a type filter so we hide this row in
                  Discover mode (mirrors mobile's conditional render). -->
-            <ButtonGroup
+            <LayoutGroup
                 id="searchFilterToggle"
-                translation="[80, 250]"
+                translation="[80, 300]"
                 layoutDirection="horiz"
-                itemSpacings="[16]">
-                <Button id="searchFilterAll" text="All" minWidth="180" />
-                <Button id="searchFilterTv" text="TV Shows" minWidth="180" />
-                <Button id="searchFilterMovie" text="Movies" minWidth="180" />
-            </ButtonGroup>
+                itemSpacings="[8]">
+                <TabButton id="searchFilterAll" label="All" hideIcon="true" buttonWidth="180" focusable="true" />
+                <TabButton id="searchFilterTv" label="TV Shows" hideIcon="true" buttonWidth="220" focusable="true" />
+                <TabButton id="searchFilterMovie" label="Movies" hideIcon="true" buttonWidth="200" focusable="true" />
+            </LayoutGroup>
 
             <Label
                 id="searchStatus"
                 text="Type to search your library."
-                translation="[80, 320]"
+                translation="[80, 400]"
                 color="0xb0b0b0ff" />
 
             <MarkupGrid
                 id="searchResultsGrid"
                 itemComponentName="PosterItem"
-                translation="[80, 360]"
-                itemSize="[160, 270]"
+                translation="[80, 440]"
+                itemSize="[220, 400]"
                 itemSpacing="[16, 24]"
-                numRows="2"
-                numColumns="9"
+                numRows="1"
+                numColumns="7"
                 vertFocusAnimationStyle="floatingFocus"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -240,7 +277,7 @@
             <Label
                 id="sportsStatus"
                 text="Loading sports…"
-                translation="[80, 140]"
+                translation="[80, 100]"
                 color="0xb0b0b0ff" />
 
             <!-- itemComponentName (singular, inherited from ArrayGrid)
@@ -251,15 +288,18 @@
                  setup. -->
             <RowList
                 id="sportsRowList"
-                translation="[80, 170]"
-                itemSize="[1760, 220]"
+                translation="[80, 120]"
+                itemSize="[1760, 230]"
                 numRows="2"
                 rowItemSize="[[340, 160]]"
                 rowItemSpacing="[[16, 0]]"
+                rowSpacings="[20, 20, 20, 20, 20, 20, 20, 20]"
                 vertFocusAnimationStyle="floatingFocus"
                 rowFocusAnimationStyle="floatingFocus"
                 rowLabelOffset="[[0, 0]]"
                 showRowLabel="[true]"
+                focusBitmapBlendColor="0x00000000"
+                focusFootprintBlendColor="0x00000000"
                 visible="false"
                 focusable="true" />
         </Group>
@@ -272,156 +312,260 @@
             <Label
                 id="settingsTitle"
                 text="Settings"
-                translation="[80, 110]"
+                translation="[80, 100]"
                 font="font:LargeBoldSystemFont"
                 color="0xffffffff" />
 
-            <!-- API URL row — value Label + Edit button. Edit opens
-                 a KeyboardDialog with the current URL prefilled. -->
-            <Label
-                text="API URL"
-                translation="[80, 200]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsApiUrlValue"
-                translation="[380, 200]"
-                width="1300"
-                color="0xffffffff" />
-            <Button
-                id="editApiUrlButton"
-                text="Edit URL"
-                translation="[380, 240]"
-                minWidth="240" />
+            <!-- settingsContent is the scrollable container. Its
+                 translation Y shifts as focus moves between sections
+                 to keep the focused row visible. -->
+            <Group id="settingsContent" translation="[0, 160]">
 
-            <!-- Plex user row -->
-            <Label
-                text="Plex User"
-                translation="[80, 320]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsUserValue"
-                translation="[380, 320]"
-                width="1300"
-                color="0xffffffff" />
-            <Button
-                id="switchUserButton"
-                text="Switch User"
-                translation="[380, 380]"
-                minWidth="280" />
+                <!-- ─── User ─── -->
+                <Label
+                    text="User"
+                    translation="[80, 0]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    id="settingsUserValue"
+                    translation="[80, 40]"
+                    width="1300"
+                    color="0xffffffff" />
+                <TabButton
+                    id="switchUserButton"
+                    label="Switch User"
+                    hideIcon="true"
+                    buttonWidth="280"
+                    translation="[80, 80]"
+                    focusable="true" />
+                <ToggleRow
+                    id="rememberLoginToggle"
+                    label="Remember login"
+                    translation="[400, 90]"
+                    rowWidth="600"
+                    focusable="true" />
 
-            <!-- Plex connection row — Local picks LAN-direct connections,
-                 Remote routes via plex.tv relay. Mirrors the mobile
-                 plexConnectionType store value, sent as
-                 X-Plex-Connection on every API request. -->
-            <Label
-                text="Connection"
-                translation="[80, 460]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsConnectionValue"
-                translation="[380, 460]"
-                width="800"
-                color="0xffffffff" />
-            <ButtonGroup
-                id="connectionToggle"
-                translation="[380, 500]"
-                layoutDirection="horiz"
-                itemSpacings="[16]">
-                <Button id="connectionLocal" text="Local (LAN)" minWidth="240" />
-                <Button id="connectionRemote" text="Remote (plex.tv)" minWidth="280" />
-            </ButtonGroup>
+                <!-- ─── Backend API ─── -->
+                <Label
+                    text="Backend API"
+                    translation="[80, 200]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    id="settingsApiUrlValue"
+                    translation="[80, 240]"
+                    width="1300"
+                    color="0xffffffff" />
+                <TabButton
+                    id="editApiUrlButton"
+                    label="Edit URL"
+                    hideIcon="true"
+                    buttonWidth="240"
+                    translation="[80, 280]"
+                    focusable="true" />
 
-            <!-- ─── Server Updates ───
-                 Mirrors the mobile Settings → Server Updates section.
-                 Shows current vs. latest backend version, last-check time,
-                 and surfaces Check / Install actions. Hidden when the
-                 backend reports platformSupported=false (non-Windows). -->
+                <!-- ─── Connection ─── -->
+                <Label
+                    text="Connection"
+                    translation="[80, 400]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    id="settingsConnectionValue"
+                    translation="[80, 440]"
+                    width="800"
+                    color="0xffffffff" />
+                <LayoutGroup
+                    id="connectionToggle"
+                    translation="[80, 480]"
+                    layoutDirection="horiz"
+                    itemSpacings="[8]">
+                    <TabButton id="connectionLocal" label="Local (LAN)" hideIcon="true" buttonWidth="240" focusable="true" />
+                    <TabButton id="connectionRemote" label="Remote (plex.tv)" hideIcon="true" buttonWidth="320" focusable="true" />
+                </LayoutGroup>
+
+                <!-- ─── Playback ─── -->
+                <Label
+                    text="Playback"
+                    translation="[80, 600]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <ToggleRow
+                    id="autoSkipIntroToggle"
+                    label="Auto-skip intros"
+                    translation="[80, 640]"
+                    rowWidth="800"
+                    focusable="true" />
+                <ToggleRow
+                    id="autoSkipCreditsToggle"
+                    label="Auto-skip credits"
+                    translation="[80, 710]"
+                    rowWidth="800"
+                    focusable="true" />
+                <ToggleRow
+                    id="showBywToggle"
+                    label="&quot;Because you watched&quot; recommendations"
+                    translation="[80, 780]"
+                    rowWidth="800"
+                    focusable="true" />
+
+                <!-- ─── What's on TV ─── -->
+                <Label
+                    text="What's on TV"
+                    translation="[80, 880]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    id="settingsLiveTvValue"
+                    text="No channels selected"
+                    translation="[80, 920]"
+                    width="800"
+                    color="0xffffffff" />
+                <TabButton
+                    id="configureChannelsButton"
+                    label="Configure Channels"
+                    hideIcon="true"
+                    buttonWidth="340"
+                    translation="[80, 960]"
+                    focusable="true" />
+
+                <!-- ─── Sports ─── -->
+                <Label
+                    text="Sports"
+                    translation="[80, 1080]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    text="Pick leagues so the Sports tab shows what's on now and what's coming up."
+                    translation="[80, 1120]"
+                    width="1500"
+                    wrap="true"
+                    color="0xb0b0b0ff" />
+                <TabButton
+                    id="configureSportsButton"
+                    label="Configure Sports Follows"
+                    hideIcon="true"
+                    buttonWidth="380"
+                    translation="[80, 1160]"
+                    focusable="true" />
+
+                <!-- ─── Service Status ─── -->
+                <Label
+                    text="Service Status"
+                    translation="[80, 1280]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Rectangle id="serviceStatusPlexDot" translation="[80, 1330]" width="14" height="14" color="0x666666ff" />
+                <Label id="serviceStatusPlex" translation="[110, 1322]" width="800" color="0xffffffff" text="Plex" />
+                <Rectangle id="serviceStatusJellyfinDot" translation="[80, 1366]" width="14" height="14" color="0x666666ff" />
+                <Label id="serviceStatusJellyfin" translation="[110, 1358]" width="800" color="0xffffffff" text="Jellyfin" />
+                <Rectangle id="serviceStatusEmbyDot" translation="[80, 1402]" width="14" height="14" color="0x666666ff" />
+                <Label id="serviceStatusEmby" translation="[110, 1394]" width="800" color="0xffffffff" text="Emby" />
+                <Rectangle id="serviceStatusSonarrDot" translation="[80, 1438]" width="14" height="14" color="0x666666ff" />
+                <Label id="serviceStatusSonarr" translation="[110, 1430]" width="800" color="0xffffffff" text="Sonarr" />
+                <Rectangle id="serviceStatusRadarrDot" translation="[80, 1474]" width="14" height="14" color="0x666666ff" />
+                <Label id="serviceStatusRadarr" translation="[110, 1466]" width="800" color="0xffffffff" text="Radarr" />
+
+                <!-- ─── Server Configuration ─── -->
+                <Label
+                    text="Server Configuration"
+                    translation="[80, 1540]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label id="serverConfigPlex" translation="[80, 1580]" width="1500" color="0xb0b0b0ff" text="Plex: —" />
+                <Label id="serverConfigJellyfin" translation="[80, 1610]" width="1500" color="0xb0b0b0ff" text="Jellyfin: —" />
+                <Label id="serverConfigEmby" translation="[80, 1640]" width="1500" color="0xb0b0b0ff" text="Emby: —" />
+                <Label id="serverConfigSonarr" translation="[80, 1670]" width="1500" color="0xb0b0b0ff" text="Sonarr: —" />
+                <Label id="serverConfigRadarr" translation="[80, 1700]" width="1500" color="0xb0b0b0ff" text="Radarr: —" />
+
+                <!-- ─── Server Updates ───
+                     Mirrors the mobile Settings → Server Updates section.
+                     Shows current vs. latest backend version, last-check
+                     time, and surfaces Check / Install actions. Hidden
+                     when the backend reports platformSupported=false. -->
+                <Label
+                    id="settingsUpdateHeader"
+                    text="Server Updates"
+                    translation="[80, 1760]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label id="settingsUpdateCurrentLabel" text="Current" translation="[80, 1800]" width="280" color="0xb0b0b0ff" />
+                <Label id="settingsUpdateCurrentValue" translation="[380, 1800]" width="800" color="0xffffffff" />
+                <Label id="settingsUpdateLatestLabel" text="Latest" translation="[80, 1840]" width="280" color="0xb0b0b0ff" />
+                <Label id="settingsUpdateLatestValue" translation="[380, 1840]" width="800" color="0xffffffff" />
+                <Label id="settingsUpdateCheckedLabel" text="Last checked" translation="[80, 1880]" width="280" color="0xb0b0b0ff" />
+                <Label id="settingsUpdateCheckedValue" translation="[380, 1880]" width="800" color="0xffffffff" />
+                <Label id="settingsUpdateMessage" translation="[80, 1920]" width="1700" wrap="true" color="0xff8080ff" />
+                <TabButton id="checkUpdateButton" label="Check for Updates" hideIcon="true" buttonWidth="320" translation="[80, 1960]" focusable="true" />
+                <TabButton id="installUpdateButton" label="Install Update" hideIcon="true" buttonWidth="280" translation="[420, 1960]" visible="false" focusable="true" />
+
+                <!-- ─── Pair Device ─── -->
+                <Label
+                    text="Pair Device"
+                    translation="[80, 2080]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    text="Re-pair this Roku if you reset the backend's admin password or moved to a new server."
+                    translation="[80, 2120]"
+                    width="1500"
+                    wrap="true"
+                    color="0xb0b0b0ff" />
+                <TabButton
+                    id="repairButton"
+                    label="Pair this device again"
+                    hideIcon="true"
+                    buttonWidth="380"
+                    translation="[80, 2160]"
+                    focusable="true" />
+
+                <!-- ─── About ─── -->
+                <Label
+                    text="About"
+                    translation="[80, 2280]"
+                    font="font:MediumBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label id="aboutVersionLabel" translation="[80, 2320]" width="1500" color="0xb0b0b0ff" text="Version —" />
+            </Group>
+        </Group>
+
+        <!-- ─── Sports settings sub-view ──────────────────────────────
+             Reached from Settings → Configure Sports Follows. Shows a
+             checkbox list of supported leagues; toggling sets that
+             league's mode to "all" (or removes it from prefs). Per-team
+             selection is a follow-up — for now Roku covers the league
+             toggle path mobile users hit most. -->
+        <Group id="sportsSettingsView" visible="false">
             <Label
-                id="settingsUpdateHeader"
-                text="Server Updates"
-                translation="[80, 600]"
-                font="font:MediumBoldSystemFont"
+                text="Sports Follows"
+                translation="[80, 110]"
+                font="font:LargeBoldSystemFont"
                 color="0xe5a00dff" />
-
             <Label
-                id="settingsUpdateCurrentLabel"
-                text="Current"
-                translation="[80, 650]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsUpdateCurrentValue"
-                translation="[380, 650]"
-                width="800"
-                color="0xffffffff" />
-
-            <Label
-                id="settingsUpdateLatestLabel"
-                text="Latest"
-                translation="[80, 690]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsUpdateLatestValue"
-                translation="[380, 690]"
-                width="800"
-                color="0xffffffff" />
-
-            <Label
-                id="settingsUpdateCheckedLabel"
-                text="Last checked"
-                translation="[80, 730]"
-                width="280"
-                color="0xb0b0b0ff" />
-            <Label
-                id="settingsUpdateCheckedValue"
-                translation="[380, 730]"
-                width="800"
-                color="0xffffffff" />
-
-            <Label
-                id="settingsUpdateMessage"
-                translation="[80, 780]"
+                text="Toggle the leagues you follow. The Sports tab shows games for selected leagues."
+                translation="[80, 190]"
                 width="1700"
                 wrap="true"
-                color="0xff8080ff" />
-
-            <Button
-                id="checkUpdateButton"
-                text="Check for Updates"
-                translation="[80, 830]"
-                minWidth="320" />
-            <Button
-                id="installUpdateButton"
-                text="Install Update"
-                translation="[420, 830]"
-                minWidth="280"
-                visible="false" />
-
-            <!-- ─── What's on TV ───
-                 Mirrors the mobile Settings → What's on TV section.
-                 Pick TVmaze channels to drive the Home shelves
-                 "What's on TV" and "What's on TV Later". The picker
-                 itself lives in liveTvView (separate top-level group). -->
-            <Label
-                text="Live TV"
-                translation="[80, 920]"
-                width="280"
                 color="0xb0b0b0ff" />
             <Label
-                id="settingsLiveTvValue"
-                text="No channels selected"
-                translation="[380, 920]"
-                width="800"
-                color="0xffffffff" />
-            <Button
-                id="configureChannelsButton"
-                text="Configure Channels"
-                translation="[380, 960]"
-                minWidth="320" />
+                id="sportsSettingsStatus"
+                text="Loading leagues…"
+                translation="[80, 280]"
+                color="0xb0b0b0ff" />
+            <LabelList
+                id="sportsLeagueList"
+                translation="[80, 280]"
+                itemSize="[800, 60]"
+                numRows="11"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+            <Label
+                text="OK toggles a league. Press Back to return — changes save automatically."
+                translation="[80, 970]"
+                width="1700"
+                color="0x707070ff" />
         </Group>
 
         <!-- ─── User picker view ─────────────────────────────────────

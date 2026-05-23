@@ -11,7 +11,10 @@
 sub init()
     print "[SportsCard] init"
     m.bg = m.top.findNode("bg")
-    m.focusRing = m.top.findNode("focusRing")
+    m.focusRingTop = m.top.findNode("focusRingTop")
+    m.focusRingBottom = m.top.findNode("focusRingBottom")
+    m.focusRingLeft = m.top.findNode("focusRingLeft")
+    m.focusRingRight = m.top.findNode("focusRingRight")
     m.accentBar = m.top.findNode("accentBar")
     m.scrim = m.top.findNode("scrim")
 
@@ -163,14 +166,23 @@ sub onContentChanged()
 end sub
 
 sub onFocusChanged()
+    ' Combine focusPercent (per-row) and rowFocusPercent (which row
+    ' is focused) so only the truly active cell paints the ring.
     pct = m.top.focusPercent
+    rowPct = m.top.rowFocusPercent
     if pct = invalid then pct = 0
-    if pct >= 0.5
-        m.focusRing.color = "0xe5a00dff"
+    if rowPct = invalid then rowPct = 0
+    if pct >= 0.5 and rowPct >= 0.5
+        c = "0xe5a00dff"
     else
-        m.focusRing.color = "0xe5a00d00"
+        c = "0x00000000"
     end if
+    m.focusRingTop.color = c
+    m.focusRingBottom.color = c
+    m.focusRingLeft.color = c
+    m.focusRingRight.color = c
 end sub
+
 
 ' Luminance check — return true when the bg colour is light enough to
 ' need black text. Same formula mobile uses (Rec. 601 luma ≈ 0.6 cutoff).

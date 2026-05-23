@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  ToggleRow — one settings line with a label on the left and a small
+  iOS-style on/off pill on the right. Focusable; OK flips the value
+  and fires `valueChanged` so the parent scene can persist it.
+-->
+<component name="ToggleRow" extends="Group">
+    <script type="text/brightscript" uri="ToggleRow.brs" />
+
+    <interface>
+        <field id="label" type="string" onChange="onLabelChanged" />
+        <field id="value" type="boolean" onChange="onValueChanged" />
+        <!-- Toggled by OK key — parent observes and reads value. -->
+        <field id="valueChanged" type="boolean" alwaysNotify="true" />
+        <!-- Optional override for the row width. Defaults to 800. -->
+        <field id="rowWidth" type="integer" onChange="onRowWidthChanged" />
+    </interface>
+
+    <children>
+        <Rectangle
+            id="bg"
+            width="800"
+            height="60"
+            color="0x00000000" />
+
+        <Label
+            id="rowLabel"
+            translation="[16, 0]"
+            width="640"
+            height="60"
+            vertAlign="center"
+            wrap="false"
+            maxLines="1"
+            font="font:MediumBoldSystemFont"
+            color="0xffffffff" />
+
+        <!-- iOS-style pill: 56×26 track with an 18×18 thumb that
+             slides between the left (off) and right (on) ends. -->
+        <Rectangle
+            id="toggleTrack"
+            translation="[724, 17]"
+            width="56"
+            height="26"
+            color="0x333333ff" />
+        <Rectangle
+            id="toggleThumb"
+            translation="[728, 21]"
+            width="18"
+            height="18"
+            color="0xffffffff" />
+
+        <!-- Gold focus ring strips (matches PosterItem / TabButton). -->
+        <Rectangle id="focusRingTop"    translation="[0, 0]"   width="800" height="3"  color="0x00000000" />
+        <Rectangle id="focusRingBottom" translation="[0, 57]"  width="800" height="3"  color="0x00000000" />
+        <Rectangle id="focusRingLeft"   translation="[0, 3]"   width="3"   height="54" color="0x00000000" />
+        <Rectangle id="focusRingRight"  translation="[797, 3]" width="3"   height="54" color="0x00000000" />
+    </children>
+</component>

@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ContentSection } from '@whatson/shared';
+import type { ContentItem, ContentSection } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
+import { DetailSheet } from '@/components/DetailSheet';
 
 export default function Movies() {
+  const [selected, setSelected] = useState<ContentItem | null>(null);
   const recent = useQuery({ queryKey: ['movies', 'recent'], queryFn: api.getMoviesRecent });
   const upcoming = useQuery({ queryKey: ['movies', 'upcoming'], queryFn: () => api.getMoviesUpcoming(30) });
   const downloading = useQuery({ queryKey: ['movies', 'downloading'], queryFn: api.getMoviesDownloading });
@@ -44,8 +46,9 @@ export default function Movies() {
       {sections.length === 0 ? (
         <p className="px-6 text-text-muted">Nothing to show yet.</p>
       ) : (
-        sections.map((s) => <Shelf key={s.id} section={s} />)
+        sections.map((s) => <Shelf key={s.id} section={s} onItemClick={setSelected} />)
       )}
+      {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

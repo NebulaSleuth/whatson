@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  TabButton — single tab in the top navigation strip. Mirrors the
+  mobile (apps/mobile) tab bar look:
+    - icon above label (unicode glyph + text)
+    - muted grey text + icon when neither focused nor selected
+    - gold text + icon + 3px gold bottom-border on focus or selection
+    - gold-tinted background on focus only
+  The component is focusable; HomeScene observes `buttonSelected`
+  (toggled on OK) and tracks the active tab via the `selected` field.
+-->
+<component name="TabButton" extends="Group">
+    <script type="text/brightscript" uri="TabButton.brs" />
+
+    <interface>
+        <field id="label" type="string" onChange="onLabelChanged" />
+        <!-- One glyph for focused/selected, one for resting state.
+             Mirrors the mobile ICONS map (filled vs outline). -->
+        <field id="iconFocused" type="string" onChange="onIconChanged" />
+        <field id="iconUnfocused" type="string" onChange="onIconChanged" />
+        <!-- Per-tab icon-font override. The default Noto Sans Symbols 2
+             covers Geometric Shapes (U+25xx) — used by most tabs. The
+             Settings tab's gear (⚙ U+2699) lives in Misc Symbols, only
+             present in Noto Sans Symbols 1, so that tab sets this to
+             pkg:/fonts/NotoSansSymbols.ttf. -->
+        <field id="iconFontUri" type="string" onChange="onIconFontChanged" />
+        <!-- Vertical pixel nudge for the icon glyph — used to compensate
+             for cross-font baseline differences (Symbols 1 sits ~6px
+             lower than Symbols 2 at matched sizes). -->
+        <field id="iconYOffset" type="integer" onChange="onIconYOffsetChanged" />
+        <!-- When true, the icon row is hidden and the text label is
+             centred vertically. Used by toggle / filter pills that
+             share the tab styling but don't need a glyph. Defaults
+             to false (icon shown), matching the top-bar tabs. -->
+        <field id="hideIcon" type="boolean" onChange="onHideIconChanged" />
+        <!-- Override the default 220px width. Used by long-text controls
+             (e.g. the Search input button). Resizes bg, icon row,
+             text label, and bottom border together. -->
+        <field id="buttonWidth" type="integer" onChange="onButtonWidthChanged" />
+        <field id="selected" type="boolean" onChange="onSelectedChanged" />
+        <!-- Toggled by OK key handling; parent observes for clicks. -->
+        <field id="buttonSelected" type="boolean" alwaysNotify="true" />
+    </interface>
+
+    <children>
+        <!-- Focus-tinted background fill (rgba 229,160,13,0.15 -> 0x26 alpha). -->
+        <Rectangle
+            id="bg"
+            width="220"
+            height="80"
+            color="0x00000000" />
+
+        <!-- Icon glyph — actual font is set at runtime by TabButton.brs
+             based on the iconFontUri interface field. The Geometric
+             Shapes most tabs use ship in Noto Sans Symbols 2; the
+             Settings gear ships only in Symbols 1. -->
+        <Label
+            id="iconLabel"
+            translation="[0, 6]"
+            width="220"
+            height="32"
+            horizAlign="center"
+            vertAlign="center"
+            wrap="false"
+            maxLines="1"
+            color="0x666666ff" />
+
+
+        <Label
+            id="textLabel"
+            translation="[0, 42]"
+            width="220"
+            height="30"
+            horizAlign="center"
+            vertAlign="center"
+            wrap="false"
+            maxLines="1"
+            font="font:MediumBoldSystemFont"
+            color="0x666666ff" />
+
+        <!-- 3px gold bottom border on focus or selection. -->
+        <Rectangle
+            id="bottomBorder"
+            translation="[0, 77]"
+            width="220"
+            height="3"
+            color="0x00000000" />
+    </children>
+</component>

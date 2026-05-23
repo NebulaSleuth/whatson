@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { ContentItem } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Grid } from '@/components/Grid';
+import { DetailSheet } from '@/components/DetailSheet';
 
 type Mode = 'library' | 'discover';
 type Filter = 'all' | 'tv' | 'movie';
@@ -11,6 +13,7 @@ export default function Search() {
   const [submitted, setSubmitted] = useState('');
   const [mode, setMode] = useState<Mode>('library');
   const [filter, setFilter] = useState<Filter>('all');
+  const [selected, setSelected] = useState<ContentItem | null>(null);
 
   const lib = useQuery({
     queryKey: ['search', 'library', submitted, filter],
@@ -59,13 +62,14 @@ export default function Search() {
         lib.isLoading ? (
           <p className="px-6 text-text-muted">Searching…</p>
         ) : (
-          <Grid items={lib.data?.items ?? []} emptyMessage="No matches." />
+          <Grid items={lib.data?.items ?? []} onItemClick={setSelected} emptyMessage="No matches." />
         )
       ) : discover.isLoading ? (
         <p className="px-6 text-text-muted">Searching…</p>
       ) : (
         <DiscoverGrid items={discover.data ?? []} />
       )}
+      {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
