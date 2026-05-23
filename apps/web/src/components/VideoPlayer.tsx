@@ -27,6 +27,11 @@ export function VideoPlayer({ item, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const sessionRef = useRef<string | null>(null);
+  // True while loadStream is detaching the old source and attaching
+  // a new one. Suppresses the native <video> error event that fires
+  // when the source is yanked out from under it — without this guard
+  // we'd surface "couldn't play this stream" on every track swap.
+  const swappingRef = useRef(false);
 
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [status, setStatus] = useState('Loading…');
@@ -43,6 +48,8 @@ export function VideoPlayer({ item, onClose }: Props) {
   // swaps. The first load uses the server-reported viewOffset.
   async function loadStream(opts: { offset?: number; audio?: number; subtitle?: number; bitrate?: number } = {}) {
     try {
+      swappingRef.current = true;
+      setError(null);
       setStatus('Requesting stream…');
       const next = await api.getPlaybackInfo(item.sourceId, {
         source: item.source,
@@ -65,11 +72,16 @@ export function VideoPlayer({ item, onClose }: Props) {
       const video = videoRef.current;
       if (!video) return;
 
-      // Tear down the old HLS instance before attaching a new source.
+      // Detach the old source cleanly before attaching a new one.
+      // Order matters: stop the element (which stops the network
+      // request), tear down hls.js, then clear any leftover src.
+      try { video.pause(); } catch {}
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      video.removeAttribute('src');
+      video.load();
 
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
@@ -96,13 +108,19 @@ export function VideoPlayer({ item, onClose }: Props) {
           video.currentTime = seekTo / 1000;
           video.removeEventListener('loadedmetadata', onLoaded);
           video.play().catch(() => {});
+          // Re-arm the error guard a frame after the first chunk
+          // appears — by then any stale error events from the swap
+          // have already fired and been ignored.
+          requestAnimationFrame(() => { swappingRef.current = false; });
         };
         video.addEventListener('loadedmetadata', onLoaded);
       } else {
         video.play().catch(() => {});
+        requestAnimationFrame(() => { swappingRef.current = false; });
       }
       setStatus('');
     } catch (e) {
+      swappingRef.current = false;
       setError((e as Error).message);
     }
   }
@@ -257,7 +275,12 @@ export function VideoPlayer({ item, onClose }: Props) {
             autoPlay
             playsInline
             className="max-w-full max-h-full"
-            onError={() => setError("The browser couldn't play this stream.")}
+            onError={() => {
+              // Ignore the transient error events that fire as we
+              // detach the previous source mid-swap.
+              if (swappingRef.current) return;
+              setError("The browser couldn't play this stream.");
+            }}
           />
         </>
       )}
