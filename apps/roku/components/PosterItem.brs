@@ -101,16 +101,28 @@ sub onContentChanged()
         badgeText = "PLEX"
     else if src = "jellyfin"
         showBadge = true
-        badgeColor = "0x9c27b0ff"        ' Jellyfin purple
+        badgeColor = "0xaa5cc3ff"        ' Jellyfin purple
         badgeTextColor = "0xffffffff"
         ' Truncated from "JELLYFIN" — even at 14px the full word
         ' won't fit cleanly in a 64px label without crowding.
         badgeText = "JELLY"
     else if src = "emby"
         showBadge = true
-        badgeColor = "0x52b54bff"        ' Emby green
+        badgeColor = "0x00a4dcff"        ' Emby blue
         badgeTextColor = "0xffffffff"
         badgeText = "EMBY"
+    else if src = "sonarr"
+        showBadge = true
+        badgeColor = "0x35c5f4ff"        ' Sonarr sky-blue
+        badgeText = "SONARR"
+    else if src = "radarr"
+        showBadge = true
+        badgeColor = "0xffc230ff"        ' Radarr yellow
+        badgeText = "RADARR"
+    else if src = "live"
+        showBadge = true
+        badgeColor = "0x4caf50ff"        ' Live TV green
+        badgeText = "LIVE TV"
     end if
     m.sourceBadgeBg.visible = showBadge
     m.sourceBadgeLabel.visible = showBadge

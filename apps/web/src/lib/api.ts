@@ -132,6 +132,72 @@ export const api = {
 
   // Tracked
   getAllTrackedTv: () => fetchApi<Array<{ id: string; title: string; tmdbId: number; year?: number; rating?: number; poster: string; backdrop?: string; overview?: string; provider: string; addedAt: string }>>('/api/tracked?all=true&type=tv'),
+  removeTracked: (tmdbId: number) =>
+    fetchApi<{ removed: boolean }>('/api/tracked', {
+      method: 'DELETE',
+      body: JSON.stringify({ tmdbId }),
+    }),
+
+  // Scrobble — mark watched / unwatched
+  markWatched: (sourceId: string, source: string, episodeKey?: string) =>
+    fetchApi<{ marked: true }>('/api/scrobble', {
+      method: 'POST',
+      body: JSON.stringify({ sourceId, source, episodeKey }),
+    }),
+  markUnwatched: (sourceId: string, source: string) =>
+    fetchApi<{ unmarked: true }>('/api/unscrobble', {
+      method: 'POST',
+      body: JSON.stringify({ sourceId, source }),
+    }),
+  markAllWatched: (showTitle: string, source: string, sourceId?: string) =>
+    fetchApi<{ marked: true }>('/api/scrobble/all', {
+      method: 'POST',
+      body: JSON.stringify({ showTitle, source, sourceId }),
+    }),
+  markAllUnwatched: (sourceId: string, source: string) =>
+    fetchApi<{ unmarked: true }>('/api/unscrobble/all', {
+      method: 'POST',
+      body: JSON.stringify({ sourceId, source }),
+    }),
+
+  // Playback
+  getPlaybackInfo: (ratingKey: string, opts?: { offset?: number; source?: string }) => {
+    const { offset, source = 'plex' } = opts || {};
+    const params = new URLSearchParams({ source });
+    if (offset) params.set('offset', String(Math.floor(offset / 1000)));
+    return fetchApi<{
+      streamUrl: string;
+      directPlayUrl: string | null;
+      sessionId: string;
+      title: string;
+      showTitle: string | null;
+      duration: number;
+      viewOffset: number;
+      serverUrl: string;
+    }>(`/api/playback/${encodeURIComponent(ratingKey)}?${params.toString()}`);
+  },
+  reportProgress: (ratingKey: string, time: number, duration: number, state: string, sessionId: string, source: string = 'plex') =>
+    fetchApi<unknown>('/api/playback/progress', {
+      method: 'POST',
+      body: JSON.stringify({ ratingKey, time, duration, state, sessionId, source }),
+    }),
+  stopPlayback: (sessionId: string, source: string = 'plex') =>
+    fetchApi<unknown>('/api/playback/stop', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, source }),
+    }),
+
+  // Sonarr / Radarr add (used by Discover items)
+  addToSonarr: (tmdbId: number, profileId?: number, rootFolderPath?: string, monitor?: string) =>
+    fetchApi<{ added: true }>('/api/sonarr/add', {
+      method: 'POST',
+      body: JSON.stringify({ tmdbId, profileId, rootFolderPath, monitor }),
+    }),
+  addToRadarr: (tmdbId: number, profileId?: number, rootFolderPath?: string) =>
+    fetchApi<{ added: true }>('/api/radarr/add', {
+      method: 'POST',
+      body: JSON.stringify({ tmdbId, profileId, rootFolderPath }),
+    }),
 
   // Sports
   getSportsNow: () => fetchApi<SportsEvent[]>('/api/sports/now'),

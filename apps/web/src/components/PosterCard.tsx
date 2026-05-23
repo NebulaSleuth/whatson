@@ -6,10 +6,14 @@ interface Props {
   onClick?: (item: ContentItem) => void;
 }
 
-const SOURCE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  plex: { bg: 'bg-primary', text: 'text-black', label: 'PLEX' },
-  jellyfin: { bg: 'bg-purple-600', text: 'text-white', label: 'JELLY' },
-  emby: { bg: 'bg-green-600', text: 'text-white', label: 'EMBY' },
+// Source colours mirror apps/mobile/constants/theme.ts.
+const SOURCE_BADGE: Record<string, { style: React.CSSProperties; label: string }> = {
+  plex: { style: { backgroundColor: '#E5A00D', color: '#000' }, label: 'PLEX' },
+  jellyfin: { style: { backgroundColor: '#AA5CC3', color: '#FFF' }, label: 'JELLY' },
+  emby: { style: { backgroundColor: '#00A4DC', color: '#FFF' }, label: 'EMBY' },
+  sonarr: { style: { backgroundColor: '#35C5F4', color: '#000' }, label: 'SONARR' },
+  radarr: { style: { backgroundColor: '#FFC230', color: '#000' }, label: 'RADARR' },
+  live: { style: { backgroundColor: '#4CAF50', color: '#000' }, label: 'LIVE TV' },
 };
 
 // Mirrors apps/mobile/components/ContentCard.tsx → formatAvailableDate.
@@ -61,11 +65,8 @@ export function PosterCard({ item, onClick }: Props) {
 
         {badge && (
           <span
-            className={[
-              'absolute top-1.5 left-1.5 px-2 py-0.5 text-[10px] font-bold rounded',
-              badge.bg,
-              badge.text,
-            ].join(' ')}
+            className="absolute top-1.5 left-1.5 px-2 py-0.5 text-[10px] font-bold rounded"
+            style={badge.style}
           >
             {badge.label}
           </span>
