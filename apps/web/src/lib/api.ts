@@ -98,8 +98,11 @@ export const api = {
     fetchApi<Array<{ id: number; title: string; thumb: string; admin: boolean; hasPassword: boolean; restricted: boolean }>>(
       '/api/users',
     ),
-  selectUser: (id: number) =>
-    fetchApi<{ ok: true }>('/api/users/select', { method: 'POST', body: JSON.stringify({ id }) }),
+  selectUser: (userId: number, pin?: string) =>
+    fetchApi<{ id: number; title: string; admin: boolean; hasPassword: boolean; restricted: boolean }>(
+      '/api/users/select',
+      { method: 'POST', body: JSON.stringify({ userId, pin }) },
+    ),
 
   // Home
   getHome: () => fetchApi<HomeResponse>('/api/home'),
