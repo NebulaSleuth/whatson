@@ -808,10 +808,23 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // segment requests time out, playback dies. The fix is the same
     // as the image-sub workaround: transcode from t=0 and let the
     // client seek locally via clientSeekMs.
-    // Jellyfin's TranscodingUrl path handles seek+burn correctly so
-    // we don't extend the workaround there.
     const isEmbySubBurn = opts.source === 'emby' && subIndexForBody > 0;
-    const shouldDropStartTicks = sourceHasImageSubs || isImageBasedSub || isEmbySubBurn;
+    // On Jellyfin, the same playlist/transcoder offset mismatch hits
+    // for *any* sufficiently large resume position — confirmed against
+    // The Amazing Colossal Man (text subs only, no burn). Direct probe:
+    //   /hls1/main/0.ts?...&StartTimeTicks=2636140000 → HTTP 400
+    //   /hls1/main/0.ts?...  (no StartTimeTicks)      → HTTP 200
+    // Roku's HLS decoder bailed with "no valid bitrates / 400 on all
+    // bitrates" because every segment request matched the playlist's
+    // declared fragment time but not the transcoder's actual output
+    // start. Drop StartTimeTicks on Jellyfin universally — clients
+    // already handle clientSeekMs locally on every platform. Server
+    // transcodes from t=0; client seeks the player to the resume
+    // point. Slightly slower start (ffmpeg has to wind forward to the
+    // seek point before the first segment is ready) but reliable.
+    const isJellyfinSeek = opts.source === 'jellyfin' && startTicks > 0;
+    const shouldDropStartTicks =
+      sourceHasImageSubs || isImageBasedSub || isEmbySubBurn || isJellyfinSeek;
     // When we drop StartTimeTicks the stream actually starts at t=0
     // server-side. viewOffset reflects that (so baseSecondsRef stays
     // aligned), and clientSeekMs tells the client to seek the video
