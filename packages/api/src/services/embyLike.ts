@@ -703,6 +703,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     if (tuRaw && tuProtocol === 'hls') {
       const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
       const u = new URL(absolute);
+      // StartTimeTicks isn't included in TranscodingUrl on Jellyfin — the
+      // server expects it as a separate param on the master playlist
+      // fetch, where it gets baked into the underlying transcoder. Without
+      // this, every swap restarts the video from t=0 regardless of the
+      // resume offset we requested on PlaybackInfo.
+      if (startTicks > 0) {
+        u.searchParams.set('StartTimeTicks', String(startTicks));
+      }
       // If the caller picked a subtitle, ensure it's in the URL even if
       // the server didn't echo it (shouldn't happen now we send it on
       // the POST query, but cheap to be defensive).
