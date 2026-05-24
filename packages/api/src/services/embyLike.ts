@@ -697,6 +697,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       console.log(`[${opts.label}.dbg] !!! no MediaSource returned !!! response keys=${Object.keys(playback || {}).join(',')}`);
     }
 
+    // Emby's master.m3u8 endpoint uses VideoBitrate / AudioBitrate
+    // for the actual transcode target, not MaxStreamingBitrate (which
+    // it treats as a direct-play decision hint and otherwise ignores).
+    // Without these the output stayed at source bitrate regardless
+    // of the user's quality pick — high vs low looked identical.
+    const totalBps = (playOpts.maxBitrate || 20000) * 1000;
+    const audioBps = 192_000;
+    const videoBps = Math.max(300_000, totalBps - audioBps);
     const streamParams: Record<string, string> = {
       DeviceId: DEVICE_ID,
       MediaSourceId: mediaSource?.Id || itemId,
@@ -705,7 +713,9 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       VideoCodec: 'h264',
       AudioCodec: 'aac,mp3',
       Container: 'ts',
-      MaxStreamingBitrate: String((playOpts.maxBitrate || 20000) * 1000),
+      MaxStreamingBitrate: String(totalBps),
+      VideoBitrate: String(videoBps),
+      AudioBitrate: String(audioBps),
       StartTimeTicks: String(startTicks),
     };
     // Jellyfin/Emby use SubtitleStreamIndex=-1 for "no subtitle".
