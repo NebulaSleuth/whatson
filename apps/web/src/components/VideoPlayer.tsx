@@ -101,7 +101,16 @@ export function VideoPlayer({ item, onClose }: Props) {
       // the new stream represents that point at t=0. First loads
       // have no offset; the seek-to-viewOffset path below leaves
       // baseSecondsRef at 0 and currentTime carries the position.
-      if (opts.offset !== undefined) {
+      //
+      // Exception: when the backend signals clientSeekMs > 0, the
+      // server transcodes from t=0 anyway (Jellyfin image-subtitle
+      // workaround) and the client seeks the video element instead.
+      // baseSecondsRef stays at 0 since video.currentTime then IS the
+      // source position.
+      const clientSeekMs = next.clientSeekMs ?? 0;
+      if (clientSeekMs > 0) {
+        baseSecondsRef.current = 0;
+      } else if (opts.offset !== undefined) {
         baseSecondsRef.current = Math.floor(opts.offset / 1000);
       } else {
         baseSecondsRef.current = 0;
@@ -139,14 +148,27 @@ export function VideoPlayer({ item, onClose }: Props) {
       // miss it. `once: true` keeps it from re-firing on subsequent
       // manifest reloads within the same stream.
       //
-      // Seek logic: when we asked the backend for `offset`, Plex
+      // Seek logic: when we asked the backend for `offset`, Plex/Emby
       // returns a stream that already starts at that point — its
       // internal t=0 IS our position, so we MUST NOT seek the
       // element again or we'd land far past the end. Only seek on
       // the first load where the server-reported viewOffset > 0.
+      //
+      // clientSeekMs overrides the swap=no-seek rule: when the
+      // backend dropped server-side seek (Jellyfin image-sub
+      // workaround), it returns clientSeekMs > 0 to tell us where
+      // the user actually wants to be. The stream starts at 0, the
+      // client seeks the video element to clientSeekMs.
       const isSwap = opts.offset !== undefined;
-      const seekToMs = isSwap ? 0 : (next.viewOffset > 0 ? next.viewOffset : 0);
-      console.log(`${tag} isSwap=${isSwap} seekToMs=${seekToMs} baseSecondsRef=${baseSecondsRef.current}`);
+      let seekToMs: number;
+      if (clientSeekMs > 0) {
+        seekToMs = clientSeekMs;
+      } else if (isSwap) {
+        seekToMs = 0;
+      } else {
+        seekToMs = next.viewOffset > 0 ? next.viewOffset : 0;
+      }
+      console.log(`${tag} isSwap=${isSwap} seekToMs=${seekToMs} baseSecondsRef=${baseSecondsRef.current} clientSeekMs=${clientSeekMs}`);
 
       const tAttach = performance.now();
       const logTimer = window.setInterval(() => {

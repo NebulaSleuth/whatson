@@ -67,6 +67,17 @@ export interface PlaybackInfo {
   episodeNumber?: number;
   duration: number;
   viewOffset: number;
+  /**
+   * Position (in milliseconds) the client should seek the video element to
+   * after the stream loads. Set by the Jellyfin adapter when it has to
+   * disable server-side seek (StartTimeTicks) — e.g. on files whose
+   * MediaStreams include image-based subtitles (PGSSUB / DVB / DVD / VOB /
+   * HDMV), where ffmpeg's seek + bitmap-subtitle decoder combination
+   * produces 400 on every segment. In that case the server transcodes from
+   * t=0 and the client seeks locally. Optional; absent or 0 means
+   * "no client-side seek needed."
+   */
+  clientSeekMs?: number;
   subtitles: SubtitleTrack[];
   audioTracks: AudioTrack[];
   markers: PlaybackMarker[];

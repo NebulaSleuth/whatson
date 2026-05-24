@@ -190,6 +190,7 @@ export const api = {
       showTitle: string | null;
       duration: number;
       viewOffset: number;
+      clientSeekMs?: number;
       subtitles: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       markers: Array<{ type: 'intro' | 'credits'; startMs: number; endMs: number }>;

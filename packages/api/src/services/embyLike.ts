@@ -707,22 +707,36 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     let urlSource: string;
     const tuRaw: string | undefined = mediaSource?.TranscodingUrl;
     const tuProtocol: string | undefined = mediaSource?.TranscodingSubProtocol;
-    // Look up the picked subtitle stream's codec so we can dodge
-    // the Jellyfin/FFmpeg image-subtitle + seek bug: PGS / DVB / DVD /
-    // VOBSUB / HDMV streams need to be rasterised over the video, and
-    // when the transcoder is asked to *also* fast-seek to a non-zero
-    // StartTimeTicks the segment endpoint 400s. Text subs (ass/srt/etc.)
-    // are fine. v0.1.66 ran into this on Addams Family (PGSSUB).
+    // Workaround for the Jellyfin/FFmpeg image-subtitle + seek bug.
+    // Any file whose MediaStreams contains a PGS / DVB / DVD / VOB / HDMV
+    // subtitle stream will 400 every segment request when the transcoder
+    // is asked to seek (StartTimeTicks > 0) — even when *no* subtitle is
+    // picked. Empirically observed on a BluRay PGSSUB file: initial loads
+    // and t=0 swaps work, but every swap with StartTimeTicks > 0 fails,
+    // regardless of SubtitleStreamIndex. The fix is to drop StartTimeTicks
+    // for those files and seek client-side instead. Files with only text
+    // subtitles (ass / srt / subrip / vtt) seek fine server-side and keep
+    // the normal pre-seek path.
+    const subtitleStreams = ((mediaSource?.MediaStreams || []) as any[]).filter(
+      (st) => st.Type === 'Subtitle',
+    );
+    const sourceHasImageSubs = subtitleStreams.some((st) =>
+      /^(PGS|DVB|DVD|VOB|HDMV)/i.test(String(st.Codec || '')),
+    );
     const pickedSubStream = subIndexForBody > 0
-      ? ((mediaSource?.MediaStreams || []) as any[]).find((st) => st.Index === subIndexForBody)
+      ? subtitleStreams.find((st) => st.Index === subIndexForBody)
       : null;
     const pickedSubCodec = String(pickedSubStream?.Codec || '').toUpperCase();
     const isImageBasedSub = /^(PGS|DVB|DVD|VOB|HDMV)/.test(pickedSubCodec);
-    // When we skip StartTimeTicks for the image-sub workaround, the
-    // server transcodes from t=0 — so the position the client should
-    // assume for the new stream is 0, not the requested resume offset.
-    // viewOffset below is computed from this.
-    const effectiveStartTicks = isImageBasedSub ? 0 : startTicks;
+    const shouldDropStartTicks = sourceHasImageSubs || isImageBasedSub;
+    // When we drop StartTimeTicks the stream actually starts at t=0
+    // server-side. viewOffset reflects that (so baseSecondsRef stays
+    // aligned), and clientSeekMs tells the client to seek the video
+    // element to where the user actually wants to be.
+    const effectiveStartTicks = shouldDropStartTicks ? 0 : startTicks;
+    const clientSeekMs = shouldDropStartTicks && startTicks > 0
+      ? Math.floor(startTicks / TICKS_PER_MS)
+      : 0;
 
     if (tuRaw && tuProtocol === 'hls') {
       const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
@@ -746,9 +760,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         u.searchParams.set('SubtitleMethod', 'Encode');
       }
       streamUrl = u.toString();
-      urlSource = isImageBasedSub
-        ? `server.TranscodingUrl (StartTimeTicks dropped — image sub ${pickedSubCodec})`
-        : 'server.TranscodingUrl';
+      if (shouldDropStartTicks) {
+        const reason = isImageBasedSub
+          ? `picked image sub ${pickedSubCodec}`
+          : 'source has image subs';
+        urlSource = `server.TranscodingUrl (StartTimeTicks dropped — ${reason}; clientSeekMs=${clientSeekMs})`;
+      } else {
+        urlSource = 'server.TranscodingUrl';
+      }
     } else {
       streamUrl = axios.getUri({
         url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
@@ -810,6 +829,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       // starts. For the image-sub workaround we restart at 0 server-side,
       // so report 0 here — the client uses this to set baseSecondsRef.
       viewOffset: effectiveStartTicks / TICKS_PER_MS,
+      clientSeekMs,
       subtitles,
       audioTracks,
       markers: [],
