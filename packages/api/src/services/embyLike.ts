@@ -651,7 +651,11 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // /Progress and /Stopped posts will then carry the matching id and
     // actually update the user's resume position.
     const echoedSessionId: string | undefined = playback?.PlaySessionId;
-    const useServerSession = !!(mediaSource?.TranscodingUrl && mediaSource?.TranscodingSubProtocol === 'hls' && echoedSessionId);
+    // Only adopt the echoed session id on Jellyfin (where TranscodingUrl
+    // is keyed off it). Emby uses the constructed URL with our session
+    // id baked in — adopting the echoed id would create a mismatch
+    // between segment-fetching session and /Progress-reporting session.
+    const useServerSession = !!(opts.source === 'jellyfin' && mediaSource?.TranscodingUrl && mediaSource?.TranscodingSubProtocol === 'hls' && echoedSessionId);
     const sessionId = useServerSession ? (echoedSessionId as string) : ourSessionId;
 
     // ---------- response dump ----------
@@ -722,18 +726,27 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
-    // Prefer the server's own TranscodingUrl when it's an HLS playlist.
-    // Jellyfin bakes server-version-specific params into it (SegmentContainer,
-    // VideoBitrate, MaxFramerate, h264-level, Tag, ApiKey, ...) that we
-    // can't reliably reconstruct from the client side; the segment
-    // endpoint rejects requests that don't carry them. Falling back to
-    // our hand-built master.m3u8 URL covers Emby (which doesn't return
-    // an HLS-protocol TranscodingUrl) and any other server whose
-    // PlaybackInfo response we can't fully trust.
+    // URL selection by server:
+    //
+    // Jellyfin: prefer its TranscodingUrl. Jellyfin bakes server-version
+    // -specific params (SegmentContainer, VideoBitrate, MaxFramerate,
+    // h264-level, Tag, ApiKey, etc.) that we can't reliably reconstruct;
+    // the segment endpoint validates them and 400s anything missing.
+    //
+    // Emby (4.9.x+): construct our own master.m3u8 URL. Emby's
+    // TranscodingUrl also reports TranscodingSubProtocol='hls' now, but
+    // its PlaybackInfo response *silently ignores* SubtitleStreamIndex
+    // and AudioStreamIndex from the POST query — it bakes its own
+    // defaults into TranscodingUrl, so audio/subtitle picks have no
+    // effect. The hand-built URL with our params *in the URL itself*
+    // is what Emby's transcoder actually reads. Verified against the
+    // Naruto + Code Geass test files: with TranscodingUrl, picked
+    // audio/sub doesn't take; with constructed URL, it does.
     let streamUrl: string;
     let urlSource: string;
     const tuRaw: string | undefined = mediaSource?.TranscodingUrl;
     const tuProtocol: string | undefined = mediaSource?.TranscodingSubProtocol;
+    const useServerTranscodingUrl = opts.source === 'jellyfin' && tuRaw && tuProtocol === 'hls';
     // Workaround for the Jellyfin/FFmpeg image-subtitle + seek bug.
     // Any file whose MediaStreams contains a PGS / DVB / DVD / VOB / HDMV
     // subtitle stream will 400 every segment request when the transcoder
@@ -765,7 +778,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       ? Math.floor(startTicks / TICKS_PER_MS)
       : 0;
 
-    if (tuRaw && tuProtocol === 'hls') {
+    if (useServerTranscodingUrl) {
       const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
       const u = new URL(absolute);
       // StartTimeTicks isn't included in TranscodingUrl on Jellyfin — the
