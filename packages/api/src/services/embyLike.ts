@@ -577,11 +577,40 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       StartTimeTicks: startTicks,
       MaxStreamingBitrate: maxBpsBody,
     };
-    console.log(`[${opts.label}.dbg] POST /Items/${itemId}/PlaybackInfo body=${JSON.stringify(playbackInfoBody)}`);
+    // Stream selectors MUST go on the POST query, not in the body —
+    // Jellyfin's PlaybackInfo handler reads them from the query string
+    // to pre-plan the transcoder session and bake them into the
+    // returned TranscodingUrl. If we only put them in the URL we
+    // build later, the segment endpoint won't recognise the session
+    // (it validates Tag / h264-level constraints baked into
+    // TranscodingUrl) and 400s the segment request. This is exactly
+    // why PGSSUB burn-in failed in v0.1.64 — the master playlist
+    // returned a manifest but every segment 400'd.
+    const subIndexForBody =
+      playOpts.subtitleStreamID != null && playOpts.subtitleStreamID > 0
+        ? playOpts.subtitleStreamID
+        : -1;
+    const playbackInfoQuery: Record<string, string | number | boolean> = {
+      UserId: s.userId,
+      StartTimeTicks: startTicks,
+      MaxStreamingBitrate: maxBpsBody,
+      SubtitleStreamIndex: subIndexForBody,
+      EnableDirectPlay: false,
+      EnableDirectStream: false,
+      EnableTranscoding: true,
+      AllowVideoStreamCopy: false,
+      AllowAudioStreamCopy: false,
+      AutoOpenLiveStream: true,
+      MediaSourceId: itemId,
+    };
+    if (playOpts.audioStreamID != null) {
+      playbackInfoQuery.AudioStreamIndex = playOpts.audioStreamID;
+    }
+    console.log(`[${opts.label}.dbg] POST /Items/${itemId}/PlaybackInfo body=${JSON.stringify(playbackInfoBody)} query=${JSON.stringify(playbackInfoQuery)}`);
     const { data: playback } = await http.post(
       `/Items/${itemId}/PlaybackInfo`,
       playbackInfoBody,
-      { params: { UserId: s.userId } },
+      { params: playbackInfoQuery },
     );
 
     const mediaSource = playback?.MediaSources?.[0];
@@ -659,16 +688,47 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
-    const streamUrl = axios.getUri({
-      url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
-      params: streamParams,
-    });
+    // Prefer the server's own TranscodingUrl when it's an HLS playlist.
+    // Jellyfin bakes server-version-specific params into it (SegmentContainer,
+    // VideoBitrate, MaxFramerate, h264-level, Tag, ApiKey, ...) that we
+    // can't reliably reconstruct from the client side; the segment
+    // endpoint rejects requests that don't carry them. Falling back to
+    // our hand-built master.m3u8 URL covers Emby (which doesn't return
+    // an HLS-protocol TranscodingUrl) and any other server whose
+    // PlaybackInfo response we can't fully trust.
+    let streamUrl: string;
+    let urlSource: string;
+    const tuRaw: string | undefined = mediaSource?.TranscodingUrl;
+    const tuProtocol: string | undefined = mediaSource?.TranscodingSubProtocol;
+    if (tuRaw && tuProtocol === 'hls') {
+      const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
+      const u = new URL(absolute);
+      // If the caller picked a subtitle, ensure it's in the URL even if
+      // the server didn't echo it (shouldn't happen now we send it on
+      // the POST query, but cheap to be defensive).
+      if (!u.searchParams.has('SubtitleStreamIndex')) {
+        u.searchParams.set('SubtitleStreamIndex', String(subIndexForBody));
+      }
+      // SubtitleMethod accompanies SubtitleStreamIndex for burn-in.
+      if (subIndexForBody > 0 && !u.searchParams.has('SubtitleMethod')) {
+        u.searchParams.set('SubtitleMethod', 'Encode');
+      }
+      streamUrl = u.toString();
+      urlSource = 'server.TranscodingUrl';
+    } else {
+      streamUrl = axios.getUri({
+        url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
+        params: streamParams,
+      });
+      urlSource = `constructed (TranscodingSubProtocol=${tuProtocol ?? '(none)'})`;
+    }
 
-    // Redact api_key in logs so the token doesn't leak; keep everything else.
-    const redactedUrl = streamUrl.replace(/api_key=[^&]+/, 'api_key=<REDACTED>');
-    console.log(`[${opts.label}.dbg] constructed streamUrl: ${redactedUrl}`);
+    // Redact api_key / ApiKey in logs so the token doesn't leak.
+    const redactedUrl = streamUrl.replace(/(api_?key=)[^&]+/gi, '$1<REDACTED>');
+    console.log(`[${opts.label}.dbg] streamUrl source: ${urlSource}`);
+    console.log(`[${opts.label}.dbg] streamUrl: ${redactedUrl}`);
     console.log(
-      `[${opts.label}.dbg] streamParams summary: ` +
+      `[${opts.label}.dbg] (fallback) streamParams summary: ` +
       `MediaSourceId=${streamParams.MediaSourceId} ` +
       `SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} ` +
       `SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} ` +
