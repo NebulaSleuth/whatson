@@ -837,6 +837,16 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     };
   };
 
+  // Strip the `${opts.source}-` namespace prefix some clients send.
+  // ContentItem.id is `${source}-${jellyfinItemId}` so the aggregator
+  // can dedup across servers, but Jellyfin only knows about the raw
+  // GUID. The GET /playback/:ratingKey path always uses item.sourceId
+  // (raw), but /progress and /stop have historically been called with
+  // both formats — we tolerate either.
+  const sourcePrefix = `${opts.source}-`;
+  const stripPrefix = (id: string): string =>
+    id.startsWith(sourcePrefix) ? id.slice(sourcePrefix.length) : id;
+
   const reportProgress = async (
     itemId: string,
     timeMs: number,
@@ -846,18 +856,31 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
   ): Promise<void> => {
     const s = await ensureSession();
     if (!s) return;
+    const cleanId = stripPrefix(itemId);
     const positionTicks = Math.max(0, Math.floor(timeMs * TICKS_PER_MS));
-    lastProgress.set(sessionId, { itemId, positionTicks });
+    lastProgress.set(sessionId, { itemId: cleanId, positionTicks });
     const cfg = opts.getConfig();
     const http = clientFor(cfg.url, s.accessToken);
-    await http.post('/Sessions/Playing/Progress', {
-      ItemId: itemId,
-      PlaySessionId: sessionId,
-      PositionTicks: positionTicks,
-      IsPaused: state === 'paused',
-      PlayMethod: 'Transcode',
-      EventName: 'timeupdate',
-    }).catch(() => {});
+    console.log(
+      `[${opts.label}] /Sessions/Playing/Progress itemId=${cleanId} ` +
+      `positionTicks=${positionTicks} session=${sessionId.slice(0, 12)} state=${state}` +
+      (itemId !== cleanId ? ` (stripped prefix from ${itemId})` : ''),
+    );
+    await http
+      .post('/Sessions/Playing/Progress', {
+        ItemId: cleanId,
+        MediaSourceId: cleanId,
+        PlaySessionId: sessionId,
+        PositionTicks: positionTicks,
+        IsPaused: state === 'paused',
+        PlayMethod: 'Transcode',
+        EventName: 'timeupdate',
+      })
+      .catch((err: Error) => {
+        console.warn(
+          `[${opts.label}] /Sessions/Playing/Progress failed: ${err.message}`,
+        );
+      });
   };
 
   const stopPlayback = async (sessionId: string): Promise<void> => {
@@ -866,12 +889,21 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const cfg = opts.getConfig();
     const http = clientFor(cfg.url, s.accessToken);
     const last = lastProgress.get(sessionId);
+    console.log(
+      `[${opts.label}] stopPlayback session=${sessionId.slice(0, 12)} ` +
+      `lastProgress=${last ? `itemId=${last.itemId} positionTicks=${last.positionTicks}` : '(none)'}`,
+    );
     const body: Record<string, unknown> = { PlaySessionId: sessionId };
     if (last) {
       body.ItemId = last.itemId;
+      body.MediaSourceId = last.itemId;
       body.PositionTicks = last.positionTicks;
     }
-    await http.post('/Sessions/Playing/Stopped', body).catch(() => {});
+    await http
+      .post('/Sessions/Playing/Stopped', body)
+      .catch((err: Error) => {
+        console.warn(`[${opts.label}] /Sessions/Playing/Stopped failed: ${err.message}`);
+      });
     // Write PlaybackPositionTicks directly to UserData as a safety net.
     // /Sessions/Playing/Stopped only updates resume position if Jellyfin
     // recognises the PlaySessionId as a tracked session — and prior to
@@ -881,13 +913,18 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // savedPositionTicks; writing it directly here guarantees resume
     // works no matter what session tracking does.
     if (last && last.positionTicks > 0) {
+      const url = `/Users/${s.userId}/Items/${last.itemId}/UserData`;
+      console.log(
+        `[${opts.label}] POST ${url} PlaybackPositionTicks=${last.positionTicks}`,
+      );
       await http
-        .post(`/Users/${s.userId}/Items/${last.itemId}/UserData`, {
-          PlaybackPositionTicks: last.positionTicks,
+        .post(url, { PlaybackPositionTicks: last.positionTicks })
+        .then(() => {
+          console.log(`[${opts.label}] UserData write OK`);
         })
         .catch((err: Error) => {
           console.warn(
-            `[${opts.label}] stopPlayback UserData write failed: ${err.message}`,
+            `[${opts.label}] UserData write failed: ${err.message}`,
           );
         });
     }

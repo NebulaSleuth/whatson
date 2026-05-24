@@ -43,6 +43,12 @@ export function VideoPlayer({ item, onClose }: Props) {
   // baseSecondsRef + video.currentTime gives the true position for
   // the next swap's offset.
   const baseSecondsRef = useRef(0);
+  // Latest absolute-source-position the player has been at, captured
+  // via the video element's timeupdate event. We read this in the
+  // unmount cleanup instead of the live video element — by the time
+  // cleanup runs the element may have been paused/torn down and
+  // currentTime can read 0, which would lose the resume position.
+  const lastAbsoluteMsRef = useRef(0);
 
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [status, setStatus] = useState('Loading…');
@@ -336,6 +342,20 @@ export function VideoPlayer({ item, onClose }: Props) {
     // server-side stream's t=0 against the original timeline; on
     // the Jellyfin image-sub workaround we keep baseSecondsRef=0
     // and let video.currentTime carry the position directly).
+    // Track the live absolute position from timeupdate. This runs
+    // ~4× per second while playing and gives us a fresh value to
+    // read from the unmount cleanup.
+    const v0 = videoRef.current;
+    const onTimeUpdate = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      const absoluteSeconds = baseSecondsRef.current + v.currentTime;
+      if (Number.isFinite(absoluteSeconds) && absoluteSeconds > 0) {
+        lastAbsoluteMsRef.current = Math.floor(absoluteSeconds * 1000);
+      }
+    };
+    if (v0) v0.addEventListener('timeupdate', onTimeUpdate);
+
     const progressTimer = window.setInterval(() => {
       const v = videoRef.current;
       const sid = sessionRef.current;
@@ -343,11 +363,15 @@ export function VideoPlayer({ item, onClose }: Props) {
       const absoluteSeconds = baseSecondsRef.current + v.currentTime;
       if (!Number.isFinite(absoluteSeconds) || absoluteSeconds <= 0) return;
       const durationSec = Number.isFinite(v.duration) ? v.duration : 0;
-      // Backend adapter contract is milliseconds for both args.
+      const absMs = Math.floor(absoluteSeconds * 1000);
+      lastAbsoluteMsRef.current = absMs;
+      // Use item.sourceId (Jellyfin's raw item GUID) — item.id carries
+      // the `${source}-` prefix the aggregator namespaces with, which
+      // the server won't recognise as a Jellyfin ItemId.
       api
         .reportProgress(
-          item.id,
-          Math.floor(absoluteSeconds * 1000),
+          item.sourceId,
+          absMs,
           Math.floor(durationSec * 1000),
           v.paused ? 'paused' : 'playing',
           sid,
@@ -360,26 +384,32 @@ export function VideoPlayer({ item, onClose }: Props) {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
       window.clearInterval(progressTimer);
-      // Capture the final position and pass it to stopPlayback so the
-      // backend can seed lastProgress + write UserData before the
-      // transcoder session is torn down. We can't rely on the periodic
-      // reporter — its last tick may be up to 10s stale.
-      const v = videoRef.current;
+      if (v0) v0.removeEventListener('timeupdate', onTimeUpdate);
+      // Read the final position from the ref the timeupdate listener
+      // has been maintaining. Reading video.currentTime here can return
+      // 0 if React has already detached the element during unmount.
       const sid = sessionRef.current;
       let finalPositionMs: number | undefined;
-      if (v) {
-        const absoluteSeconds = baseSecondsRef.current + v.currentTime;
-        if (Number.isFinite(absoluteSeconds) && absoluteSeconds > 0) {
-          finalPositionMs = Math.floor(absoluteSeconds * 1000);
+      // Try the live element first (most recent), fall back to the ref.
+      const vNow = videoRef.current;
+      if (vNow) {
+        const liveAbs = baseSecondsRef.current + vNow.currentTime;
+        if (Number.isFinite(liveAbs) && liveAbs > 0) {
+          finalPositionMs = Math.floor(liveAbs * 1000);
         }
+      }
+      if (!finalPositionMs && lastAbsoluteMsRef.current > 0) {
+        finalPositionMs = lastAbsoluteMsRef.current;
       }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
       if (sid) {
+        // ratingKey here is the unprefixed sourceId (Jellyfin GUID) —
+        // see comment on the progress reporter above.
         api
-          .stopPlayback(sid, item.source, { ratingKey: item.id, positionMs: finalPositionMs })
+          .stopPlayback(sid, item.source, { ratingKey: item.sourceId, positionMs: finalPositionMs })
           .catch(() => {});
       }
     };
