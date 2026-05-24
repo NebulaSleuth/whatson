@@ -498,6 +498,22 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // transcoder with the new settings.
     const ourSessionId = `whatson-${opts.source}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+    console.log(`[${opts.label}.dbg] ==================== getPlaybackInfo ====================`);
+    console.log(
+      `[${opts.label}.dbg] received playOpts: ` +
+      `offsetMs=${playOpts.offsetMs ?? '(unset)'} ` +
+      `maxBitrate=${playOpts.maxBitrate ?? '(unset)'} ` +
+      `subtitleStreamID=${playOpts.subtitleStreamID ?? '(unset)'} ` +
+      `audioStreamID=${playOpts.audioStreamID ?? '(unset)'} ` +
+      `forceTranscode=${playOpts.forceTranscode ?? '(unset)'} ` +
+      `resolution=${playOpts.resolution ?? '(unset)'}`,
+    );
+    console.log(
+      `[${opts.label}.dbg] ourSessionId=${ourSessionId} ` +
+      `itemId=${itemId} startTicks=${startTicks} ` +
+      `(savedPositionTicks=${savedPositionTicks} requestedTicks=${requestedTicks})`,
+    );
+
     // Force Emby / Jellyfin to transcode. When the source file is
     // already h264/aac/ts (or matches the device profile we send)
     // Emby defaults to DirectStream and serves the original bytes
@@ -506,21 +522,23 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // DirectPlay + DirectStream forces a fresh transcoder for every
     // session, which is what the user expects when they change a
     // subtitle / audio / quality setting.
+    const playbackInfoBody = {
+      UserId: s.userId,
+      PlaySessionId: ourSessionId,
+      EnableDirectPlay: false,
+      EnableDirectStream: false,
+      EnableTranscoding: true,
+      DeviceProfile: {
+        MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
+        MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
+      },
+      StartTimeTicks: startTicks,
+      MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
+    };
+    console.log(`[${opts.label}.dbg] POST /Items/${itemId}/PlaybackInfo body=${JSON.stringify(playbackInfoBody)}`);
     const { data: playback } = await http.post(
       `/Items/${itemId}/PlaybackInfo`,
-      {
-        UserId: s.userId,
-        PlaySessionId: ourSessionId,
-        EnableDirectPlay: false,
-        EnableDirectStream: false,
-        EnableTranscoding: true,
-        DeviceProfile: {
-          MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
-          MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
-        },
-        StartTimeTicks: startTicks,
-        MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
-      },
+      playbackInfoBody,
       { params: { UserId: s.userId } },
     );
 
@@ -530,6 +548,45 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // session live on. Falling through to the generated id keeps
     // every call using a unique session.
     const sessionId = ourSessionId;
+
+    // ---------- response dump ----------
+    console.log(
+      `[${opts.label}.dbg] PlaybackInfo response: ` +
+      `PlaySessionId(echoed)=${playback?.PlaySessionId} ` +
+      `MediaSources.length=${(playback?.MediaSources || []).length} ` +
+      `ErrorCode=${playback?.ErrorCode ?? '(none)'}`,
+    );
+    if (mediaSource) {
+      console.log(
+        `[${opts.label}.dbg] MediaSource[0]: Id=${mediaSource.Id} ` +
+        `Name=${mediaSource.Name} ` +
+        `Container=${mediaSource.Container} ` +
+        `Protocol=${mediaSource.Protocol} ` +
+        `SupportsDirectPlay=${mediaSource.SupportsDirectPlay} ` +
+        `SupportsDirectStream=${mediaSource.SupportsDirectStream} ` +
+        `SupportsTranscoding=${mediaSource.SupportsTranscoding} ` +
+        `RunTimeTicks=${mediaSource.RunTimeTicks} ` +
+        `Bitrate=${mediaSource.Bitrate} ` +
+        `DefaultAudioStreamIndex=${mediaSource.DefaultAudioStreamIndex} ` +
+        `DefaultSubtitleStreamIndex=${mediaSource.DefaultSubtitleStreamIndex}`,
+      );
+      console.log(`[${opts.label}.dbg] MediaSource[0].TranscodingUrl=${mediaSource.TranscodingUrl ?? '(none)'}`);
+      console.log(`[${opts.label}.dbg] MediaSource[0].TranscodingSubProtocol=${mediaSource.TranscodingSubProtocol ?? '(none)'} TranscodingContainer=${mediaSource.TranscodingContainer ?? '(none)'}`);
+      const streams = (mediaSource.MediaStreams || []) as any[];
+      console.log(`[${opts.label}.dbg] MediaStreams[].length=${streams.length}`);
+      for (const st of streams) {
+        console.log(
+          `[${opts.label}.dbg]   stream Index=${st.Index} Type=${st.Type} ` +
+          `Codec=${st.Codec} Language=${st.Language || '?'} ` +
+          `Title=${st.Title || st.DisplayTitle || '?'} ` +
+          `IsDefault=${st.IsDefault} IsForced=${st.IsForced} ` +
+          `IsExternal=${st.IsExternal} DeliveryMethod=${st.DeliveryMethod ?? '(none)'} ` +
+          `IsTextSubtitleStream=${st.IsTextSubtitleStream}`,
+        );
+      }
+    } else {
+      console.log(`[${opts.label}.dbg] !!! no MediaSource returned !!! response keys=${Object.keys(playback || {}).join(',')}`);
+    }
 
     const streamParams: Record<string, string> = {
       DeviceId: DEVICE_ID,
@@ -563,25 +620,24 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
-    console.log(`[${opts.label}] playback session=${ourSessionId.slice(0, 24)} streamParams: SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'} MaxStreamingBitrate=${streamParams.MaxStreamingBitrate}`);
-    // Dump what Emby actually reports for this MediaSource so we can
-    // tell if it lined up subtitles as HLS tracks vs burn vs nothing.
-    const subInfo = (mediaSource?.MediaStreams || [])
-      .filter((st: any) => st.Type === 'Subtitle')
-      .map((st: any) => `${st.Index}:${st.Language || '?'}${st.IsDefault ? '*default' : ''}${st.DeliveryMethod ? `:${st.DeliveryMethod}` : ''}`);
-    const audInfo = (mediaSource?.MediaStreams || [])
-      .filter((st: any) => st.Type === 'Audio')
-      .map((st: any) => `${st.Index}:${st.Language || '?'}${st.IsDefault ? '*default' : ''}`);
-    console.log(
-      `[${opts.label}] MediaSource id=${mediaSource?.Id} TranscodingUrl=${mediaSource?.TranscodingUrl?.slice(0, 80) || '(none)'} SupportsTranscoding=${mediaSource?.SupportsTranscoding} ` +
-      `subs=[${subInfo.join(', ')}] audio=[${audInfo.join(', ')}]`,
-    );
-    console.log(`[${opts.label}] streamUrl host+path: ${cfg.url}/Videos/${itemId}/master.m3u8 (paramCount=${Object.keys(streamParams).length})`);
-
     const streamUrl = axios.getUri({
       url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
       params: streamParams,
     });
+
+    // Redact api_key in logs so the token doesn't leak; keep everything else.
+    const redactedUrl = streamUrl.replace(/api_key=[^&]+/, 'api_key=<REDACTED>');
+    console.log(`[${opts.label}.dbg] constructed streamUrl: ${redactedUrl}`);
+    console.log(
+      `[${opts.label}.dbg] streamParams summary: ` +
+      `MediaSourceId=${streamParams.MediaSourceId} ` +
+      `SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} ` +
+      `SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} ` +
+      `AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'} ` +
+      `MaxStreamingBitrate=${streamParams.MaxStreamingBitrate} ` +
+      `StartTimeTicks=${streamParams.StartTimeTicks}`,
+    );
+    console.log(`[${opts.label}.dbg] ==================== /getPlaybackInfo ====================`);
 
     const directPlayUrl = mediaSource?.Path
       ? `${cfg.url}/Videos/${itemId}/stream?api_key=${s.accessToken}&static=true&mediaSourceId=${mediaSource.Id}`
