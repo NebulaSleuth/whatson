@@ -721,8 +721,17 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       streamParams.SubtitleStreamIndex = String(playOpts.subtitleStreamID);
       streamParams.SubtitleMethod = 'Encode';
     } else {
+      // SubtitleStreamIndex=-1 alone isn't enough to suppress burn on
+      // Emby when the user has SubtitleMode=Smart set (Emby's default).
+      // Smart mode re-selects whatever's IsDefault=true on the source
+      // even after we ask for -1. Pairing with SubtitleMethod=External
+      // forces Emby into "deliver subtitle externally" mode — which
+      // combined with index -1 means "external delivery of stream
+      // none" → transcoder doesn't burn anything.
+      // ('Drop' would be the obvious method but Emby 4.9.5 rejects it
+      // with 400 "Requested value 'Drop' was not found".)
       streamParams.SubtitleStreamIndex = '-1';
-      streamParams.SubtitleMethod = 'Drop';
+      streamParams.SubtitleMethod = 'External';
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
