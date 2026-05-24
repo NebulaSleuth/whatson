@@ -522,18 +522,60 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // DirectPlay + DirectStream forces a fresh transcoder for every
     // session, which is what the user expects when they change a
     // subtitle / audio / quality setting.
+    // Full DeviceProfile. The thin "just MaxStreamingBitrate" profile
+    // we shipped before caused Jellyfin to respond with
+    // SupportsTranscoding=false / TranscodingUrl=(none) for any source
+    // that needed a codec change (e.g. flac→aac, pgssub burn-in), which
+    // broke playback any time a swap was requested. Listing concrete
+    // TranscodingProfiles + SubtitleProfiles tells the server "this
+    // client can consume HLS/TS h264+aac with subs burned in" so it
+    // can plan a real ffmpeg pipeline.
+    const maxBpsBody = (playOpts.maxBitrate || 20000) * 1000;
     const playbackInfoBody = {
       UserId: s.userId,
       PlaySessionId: ourSessionId,
       EnableDirectPlay: false,
       EnableDirectStream: false,
       EnableTranscoding: true,
+      AllowVideoStreamCopy: false,
+      AllowAudioStreamCopy: false,
+      AutoOpenLiveStream: true,
       DeviceProfile: {
-        MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
-        MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
+        MaxStreamingBitrate: maxBpsBody,
+        MaxStaticBitrate: maxBpsBody,
+        MusicStreamingTranscodingBitrate: 192000,
+        DirectPlayProfiles: [],
+        TranscodingProfiles: [
+          {
+            Container: 'ts',
+            Type: 'Video',
+            Protocol: 'hls',
+            VideoCodec: 'h264',
+            AudioCodec: 'aac,mp3',
+            Context: 'Streaming',
+            MaxAudioChannels: '2',
+            MinSegments: 1,
+            BreakOnNonKeyFrames: true,
+          },
+        ],
+        SubtitleProfiles: [
+          { Format: 'ass',     Method: 'Encode' },
+          { Format: 'ssa',     Method: 'Encode' },
+          { Format: 'srt',     Method: 'Encode' },
+          { Format: 'subrip',  Method: 'Encode' },
+          { Format: 'pgssub',  Method: 'Encode' },
+          { Format: 'pgs',     Method: 'Encode' },
+          { Format: 'dvbsub',  Method: 'Encode' },
+          { Format: 'dvdsub',  Method: 'Encode' },
+          { Format: 'sub',     Method: 'Encode' },
+          { Format: 'vobsub',  Method: 'Encode' },
+        ],
+        CodecProfiles: [],
+        ContainerProfiles: [],
+        ResponseProfiles: [],
       },
       StartTimeTicks: startTicks,
-      MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
+      MaxStreamingBitrate: maxBpsBody,
     };
     console.log(`[${opts.label}.dbg] POST /Items/${itemId}/PlaybackInfo body=${JSON.stringify(playbackInfoBody)}`);
     const { data: playback } = await http.post(
@@ -601,22 +643,19 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     };
     // Jellyfin/Emby use SubtitleStreamIndex=-1 for "no subtitle".
     // Our clients pass 0 as the "off" sentinel — translate it.
-    // SubtitleMethod=Encode burns the subtitle into the video, which
-    // we only want when there's actually a subtitle to burn. For
-    // off, we omit SubtitleMethod so the encoder doesn't try to burn
-    // an absent stream.
-    if (playOpts.subtitleStreamID != null) {
-      const subId = playOpts.subtitleStreamID;
-      if (subId === 0 || subId < 0) {
-        streamParams.SubtitleStreamIndex = '-1';
-      } else {
-        streamParams.SubtitleStreamIndex = String(subId);
-        streamParams.SubtitleMethod = 'Encode';
-      }
-    } else {
-      // No explicit choice — let Jellyfin pick its default (which it
-      // does via IsDefault on the source's MediaStreams). Burn it.
+    //
+    // When the caller doesn't pick a subtitle we now explicitly send
+    // -1 (subtitles off) rather than `SubtitleMethod=Encode` alone.
+    // The old behaviour caused Emby to burn whatever was marked
+    // IsDefault=true on the source (e.g. Arabic on a multi-sub MKV)
+    // even though our UI was showing "Off" — a confusing inversion
+    // for the user. "Off" by default matches the UI and matches
+    // every other player in the app (Plex client behaves the same).
+    if (playOpts.subtitleStreamID != null && playOpts.subtitleStreamID > 0) {
+      streamParams.SubtitleStreamIndex = String(playOpts.subtitleStreamID);
       streamParams.SubtitleMethod = 'Encode';
+    } else {
+      streamParams.SubtitleStreamIndex = '-1';
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
