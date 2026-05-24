@@ -271,12 +271,25 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const cached = getCached<ContentItem[]>(key);
     if (cached) return cached;
 
+    // Use the explicit `Filters=IsResumable` query rather than the
+    // server-curated `/Items/Resume` endpoint. On Emby 4.9.x the
+    // Resume endpoint applies aggressive internal filtering — even
+    // with five items in the user's resume state, it returned only
+    // one — and parameter tweaks (SortBy, GroupItems, MediaTypes,
+    // etc.) had no effect. The raw IsResumable query returns
+    // everything with progress; we sort by DatePlayed descending so
+    // the most-recently-watched items appear first.
     const items = await authedRequest(async (http, s) => {
-      const { data } = await http.get(`/Users/${s.userId}/Items/Resume`, {
+      const { data } = await http.get(`/Users/${s.userId}/Items`, {
         params: {
+          Recursive: 'true',
+          Filters: 'IsResumable',
           IncludeItemTypes: 'Episode,Movie',
+          SortBy: 'DatePlayed',
+          SortOrder: 'Descending',
           Fields: 'PrimaryImageAspectRatio,Overview,UserData,DateCreated,PremiereDate',
           Limit: 50,
+          EnableUserData: 'true',
         },
       });
       return (data?.Items || []) as JfItem[];
