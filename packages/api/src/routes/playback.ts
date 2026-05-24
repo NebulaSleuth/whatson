@@ -70,6 +70,10 @@ playbackRouter.post('/playback/progress', async (req, res) => {
     if (adapter) {
       await adapter.reportProgress(ratingKey, time, duration, state, sessionId, req.plexUserToken);
     }
+    console.log(
+      `[playback] /progress src=${source ?? 'plex'} ratingKey=${ratingKey} ` +
+      `timeMs=${time} state=${state} session=${(sessionId || '').slice(0, 12)}`,
+    );
     res.json({ success: true });
   } catch {
     res.json({ success: true }); // Never fail playback over progress reporting
@@ -80,9 +84,32 @@ playbackRouter.post('/playback/progress', async (req, res) => {
 playbackRouter.post('/playback/stop', async (req, res) => {
   const startedAt = Date.now();
   try {
-    const { sessionId, source } = req.body as { sessionId?: string; source?: ContentSource };
-    console.log(`[playback] POST /stop session=${(sessionId || '').slice(0, 12)} src=${source ?? 'plex'}`);
+    const { sessionId, source, ratingKey, positionMs } = req.body as {
+      sessionId?: string;
+      source?: ContentSource;
+      ratingKey?: string;
+      positionMs?: number;
+    };
+    console.log(
+      `[playback] POST /stop session=${(sessionId || '').slice(0, 12)} src=${source ?? 'plex'} ` +
+      `positionMs=${positionMs ?? '(unset)'} ratingKey=${ratingKey ?? '(unset)'}`,
+    );
     const adapter = getAdapterForSource(source || 'plex');
+    // Seed the adapter with the final position before stopping. This
+    // guarantees the resume position is saved to UserData (Jellyfin)
+    // or scrobbled (Plex) even if /api/playback/progress hasn't been
+    // called recently — for example when the user closes the player
+    // quickly after seeking, the periodic 10s reporter might not have
+    // fired yet. The client sends positionMs + ratingKey alongside the
+    // stop call so the server can record a final progress event before
+    // tearing down.
+    if (adapter && sessionId && ratingKey && typeof positionMs === 'number' && positionMs > 0) {
+      try {
+        await adapter.reportProgress(ratingKey, positionMs, 0, 'paused', sessionId, req.plexUserToken);
+      } catch (err) {
+        console.warn(`[playback] stop pre-progress failed: ${(err as Error).message}`);
+      }
+    }
     if (adapter && sessionId) {
       await adapter.stopPlayback(sessionId, req.plexUserToken);
     }

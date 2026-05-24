@@ -327,15 +327,60 @@ export function VideoPlayer({ item, onClose }: Props) {
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
 
+    // Periodic progress reporter. Without this the backend has no
+    // position to forward to Jellyfin's /Sessions/Playing/Progress
+    // (and no PositionTicks to write directly to UserData on stop),
+    // so the item never lands in Continue Watching and resume falls
+    // back to t=0. baseSecondsRef + video.currentTime maps to the
+    // absolute source position (baseSecondsRef tracks the
+    // server-side stream's t=0 against the original timeline; on
+    // the Jellyfin image-sub workaround we keep baseSecondsRef=0
+    // and let video.currentTime carry the position directly).
+    const progressTimer = window.setInterval(() => {
+      const v = videoRef.current;
+      const sid = sessionRef.current;
+      if (!v || !sid || v.readyState === 0) return;
+      const absoluteSeconds = baseSecondsRef.current + v.currentTime;
+      if (!Number.isFinite(absoluteSeconds) || absoluteSeconds <= 0) return;
+      const durationSec = Number.isFinite(v.duration) ? v.duration : 0;
+      // Backend adapter contract is milliseconds for both args.
+      api
+        .reportProgress(
+          item.id,
+          Math.floor(absoluteSeconds * 1000),
+          Math.floor(durationSec * 1000),
+          v.paused ? 'paused' : 'playing',
+          sid,
+          item.source,
+        )
+        .catch(() => {});
+    }, 10000);
+
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
+      window.clearInterval(progressTimer);
+      // Capture the final position and pass it to stopPlayback so the
+      // backend can seed lastProgress + write UserData before the
+      // transcoder session is torn down. We can't rely on the periodic
+      // reporter — its last tick may be up to 10s stale.
+      const v = videoRef.current;
+      const sid = sessionRef.current;
+      let finalPositionMs: number | undefined;
+      if (v) {
+        const absoluteSeconds = baseSecondsRef.current + v.currentTime;
+        if (Number.isFinite(absoluteSeconds) && absoluteSeconds > 0) {
+          finalPositionMs = Math.floor(absoluteSeconds * 1000);
+        }
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      if (sessionRef.current) {
-        api.stopPlayback(sessionRef.current, item.source).catch(() => {});
+      if (sid) {
+        api
+          .stopPlayback(sid, item.source, { ratingKey: item.id, positionMs: finalPositionMs })
+          .catch(() => {});
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

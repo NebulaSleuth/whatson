@@ -202,10 +202,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ratingKey, time, duration, state, sessionId, source }),
     }),
-  stopPlayback: (sessionId: string, source: string = 'plex') =>
+  stopPlayback: (sessionId: string, source: string = 'plex', extras?: { ratingKey?: string; positionMs?: number }) =>
     fetchApi<unknown>('/api/playback/stop', {
       method: 'POST',
-      body: JSON.stringify({ sessionId, source }),
+      body: JSON.stringify({ sessionId, source, ...(extras || {}) }),
     }),
 
   // Sonarr / Radarr add (used by Discover items)
