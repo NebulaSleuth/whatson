@@ -53,16 +53,30 @@ export function VideoPlayer({ item, onClose }: Props) {
   // `offset` lets us preserve playback position across quality / track
   // swaps. The first load uses the server-reported viewOffset.
   async function loadStream(opts: { offset?: number; audio?: number; subtitle?: number; bitrate?: number } = {}) {
+    const t0 = performance.now();
+    const tag = `[player] loadStream`;
+    console.log(`${tag} START opts=`, opts, 'baseSeconds=', baseSecondsRef.current);
     try {
       swappingRef.current = true;
       setError(null);
       setStatus('Requesting stream…');
+      const reqStart = performance.now();
       const next = await api.getPlaybackInfo(item.sourceId, {
         source: item.source,
         offset: opts.offset ?? (info ? undefined : item.progress?.currentPosition),
         audioStreamID: opts.audio,
         subtitleStreamID: opts.subtitle,
         maxBitrate: opts.bitrate,
+      });
+      console.log(`${tag} got playback info in`, Math.round(performance.now() - reqStart), 'ms', {
+        sessionId: next.sessionId?.slice(0, 12),
+        streamUrl: next.streamUrl,
+        viewOffset: next.viewOffset,
+        duration: next.duration,
+        audioCount: next.audioTracks.length,
+        subCount: next.subtitles.length,
+        selectedAudio: next.audioTracks.find((t) => t.selected)?.id,
+        selectedSub: next.subtitles.find((t) => t.selected)?.id,
       });
       sessionRef.current = next.sessionId;
       setInfo(next);
@@ -115,14 +129,57 @@ export function VideoPlayer({ item, onClose }: Props) {
       // the first load where the server-reported viewOffset > 0.
       const isSwap = opts.offset !== undefined;
       const seekToMs = isSwap ? 0 : (next.viewOffset > 0 ? next.viewOffset : 0);
+      console.log(`${tag} isSwap=${isSwap} seekToMs=${seekToMs} baseSecondsRef=${baseSecondsRef.current}`);
+
+      const tAttach = performance.now();
+      const logTimer = window.setInterval(() => {
+        console.log(
+          `${tag} waiting after ${Math.round(performance.now() - tAttach)}ms — ` +
+          `paused=${video.paused} readyState=${video.readyState} ` +
+          `networkState=${video.networkState} currentTime=${video.currentTime.toFixed(2)} ` +
+          `buffered=${video.buffered.length}`,
+        );
+      }, 2000);
+
       const onLoaded = () => {
+        console.log(`${tag} loadedmetadata after`, Math.round(performance.now() - tAttach), 'ms', {
+          videoDuration: video.duration,
+          readyState: video.readyState,
+          seekToMs,
+        });
         if (seekToMs > 0) {
-          try { video.currentTime = seekToMs / 1000; } catch {}
+          try {
+            video.currentTime = seekToMs / 1000;
+            console.log(`${tag} seek done to`, seekToMs / 1000, 's');
+          } catch (e) {
+            console.warn(`${tag} seek failed`, e);
+          }
         }
-        video.play().catch((err) => console.warn('[player] play rejected', err.name));
+        video.play().then(
+          () => console.log(`${tag} play() resolved`),
+          (err) => console.warn(`${tag} play() rejected`, err.name, err.message),
+        );
         requestAnimationFrame(() => { swappingRef.current = false; });
       };
+      const onPlaying = () => {
+        console.log(`${tag} 'playing' event after`, Math.round(performance.now() - tAttach), 'ms');
+        window.clearInterval(logTimer);
+      };
+      const onError = () => {
+        const err = video.error;
+        console.warn(`${tag} video.onerror after`, Math.round(performance.now() - tAttach), 'ms', {
+          code: err?.code,
+          message: err?.message,
+          networkState: video.networkState,
+          readyState: video.readyState,
+        });
+      };
       video.addEventListener('loadedmetadata', onLoaded, { once: true });
+      video.addEventListener('playing', onPlaying, { once: true });
+      video.addEventListener('error', onError);
+      // Drop the diagnostic timer after a generous window so we
+      // don't spam the console for streams that just take a while.
+      window.setTimeout(() => window.clearInterval(logTimer), 60_000);
 
       if (canNativeHls) {
         video.src = url;
@@ -145,15 +202,28 @@ export function VideoPlayer({ item, onClose }: Props) {
         hlsRef.current = hls;
         hls.loadSource(url);
         hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_LOADED, (_e, data) => {
+          console.log(`[hls] manifest loaded — levels=${data.levels.length} ` +
+            `audioTracks=${data.audioTracks?.length ?? 0}`);
+        });
+        hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
+          console.log(`[hls] level ${data.level} loaded — totalduration=${data.details.totalduration} fragments=${data.details.fragments.length}`);
+        });
+        hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+          // Only log the first few fragments per stream so we don't spam.
+          if (data.frag.sn === data.frag.start || (typeof data.frag.sn === 'number' && data.frag.sn < 3)) {
+            console.log(`[hls] frag loaded sn=${data.frag.sn} duration=${data.frag.duration}`);
+          }
+        });
         hls.on(Hls.Events.ERROR, (_e, data) => {
+          console.warn(`[hls] error type=${data.type} details=${data.details} fatal=${data.fatal} ` +
+            `response=${data.response?.code ?? '-'} url=${data.frag?.url ?? data.url ?? '-'}`);
           if (!data.fatal) return;
-          // Try to recover from common transient failures before
-          // surfacing an error to the user.
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            console.warn('[hls] network error — retrying', data.details);
+            console.warn('[hls] fatal network error — retrying');
             try { hls.startLoad(); return; } catch {}
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            console.warn('[hls] media error — recovering', data.details);
+            console.warn('[hls] fatal media error — recovering');
             try { hls.recoverMediaError(); return; } catch {}
           }
           setError(`Playback error: ${data.type} / ${data.details}`);
@@ -198,11 +268,17 @@ export function VideoPlayer({ item, onClose }: Props) {
 
   async function swap(opts: { audio?: number; subtitle?: number; bitrate?: number }) {
     const v = videoRef.current;
-    // Absolute original-timeline position = current base + the
-    // local video.currentTime within the active stream.
+    const tStart = performance.now();
     const currentOffsetMs = v
       ? Math.floor((baseSecondsRef.current + v.currentTime) * 1000)
       : undefined;
+    console.log('[player] swap', {
+      opts,
+      videoCurrentTime: v?.currentTime,
+      baseSeconds: baseSecondsRef.current,
+      computedOffsetMs: currentOffsetMs,
+      priorSession: sessionRef.current?.slice(0, 12),
+    });
     setMenu('none');
     if (opts.audio !== undefined) setAudioId(opts.audio);
     if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
@@ -212,17 +288,18 @@ export function VideoPlayer({ item, onClose }: Props) {
     // Plex for a new one. Without this the second /api/playback call
     // inherits the still-active session's audio / subtitle / bitrate
     // and our UI selection has no effect (the v0.1.49 bug).
-    // Awaiting the stop also gives Plex a moment to actually tear
-    // the session down before we race a new request at it.
     if (v) v.pause();
     if (sessionRef.current) {
       try {
+        const stopStart = performance.now();
         await api.stopPlayback(sessionRef.current, item.source);
-      } catch {
-        /* best-effort — even if stop fails we'll try the new stream */
+        console.log('[player] stopPlayback resolved in', Math.round(performance.now() - stopStart), 'ms');
+      } catch (e) {
+        console.warn('[player] stopPlayback failed', (e as Error).message);
       }
       sessionRef.current = null;
     }
+    console.log('[player] swap → loadStream after', Math.round(performance.now() - tStart), 'ms');
 
     loadStream({
       offset: currentOffsetMs,
