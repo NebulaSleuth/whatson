@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Hls from 'hls.js';
 import type { ContentItem } from '@whatson/shared';
 import { api } from '@/lib/api';
@@ -24,6 +25,7 @@ const QUALITY_PRESETS: Array<{ label: string; maxBitrate?: number }> = [
 type PlaybackInfo = Awaited<ReturnType<typeof api.getPlaybackInfo>>;
 
 export function VideoPlayer({ item, onClose }: Props) {
+  const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -412,6 +414,15 @@ export function VideoPlayer({ item, onClose }: Props) {
           .stopPlayback(sid, item.source, { ratingKey: item.sourceId, positionMs: finalPositionMs })
           .catch(() => {});
       }
+      // Refetch the shelves that depend on watched / position state so
+      // the user sees the item land in Continue Watching when they
+      // return to the home page. The backend also broadcasts a
+      // WebSocket invalidation on stop, but we don't subscribe to it
+      // from the web client yet; this is the local equivalent.
+      queryClient.invalidateQueries({ queryKey: ['home'] });
+      queryClient.invalidateQueries({ queryKey: ['tv'] });
+      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
