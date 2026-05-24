@@ -2,7 +2,7 @@
 
 A cross-platform "what should I watch tonight?" app that unifies Plex, Sonarr, Radarr, TMDB, and TVmaze into a Netflix-style home experience. Runs on Android, iOS, Android TV, Apple TV today; Roku spike in progress; Windows planned.
 
-See `plan.md` for mobile phase-by-phase status and `apps/roku/PLAN.md` for the Roku roadmap. This file describes the architecture that is actually in code.
+See `plan.md` for mobile phase-by-phase status, `apps/roku/PLAN.md` for the Roku roadmap, and `docs/emby-jellyfin-playback.md` for the Emby/Jellyfin playback quirks history — every load-bearing line in `embyLike.ts` exists because of a specific bug, so read that before changing playback code. This file describes the architecture that is actually in code.
 
 ---
 
@@ -60,7 +60,7 @@ The client always sends both headers (`lib/api.ts` `fetchApi`). `X-Plex-Connecti
 | `plex.ts` | `plex.tv` auto-discovery (local-first, single-flight lock), library fetch, watch state, artwork URL generation, Plex search, recommendation hubs, playback info/progress/stop |
 | `plexPlayback.ts` | Enumerate Plex clients for "play on this device" delegation |
 | `jellyfin.ts` / `emby.ts` | 25-line wrappers over `embyLike.ts`, which contains the shared Jellyfin/Emby service (auth, content, playback, scrobble). |
-| `embyLike.ts` | Factory function for the Jellyfin/Emby-compatible API surface. Parameterised by config selector + source tag. |
+| `embyLike.ts` | Factory function for the Jellyfin/Emby-compatible API surface. Parameterised by config selector + source tag. See `docs/emby-jellyfin-playback.md` for the bug history behind every load-bearing decision in this file (DeviceProfile shape, `useServerTranscodingUrl` gate, `clientSeekMs` workaround, `SubtitleMethod=External` for off, `VideoBitrate` for quality picks, etc.). |
 | `sonarr.ts` | Calendar, history, queue, search, add; quality profiles + root folders for Add picker |
 | `radarr.ts` | Same surface as Sonarr for movies |
 | `tmdb.ts` | Multi-search (movies + shows), image URL generation |
