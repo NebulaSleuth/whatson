@@ -544,7 +544,19 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         MaxStreamingBitrate: maxBpsBody,
         MaxStaticBitrate: maxBpsBody,
         MusicStreamingTranscodingBitrate: 192000,
-        DirectPlayProfiles: [],
+        // Broad DirectPlayProfiles so the server's compatibility
+        // matcher has something to chew on when deciding what to
+        // transcode. EnableDirectPlay=false on the request prevents
+        // actual direct play; these profiles are advisory.
+        //
+        // Emby 4.9.x started returning ErrorCode=NoCompatibleStream
+        // when this was an empty array — even though we'd explicitly
+        // opted out of direct play and provided a TranscodingProfile.
+        // Jellyfin tolerates [], Emby does not.
+        DirectPlayProfiles: [
+          { Container: 'mp4,m4v,mkv,webm,mov,avi,ts,m2ts', Type: 'Video' },
+          { Container: 'mp3,aac,flac,ogg,wav,m4a,opus', Type: 'Audio' },
+        ],
         TranscodingProfiles: [
           {
             Container: 'ts',
