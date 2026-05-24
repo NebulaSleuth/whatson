@@ -296,16 +296,27 @@ export function VideoPlayer({ item, onClose }: Props) {
           hls.attachMedia(video);
         }
         console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url}`);
-        // For SWAP with seekToMs > 0 (Emby image-sub workaround where
-        // the server transcodes from 0 and the client seeks locally),
-        // the video element's loadedmetadata listener doesn't refire
-        // — hls.js feeds the same MSE source, so the seek in onLoaded
-        // never runs and playback restarts at whatever position the
-        // buffer happens to land at. Register a one-shot MANIFEST_LOADED
-        // listener on the hls instance, which DOES fire per loadSource,
-        // and seek there. Fresh loads still go through onLoaded (and
-        // also fire MANIFEST_LOADED, but the second seek is harmless).
-        if (seekToMs > 0 && !fresh) {
+        // SWAP: register a one-shot MANIFEST_LOADED handler that sets
+        // video.currentTime to seekToMs (in seconds) before playback
+        // resumes. We do this unconditionally on swap — not just when
+        // seekToMs > 0 — because hls.js reuses the same MSE across
+        // loadSource calls, so video.currentTime keeps its prior
+        // (stale, often huge) value across the swap. Without an
+        // explicit reset:
+        //   - Server-seek swap (Emby quality-only, no sub burn) ends
+        //     up playing at some position deep into the new stream
+        //     (stale currentTime ≈ old absolute source position, but
+        //     the new stream's t=0 is the seek point — they don't
+        //     align).
+        //   - Client-seek swap (Emby image-sub / sub-burn) similarly
+        //     needs the explicit set to seekToMs=clientSeekMs.
+        // For the server-seek case seekToMs=0 (the new stream's
+        // start represents the seek point) and the new currentTime
+        // aligns with the new MSE buffer. For client-seek, seekToMs
+        // is the absolute source position we want to land on.
+        // loadedmetadata doesn't re-fire on swap because the media
+        // element doesn't re-load — only MANIFEST_LOADED is reliable.
+        if (!fresh) {
           const swapSeekHandler = () => {
             hls!.off(Hls.Events.MANIFEST_LOADED, swapSeekHandler);
             try {
