@@ -118,20 +118,7 @@ export function VideoPlayer({ item, onClose }: Props) {
       const video = videoRef.current;
       if (!video) return;
 
-      // Detach the old source cleanly before attaching a new one.
-      // hls.destroy() detaches the MediaSource but on some versions
-      // leaves the video.src attribute (a blob: URL pointing at the
-      // dead MediaSource). attachMedia on a fresh hls instance then
-      // silently no-ops and the element sits at networkState=3
-      // (NETWORK_NO_SOURCE). Belt-and-suspenders: pause, destroy
-      // the prior instance, then explicitly drop src + load() so
-      // the element is in a clean state for the new attach.
       try { video.pause(); } catch {}
-      if (hlsRef.current) {
-        try { hlsRef.current.destroy(); } catch (e) { console.warn('[hls] destroy threw', e); }
-        hlsRef.current = null;
-      }
-      try { video.removeAttribute('src'); video.load(); } catch {}
 
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
@@ -205,50 +192,56 @@ export function VideoPlayer({ item, onClose }: Props) {
       if (canNativeHls) {
         video.src = url;
       } else if (Hls.isSupported()) {
-        // Jellyfin / Emby transcode segments on demand. The HLS
-        // manifest lists every segment up front, but if the
-        // transcoder hasn't reached one yet the request 404s.
-        // Bump retry budgets and recover from transient network
-        // errors instead of bubbling them to the user as fatal.
-        const hls = new Hls({
-          enableWorker: true,
-          manifestLoadingMaxRetry: 6,
-          manifestLoadingRetryDelay: 1000,
-          levelLoadingMaxRetry: 6,
-          levelLoadingRetryDelay: 1000,
-          fragLoadingMaxRetry: 12,
-          fragLoadingRetryDelay: 1000,
-          fragLoadingMaxRetryTimeout: 30_000,
-        });
-        hlsRef.current = hls;
+        // hls.js's intended swap pattern is `loadSource(newUrl)` on
+        // the existing instance — destroy+recreate leaves the
+        // <video> in a half-attached state and the new attachMedia
+        // silently no-ops at networkState=3 (NETWORK_NO_SOURCE),
+        // which is the bug we kept seeing. So: create the instance
+        // ONCE on first load, attach event handlers ONCE, and just
+        // call loadSource for every subsequent swap.
+        let hls = hlsRef.current;
+        const fresh = !hls;
+        if (!hls) {
+          hls = new Hls({
+            enableWorker: true,
+            manifestLoadingMaxRetry: 6,
+            manifestLoadingRetryDelay: 1000,
+            levelLoadingMaxRetry: 6,
+            levelLoadingRetryDelay: 1000,
+            fragLoadingMaxRetry: 12,
+            fragLoadingRetryDelay: 1000,
+            fragLoadingMaxRetryTimeout: 30_000,
+          });
+          hlsRef.current = hls;
+          hls.on(Hls.Events.MANIFEST_LOADED, (_e, data) => {
+            console.log(`[hls] manifest loaded — levels=${data.levels.length} ` +
+              `audioTracks=${data.audioTracks?.length ?? 0}`);
+          });
+          hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
+            console.log(`[hls] level ${data.level} loaded — totalduration=${data.details.totalduration} fragments=${data.details.fragments.length}`);
+          });
+          hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
+            if (typeof data.frag.sn === 'number' && data.frag.sn < 3) {
+              console.log(`[hls] frag loaded sn=${data.frag.sn} duration=${data.frag.duration}`);
+            }
+          });
+          hls.on(Hls.Events.ERROR, (_e, data) => {
+            console.warn(`[hls] error type=${data.type} details=${data.details} fatal=${data.fatal} ` +
+              `response=${data.response?.code ?? '-'} url=${data.frag?.url ?? data.url ?? '-'}`);
+            if (!data.fatal) return;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              console.warn('[hls] fatal network error — retrying');
+              try { hls!.startLoad(); return; } catch {}
+            } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              console.warn('[hls] fatal media error — recovering');
+              try { hls!.recoverMediaError(); return; } catch {}
+            }
+            setError(`Playback error: ${data.type} / ${data.details}`);
+          });
+          hls.attachMedia(video);
+        }
         hls.loadSource(url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_LOADED, (_e, data) => {
-          console.log(`[hls] manifest loaded — levels=${data.levels.length} ` +
-            `audioTracks=${data.audioTracks?.length ?? 0}`);
-        });
-        hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
-          console.log(`[hls] level ${data.level} loaded — totalduration=${data.details.totalduration} fragments=${data.details.fragments.length}`);
-        });
-        hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
-          // Only log the first few fragments per stream so we don't spam.
-          if (data.frag.sn === data.frag.start || (typeof data.frag.sn === 'number' && data.frag.sn < 3)) {
-            console.log(`[hls] frag loaded sn=${data.frag.sn} duration=${data.frag.duration}`);
-          }
-        });
-        hls.on(Hls.Events.ERROR, (_e, data) => {
-          console.warn(`[hls] error type=${data.type} details=${data.details} fatal=${data.fatal} ` +
-            `response=${data.response?.code ?? '-'} url=${data.frag?.url ?? data.url ?? '-'}`);
-          if (!data.fatal) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            console.warn('[hls] fatal network error — retrying');
-            try { hls.startLoad(); return; } catch {}
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            console.warn('[hls] fatal media error — recovering');
-            try { hls.recoverMediaError(); return; } catch {}
-          }
-          setError(`Playback error: ${data.type} / ${data.details}`);
-        });
+        console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url.slice(0, 120)}`);
       } else {
         setError("This browser cannot play HLS streams.");
         return;
