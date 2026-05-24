@@ -845,15 +845,24 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       if (effectiveStartTicks > 0) {
         u.searchParams.set('StartTimeTicks', String(effectiveStartTicks));
       }
-      // If the caller picked a subtitle, ensure it's in the URL even if
-      // the server didn't echo it (shouldn't happen now we send it on
-      // the POST query, but cheap to be defensive).
-      if (!u.searchParams.has('SubtitleStreamIndex')) {
-        u.searchParams.set('SubtitleStreamIndex', String(subIndexForBody));
-      }
-      // SubtitleMethod accompanies SubtitleStreamIndex for burn-in.
-      if (subIndexForBody > 0 && !u.searchParams.has('SubtitleMethod')) {
+      // *Override* the subtitle params — don't just add if missing.
+      // Jellyfin's TranscodingUrl bakes in a default SubtitleStreamIndex
+      // (the source's IsDefault sub, with SubtitleMethod=Encode) when
+      // the sub codec isn't supported natively. If the caller asked for
+      // a different sub (or for "off" via -1), we need to actually
+      // replace Jellyfin's default — otherwise the player keeps burning
+      // sub-2 on every quality/sub swap and the user's pick is silently
+      // ignored. Confirmed against the user's Amazing Colossal Man on
+      // Jellyfin: TranscodingUrl had SubtitleStreamIndex=2&SubtitleMethod
+      // =Encode regardless of what we POSTed.
+      u.searchParams.set('SubtitleStreamIndex', String(subIndexForBody));
+      if (subIndexForBody > 0) {
         u.searchParams.set('SubtitleMethod', 'Encode');
+      } else {
+        // -1 (off) — drop SubtitleMethod so the transcoder doesn't try
+        // to burn the (non-existent) -1 stream. Jellyfin handles a
+        // missing SubtitleMethod with -1 as "don't burn."
+        u.searchParams.delete('SubtitleMethod');
       }
       streamUrl = u.toString();
       if (shouldDropStartTicks) {
