@@ -544,18 +544,25 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         MaxStreamingBitrate: maxBpsBody,
         MaxStaticBitrate: maxBpsBody,
         MusicStreamingTranscodingBitrate: 192000,
-        // Broad DirectPlayProfiles so the server's compatibility
-        // matcher has something to chew on when deciding what to
-        // transcode. EnableDirectPlay=false on the request prevents
-        // actual direct play; these profiles are advisory.
-        //
-        // Emby 4.9.x started returning ErrorCode=NoCompatibleStream
-        // when this was an empty array — even though we'd explicitly
-        // opted out of direct play and provided a TranscodingProfile.
-        // Jellyfin tolerates [], Emby does not.
+        // DirectPlayProfiles tell the server's compatibility matcher
+        // what source codecs we can decode. Even though we set
+        // EnableDirectPlay=false (so real direct play won't happen),
+        // Emby 4.9.x's profile matcher uses the VideoCodec /
+        // AudioCodec lists here to confirm a playable chain exists
+        // *at all*. An entry without these fields, or an empty
+        // array, returns ErrorCode=NoCompatibleStream on every item.
+        // Jellyfin is more lenient — works with either shape.
         DirectPlayProfiles: [
-          { Container: 'mp4,m4v,mkv,webm,mov,avi,ts,m2ts', Type: 'Video' },
-          { Container: 'mp3,aac,flac,ogg,wav,m4a,opus', Type: 'Audio' },
+          {
+            Container: 'mp4,m4v,mkv,webm,mov,avi,ts,m2ts,3gp,flv',
+            Type: 'Video',
+            VideoCodec: 'h264,hevc,h265,mpeg4,mpeg2video,vp8,vp9,av1,vc1',
+            AudioCodec: 'aac,mp3,ac3,eac3,opus,vorbis,flac,dts,truehd,pcm,alac,mp2',
+          },
+          {
+            Container: 'mp3,aac,flac,ogg,wav,m4a,opus,mp2,ac3,eac3',
+            Type: 'Audio',
+          },
         ],
         TranscodingProfiles: [
           {
