@@ -24,7 +24,7 @@ export const colors = {
   progressBar: '#E5A00D',
   sourcePlex: '#E5A00D',
   sourceJellyfin: '#AA5CC3',
-  sourceEmby: '#52B54B',
+  sourceEmby: '#4CAF50',
   sourceSonarr: '#35C5F4',
   sourceRadarr: '#FFC230',
   sourceLive: '#4CAF50',

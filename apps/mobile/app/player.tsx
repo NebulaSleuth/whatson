@@ -60,6 +60,10 @@ interface PlaybackInfo {
   title: string;
   duration: number;
   viewOffset: number;
+  // Jellyfin image-subtitle workaround: backend transcodes from t=0 and
+  // tells us to seek the video element to this offset. See
+  // packages/api/src/services/embyLike.ts shouldDropStartTicks.
+  clientSeekMs?: number;
   serverUrl: string;
   subtitles: TrackInfo[];
   audioTracks: TrackInfo[];
@@ -452,7 +456,8 @@ export default function PlayerScreen() {
 
         setPlaybackInfo({
           sessionId: info.sessionId, title: info.title, duration: info.duration,
-          viewOffset: info.viewOffset, serverUrl: info.serverUrl,
+          viewOffset: info.viewOffset, clientSeekMs: info.clientSeekMs ?? 0,
+          serverUrl: info.serverUrl,
           subtitles: info.subtitles || [], audioTracks: info.audioTracks || [],
           markers: info.markers || [],
         });
@@ -464,7 +469,12 @@ export default function PlayerScreen() {
         if (defaultAudio) setSelectedAudioId(defaultAudio.id);
 
         let url = info.streamUrl;
-        if (info.viewOffset > 0) {
+        // clientSeekMs wins over viewOffset — when the backend signals
+        // it, the stream actually starts at t=0 and we seek the video
+        // element instead. This is the Jellyfin image-subtitle path.
+        if (info.clientSeekMs && info.clientSeekMs > 0) {
+          currentPositionRef.current = info.clientSeekMs;
+        } else if (info.viewOffset > 0) {
           const offsetSec = Math.floor(info.viewOffset / 1000);
           url = url.replace(/offset=\d+/, `offset=${offsetSec}`);
           currentPositionRef.current = info.viewOffset;
@@ -491,11 +501,19 @@ export default function PlayerScreen() {
     try { player.current?.pause(); } catch {}
     if (playbackInfo) {
       await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId, source).catch(() => {});
-      await api.stopPlayback(playbackInfo.sessionId, source).catch(() => {});
+      // Pass the final position + raw sourceId so the backend can seed
+      // lastProgress and write UserData (Jellyfin) / scrobble (Plex)
+      // deterministically before tearing the transcoder down.
+      await api
+        .stopPlayback(playbackInfo.sessionId, source, {
+          ratingKey,
+          positionMs: currentPositionRef.current,
+        })
+        .catch(() => {});
     }
     if (progressInterval.current) clearInterval(progressInterval.current);
     router.back();
-  }, [ratingKey, playbackInfo]);
+  }, [ratingKey, playbackInfo, source]);
 
   // Back — hides controls first, then exits player on second press
   const handleBack = useCallback(async () => {
@@ -581,10 +599,17 @@ export default function PlayerScreen() {
         audioStreamID: selectedAudioId ?? undefined,
       });
       console.log('[Player] got new stream URL (first 100 chars): ' + newInfo.streamUrl.slice(0, 100));
-      console.log('[Player] new sessionId: ' + newInfo.sessionId);
+      console.log('[Player] new sessionId: ' + newInfo.sessionId + ' clientSeekMs=' + (newInfo.clientSeekMs ?? 0));
 
-      setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
-      currentPositionRef.current = Math.floor(currentTime * 1000);
+      setPlaybackInfo((prev) =>
+        prev ? { ...prev, sessionId: newInfo.sessionId, clientSeekMs: newInfo.clientSeekMs ?? 0 } : prev,
+      );
+      // When the server returns clientSeekMs the new stream starts at
+      // t=0 and we'll seek client-side; track source position from
+      // that value, not from currentTime within the old stream.
+      currentPositionRef.current = newInfo.clientSeekMs && newInfo.clientSeekMs > 0
+        ? newInfo.clientSeekMs
+        : Math.floor(currentTime * 1000);
       setStreamUrl(newInfo.streamUrl);
       setPlayerKey((k) => {
         console.log('[Player] playerKey: ' + k + ' -> ' + (k + 1));
@@ -624,10 +649,14 @@ export default function PlayerScreen() {
         subtitleStreamID: subId === null ? 0 : subId,
         audioStreamID: audId ?? undefined,
       });
-      console.log('[Player] track change got new URL, sessionId=' + newInfo.sessionId);
+      console.log('[Player] track change got new URL, sessionId=' + newInfo.sessionId + ' clientSeekMs=' + (newInfo.clientSeekMs ?? 0));
 
-      setPlaybackInfo((prev) => prev ? { ...prev, sessionId: newInfo.sessionId } : prev);
-      currentPositionRef.current = Math.floor(currentTime * 1000);
+      setPlaybackInfo((prev) =>
+        prev ? { ...prev, sessionId: newInfo.sessionId, clientSeekMs: newInfo.clientSeekMs ?? 0 } : prev,
+      );
+      currentPositionRef.current = newInfo.clientSeekMs && newInfo.clientSeekMs > 0
+        ? newInfo.clientSeekMs
+        : Math.floor(currentTime * 1000);
       setStreamUrl(newInfo.streamUrl);
       setPlayerKey((k) => {
         console.log('[Player] track playerKey: ' + k + ' -> ' + (k + 1));
@@ -660,7 +689,11 @@ export default function PlayerScreen() {
           <VideoPlayerView
             key={playerKey}
             url={streamUrl}
-            resumePosition={playerKey > 0 ? currentPositionRef.current : 0}
+            resumePosition={
+              (playbackInfo?.clientSeekMs ?? 0) > 0
+                ? playbackInfo!.clientSeekMs!
+                : (playerKey > 0 ? currentPositionRef.current : 0)
+            }
             onPlayer={handlePlayerReady}
             onPlaying={handlePlayingState}
           />

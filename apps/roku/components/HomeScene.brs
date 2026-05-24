@@ -3120,11 +3120,20 @@ sub onPlaybackResponse()
     end if
     if descStr <> "" then content.description = descStr
 
-    ' Resume position. Quality-swap takes priority — the local
-    ' Video.position at swap time is more accurate than viewOffset
-    ' (which only reflects the last reportProgress, up to 10s stale).
+    ' Resume position. Precedence:
+    '   1. clientSeekMs (backend signal — Jellyfin image-subtitle
+    '      workaround where the stream actually starts at t=0 and the
+    '      client must seek to clientSeekMs on its own). Always wins
+    '      because the alternatives would put the player at the wrong
+    '      source position.
+    '   2. Quality-swap local position — more accurate than viewOffset
+    '      (which is up to 10s stale from the last reportProgress).
+    '   3. viewOffset from the playback info (Plex pre-seek path).
     resumeMs = invalid
-    if m.qualitySwapResumeMs <> invalid and m.qualitySwapResumeMs > 0
+    if info.clientSeekMs <> invalid and info.clientSeekMs > 0
+        resumeMs = info.clientSeekMs
+        m.qualitySwapResumeMs = invalid
+    else if m.qualitySwapResumeMs <> invalid and m.qualitySwapResumeMs > 0
         resumeMs = m.qualitySwapResumeMs
         m.qualitySwapResumeMs = invalid
     else if info.viewOffset <> invalid and info.viewOffset > 0
@@ -3205,6 +3214,15 @@ sub sendStop()
     body = newPostBody()
     body["sessionId"] = m.playbackInfo.sessionId
     body["source"] = m.selectedItem.itemSource
+    ' Include the final position + the raw sourceId so the backend can
+    ' seed lastProgress and write UserData (Jellyfin) / scrobble (Plex)
+    ' deterministically before tearing the transcoder session down.
+    ' Without this, close-after-seek loses the position because the
+    ' periodic 10s reporter may not have fired since the seek.
+    body["ratingKey"] = m.selectedItem.itemSourceId
+    if m.video <> invalid and m.video.position <> invalid
+        body["positionMs"] = Int(m.video.position * 1000)
+    end if
     ' `stop` would shadow the BrightScript reserved word — use stopTask.
     stopTask = CreateObject("roSGNode", "ApiTask")
     stopTask.method = "POST"

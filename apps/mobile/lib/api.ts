@@ -248,6 +248,7 @@ export const api = {
       episodeNumber?: number;
       duration: number;
       viewOffset: number;
+      clientSeekMs?: number;
       subtitles: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       audioTracks: Array<{ id: number; index: number; language: string; title: string; selected: boolean }>;
       markers: Array<{ type: 'intro' | 'credits'; startMs: number; endMs: number }>;
@@ -261,10 +262,10 @@ export const api = {
       body: JSON.stringify({ ratingKey, time, duration, state, sessionId, source }),
     }),
 
-  stopPlayback: (sessionId: string, source: string = 'plex') =>
+  stopPlayback: (sessionId: string, source: string = 'plex', extras?: { ratingKey?: string; positionMs?: number }) =>
     fetchApi<any>('/playback/stop', {
       method: 'POST',
-      body: JSON.stringify({ sessionId, source }),
+      body: JSON.stringify({ sessionId, source, ...(extras || {}) }),
     }),
 
   // Auth / server providers

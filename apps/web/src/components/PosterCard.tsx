@@ -10,7 +10,7 @@ interface Props {
 const SOURCE_BADGE: Record<string, { style: React.CSSProperties; label: string }> = {
   plex: { style: { backgroundColor: '#E5A00D', color: '#000' }, label: 'PLEX' },
   jellyfin: { style: { backgroundColor: '#AA5CC3', color: '#FFF' }, label: 'JELLY' },
-  emby: { style: { backgroundColor: '#00A4DC', color: '#FFF' }, label: 'EMBY' },
+  emby: { style: { backgroundColor: '#4CAF50', color: '#FFF' }, label: 'EMBY' },
   sonarr: { style: { backgroundColor: '#35C5F4', color: '#000' }, label: 'SONARR' },
   radarr: { style: { backgroundColor: '#FFC230', color: '#000' }, label: 'RADARR' },
   live: { style: { backgroundColor: '#4CAF50', color: '#000' }, label: 'LIVE TV' },

@@ -108,7 +108,7 @@ sub onContentChanged()
         badgeText = "JELLY"
     else if src = "emby"
         showBadge = true
-        badgeColor = "0x00a4dcff"        ' Emby blue
+        badgeColor = "0x4caf50ff"        ' Emby green
         badgeTextColor = "0xffffffff"
         badgeText = "EMBY"
     else if src = "sonarr"
