@@ -777,7 +777,18 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       : null;
     const pickedSubCodec = String(pickedSubStream?.Codec || '').toUpperCase();
     const isImageBasedSub = /^(PGS|DVB|DVD|VOB|HDMV)/.test(pickedSubCodec);
-    const shouldDropStartTicks = sourceHasImageSubs || isImageBasedSub;
+    // On Emby, the seek+burn combination is broken even for text
+    // subtitles (ASS / SRT / etc.). Confirmed on a multi-ASS file at
+    // item 474: with StartTimeTicks=N AND SubtitleStreamIndex>0, the
+    // returned playlist spans the full source duration but the
+    // transcoder output starts at N — fragment indices don't line up,
+    // segment requests time out, playback dies. The fix is the same
+    // as the image-sub workaround: transcode from t=0 and let the
+    // client seek locally via clientSeekMs.
+    // Jellyfin's TranscodingUrl path handles seek+burn correctly so
+    // we don't extend the workaround there.
+    const isEmbySubBurn = opts.source === 'emby' && subIndexForBody > 0;
+    const shouldDropStartTicks = sourceHasImageSubs || isImageBasedSub || isEmbySubBurn;
     // When we drop StartTimeTicks the stream actually starts at t=0
     // server-side. viewOffset reflects that (so baseSecondsRef stays
     // aligned), and clientSeekMs tells the client to seek the video
