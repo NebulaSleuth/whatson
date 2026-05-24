@@ -857,6 +857,23 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       ? `${cfg.url}/Videos/${itemId}/stream?api_key=${s.accessToken}&static=true&mediaSourceId=${mediaSource.Id}`
       : null;
 
+    // `selected` reflects what the *server is actually serving in this
+    // stream*, not the source file's IsDefault flag. The client uses
+    // `selected` to initialise the subtitle / audio dropdown — if it
+    // says IsDefault=true on Arabic but we're actually burning -1
+    // (off, via SubtitleMethod=External), the UI would show "Arabic
+    // selected" while the video has no subs. So we mirror the request
+    // here: subtitle is selected iff caller picked it. Audio is
+    // selected by request when given, else by IsDefault.
+    const requestedSubId =
+      playOpts.subtitleStreamID != null && playOpts.subtitleStreamID > 0
+        ? playOpts.subtitleStreamID
+        : null;
+    const requestedAudioId =
+      playOpts.audioStreamID != null && playOpts.audioStreamID > 0
+        ? playOpts.audioStreamID
+        : null;
+
     const subtitles = (mediaSource?.MediaStreams || [])
       .filter((st: any) => st.Type === 'Subtitle')
       .map((st: any, i: number) => ({
@@ -864,7 +881,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         index: st.Index ?? i,
         language: st.Language || 'Unknown',
         title: st.DisplayTitle || st.Language || `Subtitle ${i + 1}`,
-        selected: st.IsDefault === true,
+        selected: requestedSubId != null && (st.Index ?? i) === requestedSubId,
       }));
 
     const audioTracks = (mediaSource?.MediaStreams || [])
@@ -874,7 +891,9 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         index: st.Index ?? i,
         language: st.Language || 'Unknown',
         title: st.DisplayTitle || st.Language || `Audio ${i + 1}`,
-        selected: st.IsDefault === true,
+        selected: requestedAudioId != null
+          ? (st.Index ?? i) === requestedAudioId
+          : st.IsDefault === true,
       }));
 
     return {

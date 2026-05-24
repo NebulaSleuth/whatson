@@ -296,6 +296,32 @@ export function VideoPlayer({ item, onClose }: Props) {
           hls.attachMedia(video);
         }
         console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url}`);
+        // For SWAP with seekToMs > 0 (Emby image-sub workaround where
+        // the server transcodes from 0 and the client seeks locally),
+        // the video element's loadedmetadata listener doesn't refire
+        // — hls.js feeds the same MSE source, so the seek in onLoaded
+        // never runs and playback restarts at whatever position the
+        // buffer happens to land at. Register a one-shot MANIFEST_LOADED
+        // listener on the hls instance, which DOES fire per loadSource,
+        // and seek there. Fresh loads still go through onLoaded (and
+        // also fire MANIFEST_LOADED, but the second seek is harmless).
+        if (seekToMs > 0 && !fresh) {
+          const swapSeekHandler = () => {
+            hls!.off(Hls.Events.MANIFEST_LOADED, swapSeekHandler);
+            try {
+              video.currentTime = seekToMs / 1000;
+              console.log(`${tag} swap seek via MANIFEST_LOADED to ${seekToMs / 1000}s`);
+            } catch (e) {
+              console.warn(`${tag} swap seek failed`, e);
+            }
+            video.play().then(
+              () => console.log(`${tag} swap play() resolved`),
+              (err) => console.warn(`${tag} swap play() rejected`, err.name, err.message),
+            );
+          };
+          hls.on(Hls.Events.MANIFEST_LOADED, swapSeekHandler);
+          ac.signal.addEventListener('abort', () => hls!.off(Hls.Events.MANIFEST_LOADED, swapSeekHandler));
+        }
         hls.loadSource(url);
         // Log the active hls.js subtitle / audio track + text tracks
         // on the video element a beat later so we can see what the
