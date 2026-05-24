@@ -709,20 +709,20 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       StartTimeTicks: String(startTicks),
     };
     // Jellyfin/Emby use SubtitleStreamIndex=-1 for "no subtitle".
-    // Our clients pass 0 as the "off" sentinel — translate it.
+    // Our clients pass 0 (or null) as the "off" sentinel — translate.
     //
-    // When the caller doesn't pick a subtitle we now explicitly send
-    // -1 (subtitles off) rather than `SubtitleMethod=Encode` alone.
-    // The old behaviour caused Emby to burn whatever was marked
-    // IsDefault=true on the source (e.g. Arabic on a multi-sub MKV)
-    // even though our UI was showing "Off" — a confusing inversion
-    // for the user. "Off" by default matches the UI and matches
-    // every other player in the app (Plex client behaves the same).
+    // Pairing SubtitleStreamIndex with an explicit SubtitleMethod is
+    // load-bearing on Emby. With just `SubtitleStreamIndex=-1` and
+    // no method, Emby silently ignores the -1 and burns whatever's
+    // IsDefault=true on the source (e.g. Arabic on a multi-sub MKV).
+    // Sending `SubtitleMethod=Drop` tells the transcoder to drop the
+    // subtitle stream entirely, which Emby honours.
     if (playOpts.subtitleStreamID != null && playOpts.subtitleStreamID > 0) {
       streamParams.SubtitleStreamIndex = String(playOpts.subtitleStreamID);
       streamParams.SubtitleMethod = 'Encode';
     } else {
       streamParams.SubtitleStreamIndex = '-1';
+      streamParams.SubtitleMethod = 'Drop';
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
