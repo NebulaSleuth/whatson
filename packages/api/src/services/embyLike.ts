@@ -620,7 +620,15 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       AllowVideoStreamCopy: false,
       AllowAudioStreamCopy: false,
       AutoOpenLiveStream: true,
-      MediaSourceId: itemId,
+      // DO NOT set MediaSourceId=itemId here. Emby's MediaSource.Id
+      // is prefixed (e.g. `mediasource_9` for item `9`), so passing
+      // the raw itemId tells Emby "find this exact source" — which
+      // doesn't exist, so it returns NoCompatibleStream on every
+      // request. Omitting it makes both servers fall back to the
+      // item's primary MediaSource, which is what we want. (This
+      // line was added in v0.1.65 for Jellyfin, where item.Id ==
+      // MediaSource.Id so it was a no-op; on Emby it silently broke
+      // every playback request until the v0.1.74 / v0.1.75 bisect.)
     };
     if (playOpts.audioStreamID != null) {
       playbackInfoQuery.AudioStreamIndex = playOpts.audioStreamID;
