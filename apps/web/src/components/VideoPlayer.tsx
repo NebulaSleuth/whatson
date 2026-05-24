@@ -120,8 +120,18 @@ export function VideoPlayer({ item, onClose }: Props) {
 
       try { video.pause(); } catch {}
 
-      const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
+      // Prefer hls.js everywhere it's supported. Chromium-based
+      // browsers (including Edge / new Chrome) sometimes claim
+      // native HLS support via canPlayType but their actual
+      // implementation doesn't handle source swaps cleanly — the
+      // <video> element ends up at networkState=3 with no source
+      // ever installed. hls.js handles this path correctly. Only
+      // fall back to native HLS when hls.js isn't available
+      // (Safari on iOS, where MSE is restricted).
+      const hlsJsSupported = Hls.isSupported();
+      const canNativeHls = !hlsJsSupported && video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
+      console.log(`${tag} attach path: ${hlsJsSupported ? 'hls.js' : canNativeHls ? 'native HLS' : 'unsupported'} userAgent=${navigator.userAgent}`);
 
       // Register the seek-and-play listener BEFORE attaching the new
       // source — hls.js can fire loadedmetadata synchronously after a
@@ -189,9 +199,7 @@ export function VideoPlayer({ item, onClose }: Props) {
       // don't spam the console for streams that just take a while.
       window.setTimeout(() => window.clearInterval(logTimer), 60_000);
 
-      if (canNativeHls) {
-        video.src = url;
-      } else if (Hls.isSupported()) {
+      if (hlsJsSupported) {
         // hls.js's intended swap pattern is `loadSource(newUrl)` on
         // the existing instance — destroy+recreate leaves the
         // <video> in a half-attached state and the new attachMedia
@@ -242,6 +250,8 @@ export function VideoPlayer({ item, onClose }: Props) {
         }
         hls.loadSource(url);
         console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url.slice(0, 120)}`);
+      } else if (canNativeHls) {
+        video.src = url;
       } else {
         setError("This browser cannot play HLS streams.");
         return;
