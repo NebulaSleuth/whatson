@@ -224,13 +224,30 @@ export function VideoPlayer({ item, onClose }: Props) {
           hls.on(Hls.Events.MANIFEST_LOADED, (_e, data) => {
             console.log(`[hls] manifest loaded — levels=${data.levels.length} ` +
               `audioTracks=${data.audioTracks?.length ?? 0}`);
+            const levelDesc = data.levels.map((l, i) => `${i}:${l.width || '?'}x${l.height || '?'}@${Math.round((l.bitrate || 0) / 1000)}k`).join(' | ');
+            console.log(`[hls] levels: ${levelDesc}`);
+          });
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_e, data) => {
+            const lvl = hls!.levels[data.level];
+            console.log(`[hls] LEVEL_SWITCHED → level=${data.level} ${lvl?.width}x${lvl?.height}@${Math.round((lvl?.bitrate || 0) / 1000)}k`);
+          });
+          hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_e, data) => {
+            const list = data.subtitleTracks.map((t, i) => `${i}:${t.lang || '?'}${t.default ? '*' : ''}:${t.name || ''}`).join(' | ');
+            console.log(`[hls] SUBTITLE_TRACKS_UPDATED count=${data.subtitleTracks.length} list=[${list}] current=${hls!.subtitleTrack}`);
+          });
+          hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, (_e, data) => {
+            console.log(`[hls] SUBTITLE_TRACK_SWITCH → id=${data.id}`);
+          });
+          hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_e, data) => {
+            const list = data.audioTracks.map((t, i) => `${i}:${t.lang || '?'}${t.default ? '*' : ''}`).join(' | ');
+            console.log(`[hls] AUDIO_TRACKS_UPDATED count=${data.audioTracks.length} list=[${list}] current=${hls!.audioTrack}`);
           });
           hls.on(Hls.Events.LEVEL_LOADED, (_e, data) => {
             console.log(`[hls] level ${data.level} loaded — totalduration=${data.details.totalduration} fragments=${data.details.fragments.length}`);
           });
           hls.on(Hls.Events.FRAG_LOADED, (_e, data) => {
             if (typeof data.frag.sn === 'number' && data.frag.sn < 3) {
-              console.log(`[hls] frag loaded sn=${data.frag.sn} duration=${data.frag.duration}`);
+              console.log(`[hls] frag loaded sn=${data.frag.sn} duration=${data.frag.duration} url=${data.frag.url?.slice(0, 100)}`);
             }
           });
           hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -248,8 +265,20 @@ export function VideoPlayer({ item, onClose }: Props) {
           });
           hls.attachMedia(video);
         }
+        console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url}`);
         hls.loadSource(url);
-        console.log(`${tag} hls.loadSource (${fresh ? 'fresh instance' : 'reused instance'}) url=${url.slice(0, 120)}`);
+        // Log the active hls.js subtitle / audio track + text tracks
+        // on the video element a beat later so we can see what the
+        // browser actually picked up after the manifest loaded.
+        window.setTimeout(() => {
+          const tt = Array.from(video.textTracks).map((t) =>
+            `${t.kind}/${t.language || '?'}/${t.label || '?'}:${t.mode}`,
+          );
+          console.log(
+            `[hls] post-load state: subtitleTrack=${hls!.subtitleTrack} audioTrack=${hls!.audioTrack} ` +
+            `level=${hls!.currentLevel} loadLevel=${hls!.loadLevel} textTracks=[${tt.join(' | ')}]`,
+          );
+        }, 1500);
       } else if (canNativeHls) {
         video.src = url;
       } else {

@@ -553,6 +553,19 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
     console.log(`[${opts.label}] playback session=${ourSessionId.slice(0, 24)} streamParams: SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'} MaxStreamingBitrate=${streamParams.MaxStreamingBitrate}`);
+    // Dump what Emby actually reports for this MediaSource so we can
+    // tell if it lined up subtitles as HLS tracks vs burn vs nothing.
+    const subInfo = (mediaSource?.MediaStreams || [])
+      .filter((st: any) => st.Type === 'Subtitle')
+      .map((st: any) => `${st.Index}:${st.Language || '?'}${st.IsDefault ? '*default' : ''}${st.DeliveryMethod ? `:${st.DeliveryMethod}` : ''}`);
+    const audInfo = (mediaSource?.MediaStreams || [])
+      .filter((st: any) => st.Type === 'Audio')
+      .map((st: any) => `${st.Index}:${st.Language || '?'}${st.IsDefault ? '*default' : ''}`);
+    console.log(
+      `[${opts.label}] MediaSource id=${mediaSource?.Id} TranscodingUrl=${mediaSource?.TranscodingUrl?.slice(0, 80) || '(none)'} SupportsTranscoding=${mediaSource?.SupportsTranscoding} ` +
+      `subs=[${subInfo.join(', ')}] audio=[${audInfo.join(', ')}]`,
+    );
+    console.log(`[${opts.label}] streamUrl host+path: ${cfg.url}/Videos/${itemId}/master.m3u8 (paramCount=${Object.keys(streamParams).length})`);
 
     const streamUrl = axios.getUri({
       url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
