@@ -498,11 +498,22 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // transcoder with the new settings.
     const ourSessionId = `whatson-${opts.source}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+    // Force Emby / Jellyfin to transcode. When the source file is
+    // already h264/aac/ts (or matches the device profile we send)
+    // Emby defaults to DirectStream and serves the original bytes
+    // unmodified — our SubtitleStreamIndex / MaxStreamingBitrate /
+    // AudioStreamIndex params then have no effect. Disabling
+    // DirectPlay + DirectStream forces a fresh transcoder for every
+    // session, which is what the user expects when they change a
+    // subtitle / audio / quality setting.
     const { data: playback } = await http.post(
       `/Items/${itemId}/PlaybackInfo`,
       {
         UserId: s.userId,
         PlaySessionId: ourSessionId,
+        EnableDirectPlay: false,
+        EnableDirectStream: false,
+        EnableTranscoding: true,
         DeviceProfile: {
           MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
           MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
