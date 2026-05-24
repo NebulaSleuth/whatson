@@ -490,10 +490,19 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const requestedTicks = (playOpts.offsetMs || 0) * TICKS_PER_MS;
     const startTicks = requestedTicks > 0 ? requestedTicks : savedPositionTicks;
 
+    // Generate a fresh PlaySessionId for every call. Without this
+    // Emby / Jellyfin reuse the prior session's transcoder, which on
+    // some builds ignores updated SubtitleStreamIndex /
+    // AudioStreamIndex / MaxStreamingBitrate params and keeps
+    // serving the original transcode. A new session forces a new
+    // transcoder with the new settings.
+    const ourSessionId = `whatson-${opts.source}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     const { data: playback } = await http.post(
       `/Items/${itemId}/PlaybackInfo`,
       {
         UserId: s.userId,
+        PlaySessionId: ourSessionId,
         DeviceProfile: {
           MaxStreamingBitrate: (playOpts.maxBitrate || 20000) * 1000,
           MaxStaticBitrate: (playOpts.maxBitrate || 20000) * 1000,
@@ -505,7 +514,11 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     );
 
     const mediaSource = playback?.MediaSources?.[0];
-    const sessionId = playback?.PlaySessionId || `whatson-${opts.source}-${Date.now()}`;
+    // Prefer the session id we asked for; some Emby builds echo
+    // a different value in the response which would let the old
+    // session live on. Falling through to the generated id keeps
+    // every call using a unique session.
+    const sessionId = ourSessionId;
 
     const streamParams: Record<string, string> = {
       DeviceId: DEVICE_ID,
@@ -539,7 +552,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
 
-    console.log(`[${opts.label}] playback streamParams: SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'}`);
+    console.log(`[${opts.label}] playback session=${ourSessionId.slice(0, 24)} streamParams: SubtitleStreamIndex=${streamParams.SubtitleStreamIndex || '(unset)'} SubtitleMethod=${streamParams.SubtitleMethod || '(unset)'} AudioStreamIndex=${streamParams.AudioStreamIndex || '(unset)'} MaxStreamingBitrate=${streamParams.MaxStreamingBitrate}`);
 
     const streamUrl = axios.getUri({
       url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
