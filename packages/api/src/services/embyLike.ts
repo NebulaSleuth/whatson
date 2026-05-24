@@ -614,11 +614,18 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     );
 
     const mediaSource = playback?.MediaSources?.[0];
-    // Prefer the session id we asked for; some Emby builds echo
-    // a different value in the response which would let the old
-    // session live on. Falling through to the generated id keeps
-    // every call using a unique session.
-    const sessionId = ourSessionId;
+    // Session id we hand back to the client. For Emby we use the id we
+    // generated (ourSessionId) because Emby accepts arbitrary
+    // PlaySessionId values and tracks /Sessions/Playing/Progress against
+    // them. Jellyfin is stricter — it only updates UserData.PlaybackPositionTicks
+    // when the PlaySessionId on /Progress matches a session it tracks. The
+    // TranscodingUrl Jellyfin returns is keyed off its own echoed
+    // PlaySessionId, so we hand that back to the client; subsequent
+    // /Progress and /Stopped posts will then carry the matching id and
+    // actually update the user's resume position.
+    const echoedSessionId: string | undefined = playback?.PlaySessionId;
+    const useServerSession = !!(mediaSource?.TranscodingUrl && mediaSource?.TranscodingSubProtocol === 'hls' && echoedSessionId);
+    const sessionId = useServerSession ? (echoedSessionId as string) : ourSessionId;
 
     // ---------- response dump ----------
     console.log(
@@ -700,6 +707,23 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     let urlSource: string;
     const tuRaw: string | undefined = mediaSource?.TranscodingUrl;
     const tuProtocol: string | undefined = mediaSource?.TranscodingSubProtocol;
+    // Look up the picked subtitle stream's codec so we can dodge
+    // the Jellyfin/FFmpeg image-subtitle + seek bug: PGS / DVB / DVD /
+    // VOBSUB / HDMV streams need to be rasterised over the video, and
+    // when the transcoder is asked to *also* fast-seek to a non-zero
+    // StartTimeTicks the segment endpoint 400s. Text subs (ass/srt/etc.)
+    // are fine. v0.1.66 ran into this on Addams Family (PGSSUB).
+    const pickedSubStream = subIndexForBody > 0
+      ? ((mediaSource?.MediaStreams || []) as any[]).find((st) => st.Index === subIndexForBody)
+      : null;
+    const pickedSubCodec = String(pickedSubStream?.Codec || '').toUpperCase();
+    const isImageBasedSub = /^(PGS|DVB|DVD|VOB|HDMV)/.test(pickedSubCodec);
+    // When we skip StartTimeTicks for the image-sub workaround, the
+    // server transcodes from t=0 — so the position the client should
+    // assume for the new stream is 0, not the requested resume offset.
+    // viewOffset below is computed from this.
+    const effectiveStartTicks = isImageBasedSub ? 0 : startTicks;
+
     if (tuRaw && tuProtocol === 'hls') {
       const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
       const u = new URL(absolute);
@@ -708,8 +732,8 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       // fetch, where it gets baked into the underlying transcoder. Without
       // this, every swap restarts the video from t=0 regardless of the
       // resume offset we requested on PlaybackInfo.
-      if (startTicks > 0) {
-        u.searchParams.set('StartTimeTicks', String(startTicks));
+      if (effectiveStartTicks > 0) {
+        u.searchParams.set('StartTimeTicks', String(effectiveStartTicks));
       }
       // If the caller picked a subtitle, ensure it's in the URL even if
       // the server didn't echo it (shouldn't happen now we send it on
@@ -722,7 +746,9 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         u.searchParams.set('SubtitleMethod', 'Encode');
       }
       streamUrl = u.toString();
-      urlSource = 'server.TranscodingUrl';
+      urlSource = isImageBasedSub
+        ? `server.TranscodingUrl (StartTimeTicks dropped — image sub ${pickedSubCodec})`
+        : 'server.TranscodingUrl';
     } else {
       streamUrl = axios.getUri({
         url: `${cfg.url}/Videos/${itemId}/master.m3u8`,
@@ -780,7 +806,10 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       seasonNumber: item.ParentIndexNumber,
       episodeNumber: item.IndexNumber,
       duration: (item.RunTimeTicks || 0) / TICKS_PER_MS,
-      viewOffset: startTicks / TICKS_PER_MS,
+      // viewOffset must match where the server-side stream actually
+      // starts. For the image-sub workaround we restart at 0 server-side,
+      // so report 0 here — the client uses this to set baseSecondsRef.
+      viewOffset: effectiveStartTicks / TICKS_PER_MS,
       subtitles,
       audioTracks,
       markers: [],
@@ -823,6 +852,25 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       body.PositionTicks = last.positionTicks;
     }
     await http.post('/Sessions/Playing/Stopped', body).catch(() => {});
+    // Write PlaybackPositionTicks directly to UserData as a safety net.
+    // /Sessions/Playing/Stopped only updates resume position if Jellyfin
+    // recognises the PlaySessionId as a tracked session — and prior to
+    // wiring up the echoed session id, ours was never recognised so
+    // resume positions silently dropped on exit. UserData is the source
+    // of truth that the next getPlaybackInfo reads back as
+    // savedPositionTicks; writing it directly here guarantees resume
+    // works no matter what session tracking does.
+    if (last && last.positionTicks > 0) {
+      await http
+        .post(`/Users/${s.userId}/Items/${last.itemId}/UserData`, {
+          PlaybackPositionTicks: last.positionTicks,
+        })
+        .catch((err: Error) => {
+          console.warn(
+            `[${opts.label}] stopPlayback UserData write failed: ${err.message}`,
+          );
+        });
+    }
     lastProgress.delete(sessionId);
   };
 
