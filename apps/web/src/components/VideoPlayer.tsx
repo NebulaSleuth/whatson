@@ -27,6 +27,11 @@ export function VideoPlayer({ item, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const sessionRef = useRef<string | null>(null);
+  // Carries the AbortController for the current stream's video-element
+  // listeners. Aborted at the top of every loadStream so the prior
+  // stream's loadedmetadata / playing / error / diagnostic timer
+  // don't leak into the new attach.
+  const listenerAbortRef = useRef<AbortController | null>(null);
   // True while loadStream is detaching the old source and attaching
   // a new one. Suppresses the native <video> error event that fires
   // when the source is yanked out from under it — without this guard
@@ -56,6 +61,16 @@ export function VideoPlayer({ item, onClose }: Props) {
     const t0 = performance.now();
     const tag = `[player] loadStream`;
     console.log(`${tag} START opts=`, opts, 'baseSeconds=', baseSecondsRef.current);
+    // Drop the prior stream's listeners so loadedmetadata / playing /
+    // error / timer events from the now-detached source don't bleed
+    // into this attach.
+    if (listenerAbortRef.current) {
+      listenerAbortRef.current.abort();
+      listenerAbortRef.current = null;
+    }
+    const ac = new AbortController();
+    listenerAbortRef.current = ac;
+
     try {
       swappingRef.current = true;
       setError(null);
@@ -104,14 +119,19 @@ export function VideoPlayer({ item, onClose }: Props) {
       if (!video) return;
 
       // Detach the old source cleanly before attaching a new one.
-      // For the hls.js path, destroying the instance also detaches
-      // its MediaSource. For native HLS (Safari) we'll overwrite
-      // video.src below, no extra reset needed.
+      // hls.destroy() detaches the MediaSource but on some versions
+      // leaves the video.src attribute (a blob: URL pointing at the
+      // dead MediaSource). attachMedia on a fresh hls instance then
+      // silently no-ops and the element sits at networkState=3
+      // (NETWORK_NO_SOURCE). Belt-and-suspenders: pause, destroy
+      // the prior instance, then explicitly drop src + load() so
+      // the element is in a clean state for the new attach.
       try { video.pause(); } catch {}
       if (hlsRef.current) {
-        hlsRef.current.destroy();
+        try { hlsRef.current.destroy(); } catch (e) { console.warn('[hls] destroy threw', e); }
         hlsRef.current = null;
       }
+      try { video.removeAttribute('src'); video.load(); } catch {}
 
       const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
       const url = next.streamUrl;
@@ -174,9 +194,10 @@ export function VideoPlayer({ item, onClose }: Props) {
           readyState: video.readyState,
         });
       };
-      video.addEventListener('loadedmetadata', onLoaded, { once: true });
-      video.addEventListener('playing', onPlaying, { once: true });
-      video.addEventListener('error', onError);
+      video.addEventListener('loadedmetadata', onLoaded, { once: true, signal: ac.signal });
+      video.addEventListener('playing', onPlaying, { once: true, signal: ac.signal });
+      video.addEventListener('error', onError, { signal: ac.signal });
+      ac.signal.addEventListener('abort', () => window.clearInterval(logTimer));
       // Drop the diagnostic timer after a generous window so we
       // don't spam the console for streams that just take a while.
       window.setTimeout(() => window.clearInterval(logTimer), 60_000);
