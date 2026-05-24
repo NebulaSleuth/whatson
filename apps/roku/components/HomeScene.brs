@@ -18,6 +18,7 @@ sub init()
 
     m.homeView = m.top.findNode("homeView")
     m.detailView = m.top.findNode("detailView")
+    m.showDetailView = m.top.findNode("showDetailView")
     m.playerView = m.top.findNode("playerView")
 
     m.detailBackdrop = m.top.findNode("detailBackdrop")
@@ -26,18 +27,43 @@ sub init()
     m.detailMeta = m.top.findNode("detailMeta")
     m.detailSummary = m.top.findNode("detailSummary")
     m.detailActions = m.top.findNode("detailActions")
+    m.playButton = m.top.findNode("playButton")
+    m.goToShowButton = m.top.findNode("goToShowButton")
     m.markWatchedButton = m.top.findNode("markWatchedButton")
     m.markUnwatchedButton = m.top.findNode("markUnwatchedButton")
     m.trackButton = m.top.findNode("trackButton")
     m.addSonarrButton = m.top.findNode("addSonarrButton")
     m.addRadarrButton = m.top.findNode("addRadarrButton")
     m.detailAddStatus = m.top.findNode("detailAddStatus")
+
+    ' Show detail view — seasons + episodes browser, reached via the
+    ' Go to Show button on the regular detail view for episode items.
+    m.showDetailBackdrop = m.top.findNode("showDetailBackdrop")
+    m.showDetailPoster = m.top.findNode("showDetailPoster")
+    m.showDetailTitle = m.top.findNode("showDetailTitle")
+    m.showDetailMeta = m.top.findNode("showDetailMeta")
+    m.showDetailSummary = m.top.findNode("showDetailSummary")
+    m.showDetailActions = m.top.findNode("showDetailActions")
+    m.showDetailMarkAllWatched = m.top.findNode("showDetailMarkAllWatched")
+    m.showDetailMarkAllUnwatched = m.top.findNode("showDetailMarkAllUnwatched")
+    m.showDetailBackButton = m.top.findNode("showDetailBackButton")
+    m.showDetailSeasonsList = m.top.findNode("showDetailSeasonsList")
+    m.showDetailEpisodesGrid = m.top.findNode("showDetailEpisodesGrid")
+    m.showDetailEpisodesStatus = m.top.findNode("showDetailEpisodesStatus")
     m.video = m.top.findNode("video")
     m.skipButton = m.top.findNode("skipButton")
     m.tracksView = m.top.findNode("tracksView")
+    ' Combined playback-settings picker (Up arrow during playback).
+    ' Three tabs sharing the same overlay group — selecting an item
+    ' auto-commits + closes; Left/Right switches between Quality /
+    ' Audio / Subtitles tabs; Back cancels. The old standalone quality
+    ' Dialog (m.qualityDialog) was retired here.
+    m.tracksQualityList = m.top.findNode("tracksQualityList")
     m.tracksAudioList = m.top.findNode("tracksAudioList")
     m.tracksSubtitleList = m.top.findNode("tracksSubtitleList")
-    m.tracksCloseButton = m.top.findNode("tracksCloseButton")
+    m.tracksTabQualityLabel = m.top.findNode("tracksTabQualityLabel")
+    m.tracksTabAudioLabel = m.top.findNode("tracksTabAudioLabel")
+    m.tracksTabSubtitleLabel = m.top.findNode("tracksTabSubtitleLabel")
 
     m.tabBar = m.top.findNode("tabBar")
     m.titleLabel = m.top.findNode("title")
@@ -65,6 +91,11 @@ sub init()
     m.libraryTypeToggle = m.top.findNode("libraryTypeToggle")
     m.libraryTypeShow = m.top.findNode("libraryTypeShow")
     m.libraryTypeMovie = m.top.findNode("libraryTypeMovie")
+    m.librarySourceToggle = m.top.findNode("librarySourceToggle")
+    m.librarySourceAll = m.top.findNode("librarySourceAll")
+    m.librarySourcePlex = m.top.findNode("librarySourcePlex")
+    m.librarySourceJellyfin = m.top.findNode("librarySourceJellyfin")
+    m.librarySourceEmby = m.top.findNode("librarySourceEmby")
     m.libraryStatus = m.top.findNode("libraryStatus")
     m.libraryGrid = m.top.findNode("libraryGrid")
 
@@ -192,6 +223,19 @@ sub init()
     m.libraryCache = { show: invalid, movie: invalid }
     m.libraryFetchPending = 0
     m.libraryFetchResults = invalid
+    ' Source filter for the library grid. "all" unions every configured
+    ' library server (current default — same behaviour as before the
+    ' filter was added). Individual sources (plex / jellyfin / emby)
+    ' restrict the rendered grid to that source.
+    m.librarySource = "all"
+
+    ' Show detail view state. Populated by openShowDetail() when the
+    ' user picks Go to Show on an episode detail; reset between visits
+    ' so previous-show artwork doesn't briefly flash on a new one.
+    m.showDetailContext = invalid
+    m.showDetailSeasons = invalid
+    m.showDetailSelectedSeason = invalid
+    m.showDetailReturnTo = "detail"
 
     ' TV Shows / Movies tab state. Each tab fetches four (TV) or three
     ' (Movies) endpoints in parallel on first visit, then renders from
@@ -238,8 +282,11 @@ sub init()
         { label: "1.5 Mbps 480p", maxBitrate: 1500 },
         { label: "720 kbps SD", maxBitrate: 720 }
     ]
-    m.qualityDialog = invalid
     m.qualitySwapResumeMs = invalid
+    ' Index of the currently-applied quality preset, used to mark it
+    ' with ★ in the picker's Quality tab so the user knows what's
+    ' active. Updated whenever swapQuality runs.
+    m.currentQualityIndex = 0
 
     ' Set true while a quality / track swap is mid-flight so the
     ' Video.state="stopped" observer doesn't bounce the user back to
@@ -403,6 +450,11 @@ sub init()
     m.tvRowList.observeField("rowItemSelected", "onTvRowItemSelected")
     m.moviesRowList.observeField("rowItemSelected", "onMoviesRowItemSelected")
     m.detailActions.observeField("buttonSelected", "onDetailButtonSelected")
+    ' Show detail view — the button group fires buttonSelected and
+    ' the seasons list / episodes grid fire itemSelected.
+    m.showDetailActions.observeField("buttonSelected", "onShowDetailButtonSelected")
+    m.showDetailSeasonsList.observeField("itemSelected", "onShowDetailSeasonSelected")
+    m.showDetailEpisodesGrid.observeField("itemSelected", "onShowDetailEpisodeSelected")
     ' Each custom TabButton fires `buttonSelected` on OK press. Wire a
     ' single shared handler that walks m.tabButtons to find the source.
     for each btn in m.tabButtons
@@ -423,6 +475,14 @@ sub init()
     ' tracks m.libraryType = "show".
     m.libraryTypeShow.observeField("buttonSelected", "onLibraryTypeSelected")
     m.libraryTypeMovie.observeField("buttonSelected", "onLibraryTypeSelected")
+
+    ' Library source filter — All / Plex / Jellyfin / Emby. Default
+    ' selection is "All" (m.librarySource = "all" set in init state).
+    m.librarySourceAll.selected = true
+    m.librarySourceAll.observeField("buttonSelected", "onLibrarySourceSelected")
+    m.librarySourcePlex.observeField("buttonSelected", "onLibrarySourceSelected")
+    m.librarySourceJellyfin.observeField("buttonSelected", "onLibrarySourceSelected")
+    m.librarySourceEmby.observeField("buttonSelected", "onLibrarySourceSelected")
     m.libraryTypeShow.selected = true
     m.libraryTypeShow.nextFocusRight = m.libraryTypeMovie
     m.libraryTypeMovie.nextFocusLeft = m.libraryTypeShow
@@ -511,9 +571,9 @@ sub init()
     m.video.observeField("state", "onVideoStateChanged")
     m.video.observeField("position", "onVideoPosition")
     m.skipButton.observeField("buttonSelected", "onSkipPressed")
+    m.tracksQualityList.observeField("itemSelected", "onTracksQualityItemSelected")
     m.tracksAudioList.observeField("itemSelected", "onTracksAudioItemSelected")
     m.tracksSubtitleList.observeField("itemSelected", "onTracksSubtitleItemSelected")
-    m.tracksCloseButton.observeField("buttonSelected", "onTracksClosePressed")
 
     ' D-pad navigation between tab bar and content is handled in
     ' onKeyEvent(). RowList / MarkupGrid / ButtonGroup don't honour
@@ -957,6 +1017,53 @@ sub focusActiveLibraryType()
     end if
 end sub
 
+sub onLibrarySourceSelected()
+    ' Each TabButton sets its own buttonSelected on OK; figure out
+    ' which one fired and reset so the next press re-notifies.
+    newSource = invalid
+    if m.librarySourceAll.buttonSelected = true
+        newSource = "all"
+        m.librarySourceAll.buttonSelected = false
+    end if
+    if m.librarySourcePlex.buttonSelected = true
+        newSource = "plex"
+        m.librarySourcePlex.buttonSelected = false
+    end if
+    if m.librarySourceJellyfin.buttonSelected = true
+        newSource = "jellyfin"
+        m.librarySourceJellyfin.buttonSelected = false
+    end if
+    if m.librarySourceEmby.buttonSelected = true
+        newSource = "emby"
+        m.librarySourceEmby.buttonSelected = false
+    end if
+    if newSource = invalid then return
+    m.librarySourceAll.selected      = (newSource = "all")
+    m.librarySourcePlex.selected     = (newSource = "plex")
+    m.librarySourceJellyfin.selected = (newSource = "jellyfin")
+    m.librarySourceEmby.selected     = (newSource = "emby")
+    if newSource = m.librarySource then return
+    m.librarySource = newSource
+    print "[HomeScene] library source -> "; newSource
+    ' Re-render the cached dataset through the new filter. The fetch
+    ' cache is per-type, not per-source — the "all" fetch already has
+    ' everything; we just filter on render.
+    cached = m.libraryCache[m.libraryType]
+    if cached <> invalid then renderLibrary(cached)
+end sub
+
+sub focusActiveLibrarySource()
+    if m.librarySource = "plex"
+        m.librarySourcePlex.setFocus(true)
+    else if m.librarySource = "jellyfin"
+        m.librarySourceJellyfin.setFocus(true)
+    else if m.librarySource = "emby"
+        m.librarySourceEmby.setFocus(true)
+    else
+        m.librarySourceAll.setFocus(true)
+    end if
+end sub
+
 ' Fan out to every library-server source in parallel, mirroring how the
 ' mobile Library tab's `librarySources.map(...)` union works. We don't
 ' know which servers are configured, so we ask all three — unconfigured
@@ -1002,14 +1109,33 @@ sub onLibrarySourceResponse(event as object)
 end sub
 
 sub renderLibrary(items as object)
-    print "[HomeScene] library union: "; items.Count(); " items"
+    ' Apply the source filter selected in the UI. m.librarySource = "all"
+    ' (default) passes everything through; a specific source narrows to
+    ' just that adapter's items. We filter at render time so toggling
+    ' the pill is instant — no refetch needed since the cached dataset
+    ' already has every source unioned.
+    filtered = items
+    if m.librarySource <> invalid and m.librarySource <> "" and m.librarySource <> "all"
+        filtered = []
+        for each it in items
+            if it.source = m.librarySource then filtered.Push(it)
+        end for
+    end if
+    print "[HomeScene] library render: total="; items.Count(); " source="; m.librarySource; " shown="; filtered.Count()
 
-    if items.Count() = 0
-        m.libraryStatus.text = "No items in your library."
+    if filtered.Count() = 0
+        if m.librarySource <> "all"
+            m.libraryStatus.text = "No " + m.librarySource + " items in your library."
+        else
+            m.libraryStatus.text = "No items in your library."
+        end if
         m.libraryStatus.visible = true
         m.libraryGrid.visible = false
         return
     end if
+
+    ' From here on, "items" refers to the filtered slice.
+    items = filtered
 
     ' Sort alphabetically by display title (showTitle for episodes,
     ' falling back to title) — matches the mobile library default sort.
@@ -2055,23 +2181,57 @@ sub onDetailButtonSelected()
     idx = m.detailActions.buttonSelected
     print "[HomeScene] detail button selected: "; idx
     ' Indices map to XML order:
-    '   0=Play, 1=Mark Watched, 2=Mark Unwatched, 3=Track,
-    '   4=Add to Sonarr, 5=Add to Radarr, 6=Back
+    '   0=Play, 1=Go to Show, 2=Mark Watched, 3=Mark Unwatched,
+    '   4=Track, 5=Add to Sonarr, 6=Add to Radarr, 7=Back
     if idx = 0
         onPlayPressed()
     else if idx = 1
-        onMarkWatchedPressed()
+        onGoToShowPressed()
     else if idx = 2
-        onMarkUnwatchedPressed()
+        onMarkWatchedPressed()
     else if idx = 3
-        onTrackPressed()
+        onMarkUnwatchedPressed()
     else if idx = 4
-        onAddToSonarrPressed()
+        onTrackPressed()
     else if idx = 5
-        onAddToRadarrPressed()
+        onAddToSonarrPressed()
     else if idx = 6
+        onAddToRadarrPressed()
+    else if idx = 7
         returnToDetailOrigin()
     end if
+end sub
+
+sub onGoToShowPressed()
+    if m.selectedItem = invalid then return
+    ' Episode items expose itemShowRatingKey (mirroring ContentItem.
+    ' showRatingKey). Fall back to itemSourceId so the button still
+    ' works for show-typed items that arrive here directly.
+    showKey = ""
+    if m.selectedItem.itemShowRatingKey <> invalid and m.selectedItem.itemShowRatingKey <> "" then showKey = m.selectedItem.itemShowRatingKey
+    if showKey = "" and m.selectedItem.itemSourceId <> invalid then showKey = m.selectedItem.itemSourceId
+    if showKey = "" then return
+
+    src = "plex"
+    if m.selectedItem.itemSource <> invalid and m.selectedItem.itemSource <> "" then src = m.selectedItem.itemSource
+
+    ' Capture display metadata for instant render before the seasons
+    ' fetch completes. m.selectedItem already has these fields.
+    title = m.selectedItem.itemShowTitle
+    if title = invalid or title = "" then title = m.selectedItem.itemTitle
+    m.showDetailContext = {
+        ratingKey: showKey,
+        source: src,
+        title: title,
+        poster: m.selectedItem.itemPosterUrl,
+        backdrop: m.selectedItem.itemBackdropUrl,
+        summary: m.selectedItem.itemSummary,
+        year: m.selectedItem.itemYear,
+    }
+    ' Where to go on Back from showDetail — back to the detail of the
+    ' originating episode/show.
+    m.showDetailReturnTo = "detail"
+    openShowDetail()
 end sub
 
 ' Single source of truth for "where did we come from when we entered
@@ -2087,6 +2247,8 @@ sub returnToDetailOrigin()
         showView("search")
     else if m.detailReturnTo = "sports"
         showView("sports")
+    else if m.detailReturnTo = "showDetail"
+        showView("showDetail")
     else
         showView("home")
     end if
@@ -2432,29 +2594,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
     end if
 
-    ' Tracks overlay open: route Up/Down between the two LabelLists
-    ' and the Close button. LabelList only bubbles directional keys
-    ' when it can't navigate further (so within-list nav still works),
-    ' which means our handler only fires at the boundaries.
+    ' Playback-settings overlay open: Left/Right cycles tabs. LabelList
+    ' consumes Up/Down for its own navigation, but Left/Right always
+    ' bubble through to us. Tabs wrap: Left from Quality → Subtitles,
+    ' Right from Subtitles → Quality.
     if m.tracksOpen = true
-        if key = "down"
-            if m.tracksAudioList.isInFocusChain()
-                m.tracksSubtitleList.setFocus(true)
-                return true
-            end if
-            if m.tracksSubtitleList.isInFocusChain()
-                m.tracksCloseButton.setFocus(true)
-                return true
-            end if
-        else if key = "up"
-            if m.tracksCloseButton.isInFocusChain()
-                m.tracksSubtitleList.setFocus(true)
-                return true
-            end if
-            if m.tracksSubtitleList.isInFocusChain()
-                m.tracksAudioList.setFocus(true)
-                return true
-            end if
+        if key = "right"
+            setActiveTab((m.tracksActiveTab + 1) mod 3)
+            return true
+        else if key = "left"
+            newTab = m.tracksActiveTab - 1
+            if newTab < 0 then newTab = 2
+            setActiveTab(newTab)
+            return true
         end if
     end if
 
@@ -2488,6 +2640,44 @@ function onKeyEvent(key as string, press as boolean) as boolean
         if key = "left" and m.libraryTypeMovie.isInFocusChain()
             m.libraryTypeShow.setFocus(true)
             return true
+        end if
+    end if
+
+    ' Show detail: Right from seasons → episodes; Left from episodes
+    ' (when on the leftmost column) → seasons.
+    if m.currentView = "showDetail"
+        if key = "right" and m.showDetailSeasonsList.isInFocusChain()
+            if m.showDetailEpisodesGrid.content <> invalid and m.showDetailEpisodesGrid.content.getChildCount() > 0
+                m.showDetailEpisodesGrid.setFocus(true)
+                return true
+            end if
+        end if
+        if key = "left" and m.showDetailEpisodesGrid.isInFocusChain()
+            idx = m.showDetailEpisodesGrid.itemFocused
+            if idx = invalid or (idx mod m.showDetailEpisodesGrid.numColumns) = 0
+                if m.showDetailSeasonsList.content <> invalid and m.showDetailSeasonsList.content.getChildCount() > 0
+                    m.showDetailSeasonsList.setFocus(true)
+                    return true
+                end if
+            end if
+        end if
+    end if
+
+    ' Library source toggle (All / Plex / Jellyfin / Emby).
+    if (key = "left" or key = "right") and m.librarySourceToggle.isInFocusChain()
+        order = [m.librarySourceAll, m.librarySourcePlex, m.librarySourceJellyfin, m.librarySourceEmby]
+        currentIdx = -1
+        for i = 0 to order.Count() - 1
+            if order[i].isInFocusChain() then currentIdx = i
+        end for
+        if currentIdx >= 0
+            delta = -1
+            if key = "right" then delta = 1
+            newIdx = currentIdx + delta
+            if newIdx >= 0 and newIdx < order.Count()
+                order[newIdx].setFocus(true)
+                return true
+            end if
         end if
     end if
 
@@ -2563,16 +2753,14 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
     end if
 
-    ' Up arrow during playback opens the Quality picker. Down opens
-    ' the Tracks picker. Guarded against firing while the Tracks
-    ' overlay itself is already open — otherwise Down on the close
-    ' button would re-open the picker on top of itself.
+    ' Up arrow during playback opens the combined playback-settings
+    ' picker (Quality / Audio / Subtitles tabs). Down arrow is *not*
+    ' intercepted — Roku's Video node shows its native transport
+    ' overlay on directional keys, so leaving Down to bubble there
+    ' gives users the standard progress bar / scrub UI on Down.
     if key = "up" and m.currentView = "player" and m.tracksOpen <> true
-        openQualityPicker()
-        return true
-    end if
-    if key = "down" and m.currentView = "player" and m.tracksOpen <> true
-        openTracksPicker()
+        m.lastPlayerKeyAt = Uptime(0)
+        openPlaybackSettings()
         return true
     end if
 
@@ -2607,8 +2795,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 return true
             end if
         else if m.currentView = "library"
+            ' Library up chain: grid → source toggle → type toggle → tabBar
             if m.libraryTypeToggle.isInFocusChain()
                 focusActiveTab()
+                return true
+            end if
+            if m.librarySourceToggle.isInFocusChain()
+                focusActiveLibraryType()
                 return true
             end if
             ' Grid handles row 1+ → row 0 internally; the up event
@@ -2618,7 +2811,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
             if m.libraryGrid.isInFocusChain()
                 idx = m.libraryGrid.itemFocused
                 if idx = invalid or idx < 9
-                    focusActiveLibraryType()
+                    focusActiveLibrarySource()
                     return true
                 end if
             end if
@@ -2658,6 +2851,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 focusActiveTab()
                 return true
             end if
+        else if m.currentView = "showDetail"
+            ' Up chain: seasons/episodes → action row.
+            if m.showDetailSeasonsList.isInFocusChain()
+                m.showDetailActions.setFocus(true)
+                return true
+            end if
+            if m.showDetailEpisodesGrid.isInFocusChain()
+                idx = m.showDetailEpisodesGrid.itemFocused
+                if idx = invalid or idx < m.showDetailEpisodesGrid.numColumns
+                    m.showDetailActions.setFocus(true)
+                    return true
+                end if
+            end if
         end if
     end if
 
@@ -2686,7 +2892,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 return true
             end if
         end if
+        ' Library down chain: tabBar → type → source → grid.
         if m.libraryTypeToggle.isInFocusChain()
+            focusActiveLibrarySource()
+            return true
+        end if
+        if m.librarySourceToggle.isInFocusChain()
             m.libraryGrid.setFocus(true)
             return true
         end if
@@ -2709,6 +2920,20 @@ function onKeyEvent(key as string, press as boolean) as boolean
                     m.searchResultsGrid.setFocus(true)
                 end if
                 return true
+            end if
+        end if
+        if m.currentView = "showDetail"
+            ' Down chain: action row → seasons list, or action row →
+            ' episodes grid if seasons list is empty.
+            if m.showDetailActions.isInFocusChain()
+                if m.showDetailSeasonsList.content <> invalid and m.showDetailSeasonsList.content.getChildCount() > 0
+                    m.showDetailSeasonsList.setFocus(true)
+                    return true
+                end if
+                if m.showDetailEpisodesGrid.content <> invalid and m.showDetailEpisodesGrid.content.getChildCount() > 0
+                    m.showDetailEpisodesGrid.setFocus(true)
+                    return true
+                end if
             end if
         end if
     end if
@@ -2767,6 +2992,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
         if m.currentView = "detail"
             ' Return to whichever shelf the user came from.
             returnToDetailOrigin()
+            return true
+        end if
+        if m.currentView = "showDetail"
+            closeShowDetail()
             return true
         end if
         ' Back from any tab returns to home AT the first card of the
@@ -2844,6 +3073,7 @@ sub showView(name as string)
     m.liveTvView.visible = (name = "liveTv")
     m.sportsSettingsView.visible = (name = "sportsSettings")
     m.detailView.visible = (name = "detail")
+    m.showDetailView.visible = (name = "showDetail")
     m.playerView.visible = (name = "player")
     ' Tab bar + brand mark are top-level chrome — visible on the tab
     ' surfaces, hidden during fullscreen detail / player / userPicker / pair views.
@@ -2956,6 +3186,15 @@ sub applyDeferredFocus()
         if m.sportsLeagueList.visible then m.sportsLeagueList.setFocus(true)
     else if m.currentView = "detail"
         m.detailActions.setFocus(true)
+    else if m.currentView = "showDetail"
+        ' Land on the seasons list — that's where the user wants to be.
+        ' If seasons haven't loaded yet (empty list), fall back to the
+        ' action row so OK/Back still does something useful.
+        if m.showDetailSeasonsList.content <> invalid and m.showDetailSeasonsList.content.getChildCount() > 0
+            m.showDetailSeasonsList.setFocus(true)
+        else
+            m.showDetailActions.setFocus(true)
+        end if
     else if m.currentView = "player"
         ' Focus the Video node so Roku's built-in transport overlay
         ' (enableUI=true) receives OK / Up / Down to show + interact.
@@ -3009,8 +3248,12 @@ sub populateDetail(node as object)
     ' else (sports, sonarr, radarr, tracked).
     isLibraryItem = node.itemSource = "plex" or node.itemSource = "jellyfin" or node.itemSource = "emby"
     watched = node.itemWatched = true
-    playButton = m.top.findNode("playButton")
-    if playButton <> invalid then playButton.visible = isLibraryItem
+    isEpisode = node.itemType = "episode"
+    hasShowParent = (node.itemShowRatingKey <> invalid and node.itemShowRatingKey <> "") or (node.itemShowTitle <> invalid and node.itemShowTitle <> "")
+    if m.playButton <> invalid then m.playButton.visible = isLibraryItem
+    ' Go to Show: library episodes only — gives the user a way into the
+    ' full seasons / episodes browser from any episode card.
+    if m.goToShowButton <> invalid then m.goToShowButton.visible = isLibraryItem and isEpisode and hasShowParent
     m.markWatchedButton.visible = isLibraryItem and not watched
     m.markUnwatchedButton.visible = isLibraryItem and watched
 
@@ -3036,6 +3279,245 @@ sub populateDetail(node as object)
     ' "Added to Sonarr" / error from a previous item.
     m.detailAddStatus.visible = false
     m.detailAddStatus.text = ""
+end sub
+
+' ─── Show detail view (seasons + episodes browser) ────────────────
+'
+' Reached from the Go to Show button on the regular detail view for
+' episode items. Renders the show's poster + summary on top, a
+' LabelList of seasons on the left, and a MarkupGrid of that season's
+' episodes on the right. Clicking an episode populates the regular
+' detail view (which already has Play / Mark / etc).
+'
+' Fetches the seasons list once per show; episodes are fetched on
+' demand per season. Mark All Watched / Unwatched act on the whole
+' show via the existing /api/scrobble/all endpoint.
+
+sub openShowDetail()
+    if m.showDetailContext = invalid then return
+    ctx = m.showDetailContext
+    print "[HomeScene] showDetail open: ratingKey="; ctx.ratingKey; " src="; ctx.source; " title='"; ctx.title; "'"
+
+    ' Header text from cached context — instant render before the
+    ' seasons fetch resolves.
+    m.showDetailTitle.text = ctx.title
+    metaParts = []
+    if ctx.year <> invalid and ctx.year <> "" and ctx.year <> "0" then metaParts.Push(ctx.year)
+    if ctx.source <> invalid and ctx.source <> "" then metaParts.Push(ctx.source)
+    m.showDetailMeta.text = joinStrings(metaParts, "  ·  ")
+    m.showDetailSummary.text = ""
+    if ctx.summary <> invalid then m.showDetailSummary.text = ctx.summary
+    m.showDetailPoster.uri = ""
+    if ctx.poster <> invalid then m.showDetailPoster.uri = ctx.poster
+    m.showDetailBackdrop.uri = ""
+    if ctx.backdrop <> invalid then m.showDetailBackdrop.uri = ctx.backdrop
+
+    ' Reset state.
+    m.showDetailSelectedSeason = invalid
+    m.showDetailSeasonsList.content = invalid
+    m.showDetailEpisodesGrid.content = invalid
+    m.showDetailEpisodesGrid.visible = false
+    m.showDetailEpisodesStatus.text = "Loading seasons…"
+    m.showDetailEpisodesStatus.visible = true
+
+    fetchShowSeasons(ctx.ratingKey, ctx.source)
+    showView("showDetail")
+end sub
+
+sub fetchShowSeasons(ratingKey as string, src as string)
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onShowSeasonsResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/library/show/" + ratingKey + "/seasons?source=" + src
+    setApiTaskAuth(task)
+    task.control = "RUN"
+end sub
+
+sub onShowSeasonsResponse(event as object)
+    task = event.GetRoSGNode()
+    response = task.response
+
+    if response = invalid or response.success <> true or response.data = invalid
+        m.showDetailEpisodesStatus.text = "Couldn't load seasons."
+        m.showDetailEpisodesStatus.visible = true
+        return
+    end if
+
+    seasons = response.data
+    if seasons.Count() = 0
+        m.showDetailEpisodesStatus.text = "No seasons found for this show."
+        m.showDetailEpisodesStatus.visible = true
+        return
+    end if
+
+    m.showDetailSeasons = seasons
+    rootNode = CreateObject("roSGNode", "ContentNode")
+    for each s in seasons
+        child = rootNode.createChild("ContentNode")
+        title = s.title
+        if title = invalid or title = "" then title = "Season " + s.index.toStr()
+        ' Append a "watched / total" suffix so users can see season
+        ' progress at a glance.
+        watchedCount = 0
+        epCount = 0
+        if s.watchedCount <> invalid then watchedCount = s.watchedCount
+        if s.episodeCount <> invalid then epCount = s.episodeCount
+        child.title = title + "  (" + watchedCount.toStr() + "/" + epCount.toStr() + ")"
+        child.AddField("seasonRatingKey", "string", false)
+        child.seasonRatingKey = stringField(s, "ratingKey")
+    end for
+    m.showDetailSeasonsList.content = rootNode
+
+    ' Auto-select first season so users see episodes immediately on
+    ' arrival. setting itemSelected fires onShowDetailSeasonSelected.
+    m.showDetailSeasonsList.jumpToItem = 0
+    m.showDetailSelectedSeason = stringField(seasons[0], "ratingKey")
+    fetchSeasonEpisodes(m.showDetailSelectedSeason, m.showDetailContext.source)
+end sub
+
+sub onShowDetailSeasonSelected()
+    idx = m.showDetailSeasonsList.itemSelected
+    rootNode = m.showDetailSeasonsList.content
+    if rootNode = invalid then return
+    item = rootNode.getChild(idx)
+    if item = invalid then return
+    seasonKey = item.seasonRatingKey
+    if seasonKey = invalid or seasonKey = "" then return
+    if seasonKey = m.showDetailSelectedSeason
+        ' Re-selected the same season — jump focus into the episode
+        ' grid as a quick affordance.
+        if m.showDetailEpisodesGrid.content <> invalid and m.showDetailEpisodesGrid.content.getChildCount() > 0
+            m.showDetailEpisodesGrid.setFocus(true)
+        end if
+        return
+    end if
+    m.showDetailSelectedSeason = seasonKey
+    fetchSeasonEpisodes(seasonKey, m.showDetailContext.source)
+end sub
+
+sub fetchSeasonEpisodes(seasonKey as string, src as string)
+    m.showDetailEpisodesGrid.content = invalid
+    m.showDetailEpisodesGrid.visible = false
+    m.showDetailEpisodesStatus.text = "Loading episodes…"
+    m.showDetailEpisodesStatus.visible = true
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onSeasonEpisodesResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/library/season/" + seasonKey + "/episodes?source=" + src
+    setApiTaskAuth(task)
+    task.control = "RUN"
+end sub
+
+sub onSeasonEpisodesResponse(event as object)
+    task = event.GetRoSGNode()
+    response = task.response
+
+    if response = invalid or response.success <> true or response.data = invalid
+        m.showDetailEpisodesStatus.text = "Couldn't load episodes."
+        m.showDetailEpisodesStatus.visible = true
+        m.showDetailEpisodesGrid.visible = false
+        return
+    end if
+
+    episodes = response.data
+    if episodes.Count() = 0
+        m.showDetailEpisodesStatus.text = "No episodes in this season."
+        m.showDetailEpisodesStatus.visible = true
+        m.showDetailEpisodesGrid.visible = false
+        return
+    end if
+
+    rootNode = CreateObject("roSGNode", "ContentNode")
+    for each ep in episodes
+        child = rootNode.createChild("ContentNode")
+        epLabel = ""
+        if ep.episodeNumber <> invalid then epLabel = "E" + ep.episodeNumber.toStr() + " "
+        child.title = epLabel + stringField(ep, "title")
+        posterUrl = resolvePosterUrl(ep)
+        if posterUrl <> ""
+            child.HDPosterUrl = posterUrl
+            child.SDPosterUrl = posterUrl
+        end if
+        attachItemFields(child, ep)
+    end for
+    m.showDetailEpisodesGrid.content = rootNode
+    m.showDetailEpisodesGrid.visible = true
+    m.showDetailEpisodesStatus.visible = false
+end sub
+
+sub onShowDetailEpisodeSelected()
+    idx = m.showDetailEpisodesGrid.itemSelected
+    rootNode = m.showDetailEpisodesGrid.content
+    if rootNode = invalid then return
+    node = rootNode.getChild(idx)
+    if node = invalid then return
+    ' Tell the regular detail view to return *here* on Back rather
+    ' than to wherever the original episode came from.
+    m.detailReturnTo = "showDetail"
+    populateDetail(node)
+    showView("detail")
+end sub
+
+sub onShowDetailButtonSelected()
+    idx = m.showDetailActions.buttonSelected
+    print "[HomeScene] showDetail button selected: "; idx
+    ' Indices map to XML order:
+    '   0 = Mark All Watched, 1 = Mark All Unwatched, 2 = Back
+    if idx = 0
+        onShowDetailMarkAllWatched()
+    else if idx = 1
+        onShowDetailMarkAllUnwatched()
+    else if idx = 2
+        closeShowDetail()
+    end if
+end sub
+
+sub onShowDetailMarkAllWatched()
+    if m.showDetailContext = invalid then return
+    sendShowDetailScrobbleAll("/api/scrobble/all", true)
+end sub
+
+sub onShowDetailMarkAllUnwatched()
+    if m.showDetailContext = invalid then return
+    sendShowDetailScrobbleAll("/api/unscrobble/all", false)
+end sub
+
+sub sendShowDetailScrobbleAll(endpoint as string, watched as boolean)
+    ctx = m.showDetailContext
+    body = newPostBody()
+    body["showTitle"] = ctx.title
+    body["source"] = ctx.source
+    body["sourceId"] = ctx.ratingKey
+    task = CreateObject("roSGNode", "ApiTask")
+    task.method = "POST"
+    task.url = m.apiUrl + endpoint
+    task.body = FormatJson(body)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+
+    ' Refresh seasons (watched counts) and current season's episodes.
+    fetchShowSeasons(ctx.ratingKey, ctx.source)
+    if m.showDetailSelectedSeason <> invalid
+        fetchSeasonEpisodes(m.showDetailSelectedSeason, ctx.source)
+    end if
+
+    ' Other shelves will be stale — flag for refetch on next visit.
+    m.homeStale = true
+    m.tvStale = true
+    m.moviesStale = true
+    m.libraryCache = { show: invalid, movie: invalid }
+end sub
+
+sub closeShowDetail()
+    ' Return wherever we came from. Currently always the detail view
+    ' (we set m.showDetailReturnTo = "detail" when opening), but kept
+    ' as a switch so future callers can plumb a different origin.
+    if m.showDetailReturnTo = "detail"
+        showView("detail")
+    else
+        showView("home")
+    end if
 end sub
 
 ' ─── Playback ──────────────────────────────────────────────────────
@@ -3156,6 +3638,26 @@ sub onVideoStateChanged()
     state = m.video.state
     print "[HomeScene] video state -> "; state
 
+    ' When the Video node enters the "error" state Roku populates
+    ' errorMsg / errorCode / errorStr / streamInfo with the actual
+    ' failure reason. Dump them so we can diagnose "playback failed"
+    ' without guessing.
+    if state = "error"
+        code = "?"
+        if m.video.errorCode <> invalid then code = m.video.errorCode.toStr()
+        msg = "?"
+        if m.video.errorMsg <> invalid then msg = m.video.errorMsg.toStr()
+        errStr = "?"
+        if m.video.errorStr <> invalid then errStr = m.video.errorStr.toStr()
+        print "[HomeScene] video error: code="; code; " msg="; msg; " str="; errStr
+        if m.video.streamInfo <> invalid
+            print "[HomeScene] streamInfo="; FormatJson(m.video.streamInfo)
+        end if
+        if m.video.content <> invalid and m.video.content.url <> invalid
+            print "[HomeScene] failing url="; m.video.content.url
+        end if
+    end if
+
     if state = "finished" or state = "stopped" or state = "error"
         ' Mid-swap — Video.control="stop" is part of a quality/track
         ' switch, NOT the user backing out. Skip the detail-return so
@@ -3236,47 +3738,15 @@ sub stopPlayback()
     m.video.control = "stop"
 end sub
 
-' ─── Quality picker ───────────────────────────────────────────────
+' ─── Quality swap helper ────────────────────────────────────────
 '
-' Mid-playback bitrate switch. Triggered by the "*" / Options key on
-' the remote, drives a Roku Dialog with the preset list. On selection
-' we save the local position, stop the current stream, re-issue
-' /api/playback with ?maxBitrate=<kbps>, and onPlaybackResponse picks
-' up m.qualitySwapResumeMs to start the new stream at the same spot.
-
-sub openQualityPicker()
-    if m.qualityDialog <> invalid then return
-    if m.video.state = "playing" then m.video.control = "pause"
-
-    dlg = CreateObject("roSGNode", "Dialog")
-    dlg.title = "Video Quality"
-    labels = []
-    for each preset in m.qualityPresets
-        labels.Push(preset.label)
-    end for
-    dlg.buttons = labels
-    dlg.observeField("buttonSelected", "onQualityPicked")
-    dlg.observeField("wasClosed", "onQualityPicked")
-    m.qualityDialog = dlg
-    m.top.dialog = dlg
-end sub
-
-sub onQualityPicked()
-    if m.qualityDialog = invalid then return
-    idx = m.qualityDialog.buttonSelected
-    m.top.dialog = invalid
-    m.qualityDialog = invalid
-
-    ' Cancelled (Back-key dismiss) or out-of-range selection — resume
-    ' the original stream at its current spot, no re-issue.
-    if idx = invalid or idx < 0 or idx >= m.qualityPresets.Count()
-        if m.video.state = "paused" then m.video.control = "resume"
-        return
-    end if
-
-    preset = m.qualityPresets[idx]
-    swapQuality(preset.maxBitrate)
-end sub
+' Quality is one tab inside the combined playback-settings picker
+' (see `openPlaybackSettings` below). When the user OKs a preset
+' inside the Quality tab, `onTracksQualityItemSelected` calls
+' swapQuality which saves the local position, stops the current
+' stream, and re-issues /api/playback with ?maxBitrate=<kbps>.
+' onPlaybackResponse picks up m.qualitySwapResumeMs to start the new
+' stream at the same spot.
 
 sub swapQuality(maxBitrate as integer)
     if m.selectedItem = invalid then return
@@ -3308,32 +3778,31 @@ sub swapQuality(maxBitrate as integer)
     m.playbackTask.control = "RUN"
 end sub
 
-' ─── Tracks picker (Audio + Subtitle), multi-select ──────────────
+' ─── Combined playback-settings picker ─────────────────────────
 '
-' Down key during playback opens a custom overlay with two LabelLists
-' (Audio + Subtitle, including an "Off" entry for subtitles) and a
-' Close button at the bottom. The user can change one or both
-' selections without dismissing — current pending selections are
-' marked with "★ " in the label text. Pressing Close commits BOTH
-' pending changes as a single /api/playback re-issue. Pressing Back
-' cancels without applying.
+' Up arrow during playback opens this overlay with three tabs —
+' Quality / Audio / Subtitles — sharing one Group. Left/Right cycles
+' tabs, Up/Down navigates inside the active list, OK on an item
+' commits that single change and auto-closes the picker, Back
+' cancels. The currently-active selection in each list is marked
+' with "★ " so users can see what's in effect.
+'
+' Down arrow during playback is deliberately *not* intercepted —
+' Roku's Video node shows its native transport overlay on directional
+' keys, so leaving Down to bubble there gives the standard progress /
+' scrub UI.
 
-sub openTracksPicker()
+sub openPlaybackSettings()
     if m.tracksOpen = true then return
     if m.playbackInfo = invalid then return
 
-    audios = m.playbackInfo.audioTracks
-    subs = m.playbackInfo.subtitles
-    audioCount = 0
-    subCount = 0
-    if audios <> invalid then audioCount = audios.Count()
-    if subs <> invalid then subCount = subs.Count()
-    if audioCount <= 1 and subCount = 0 then return
-
     if m.video.state = "playing" then m.video.control = "pause"
 
-    ' Capture the player's current selections so Close can decide
-    ' whether to re-issue (only when user actually changed something).
+    ' Capture the player's current selections so each tab can mark
+    ' the active item and the swap helper can decide whether to
+    ' re-issue (only when the new pick differs).
+    audios = m.playbackInfo.audioTracks
+    subs = m.playbackInfo.subtitles
     m.currentAudioId = -1
     if audios <> invalid
         for each audio in audios
@@ -3350,12 +3819,54 @@ sub openTracksPicker()
     end if
     m.pendingSubtitleId = m.currentSubtitleId
 
+    renderTracksQualityList()
     renderTracksAudioList()
     renderTracksSubtitleList()
 
     m.tracksOpen = true
     m.tracksView.visible = true
-    m.tracksAudioList.setFocus(true)
+    setActiveTab(0)
+end sub
+
+' Switch the picker's active tab. Toggles list visibility, moves
+' focus to the active list, and recolours the tab header labels.
+' tabIdx: 0 = Quality, 1 = Audio, 2 = Subtitles.
+sub setActiveTab(tabIdx as integer)
+    if tabIdx < 0 or tabIdx > 2 then return
+    m.tracksActiveTab = tabIdx
+
+    m.tracksQualityList.visible  = (tabIdx = 0)
+    m.tracksAudioList.visible    = (tabIdx = 1)
+    m.tracksSubtitleList.visible = (tabIdx = 2)
+
+    activeColor = "0xe5a00dff"
+    inactiveColor = "0x808080ff"
+    qColor = inactiveColor : aColor = inactiveColor : sColor = inactiveColor
+    if tabIdx = 0 then qColor = activeColor
+    if tabIdx = 1 then aColor = activeColor
+    if tabIdx = 2 then sColor = activeColor
+    m.tracksTabQualityLabel.color = qColor
+    m.tracksTabAudioLabel.color = aColor
+    m.tracksTabSubtitleLabel.color = sColor
+
+    if tabIdx = 0 then m.tracksQualityList.setFocus(true)
+    if tabIdx = 1 then m.tracksAudioList.setFocus(true)
+    if tabIdx = 2 then m.tracksSubtitleList.setFocus(true)
+end sub
+
+sub renderTracksQualityList()
+    rootNode = CreateObject("roSGNode", "ContentNode")
+    idx = 0
+    for each preset in m.qualityPresets
+        child = rootNode.createChild("ContentNode")
+        prefix = "    "
+        if idx = m.currentQualityIndex then prefix = "★  "
+        child.title = prefix + preset.label
+        child.AddField("qualityIdx", "integer", false)
+        child.qualityIdx = idx
+        idx = idx + 1
+    end for
+    m.tracksQualityList.content = rootNode
 end sub
 
 sub renderTracksAudioList()
@@ -3399,41 +3910,85 @@ sub renderTracksSubtitleList()
     m.tracksSubtitleList.content = rootNode
 end sub
 
+sub onTracksQualityItemSelected()
+    ' Re-entry guard. Hiding tracksView doesn't unfocus the underlying
+    ' LabelList — a second OK keypress (or one queued while the swap
+    ' request is still in flight) fires itemSelected again, kicks off
+    ' a second swapQuality, which overwrites m.playbackTask and races
+    ' the first task's response observer (visible to the user as
+    ' "playback request failed: Playback failed"). The setFocus(true)
+    ' on m.video below moves focus off the list, but we also guard
+    ' here for the queued-event case.
+    if m.swapping = true then return
+
+    idx = m.tracksQualityList.itemSelected
+    rootNode = m.tracksQualityList.content
+    if rootNode = invalid then return
+    item = rootNode.getChild(idx)
+    if item = invalid then return
+    pickedIdx = item.qualityIdx
+
+    m.tracksOpen = false
+    m.tracksView.visible = false
+    m.video.setFocus(true)
+
+    if pickedIdx = m.currentQualityIndex
+        if m.video.state = "paused" then m.video.control = "resume"
+        return
+    end if
+
+    if pickedIdx < 0 or pickedIdx >= m.qualityPresets.Count() then return
+    m.currentQualityIndex = pickedIdx
+    preset = m.qualityPresets[pickedIdx]
+    swapQuality(preset.maxBitrate)
+end sub
+
 sub onTracksAudioItemSelected()
+    ' See onTracksQualityItemSelected for the re-entry guard rationale.
+    if m.swapping = true then return
+
     idx = m.tracksAudioList.itemSelected
     rootNode = m.tracksAudioList.content
     if rootNode = invalid then return
     item = rootNode.getChild(idx)
     if item = invalid then return
-    m.pendingAudioId = item.audioId
-    renderTracksAudioList()
+    selectedId = item.audioId
+
+    ' Auto-close. If the user picked the same audio that's already
+    ' playing it's a no-op — resume and return focus to the player.
+    m.tracksOpen = false
+    m.tracksView.visible = false
+    m.video.setFocus(true)
+    if selectedId = m.currentAudioId
+        if m.video.state = "paused" then m.video.control = "resume"
+        return
+    end if
+    m.pendingAudioId = selectedId
+    m.pendingSubtitleId = m.currentSubtitleId
+    swapTracks(true, false)
 end sub
 
 sub onTracksSubtitleItemSelected()
+    ' See onTracksQualityItemSelected for the re-entry guard rationale.
+    if m.swapping = true then return
+
     idx = m.tracksSubtitleList.itemSelected
     rootNode = m.tracksSubtitleList.content
     if rootNode = invalid then return
     item = rootNode.getChild(idx)
     if item = invalid then return
-    m.pendingSubtitleId = item.subtitleId
-    renderTracksSubtitleList()
-end sub
-
-sub onTracksClosePressed()
-    audioChanged = m.currentAudioId <> m.pendingAudioId
-    subtitleChanged = m.currentSubtitleId <> m.pendingSubtitleId
+    selectedId = item.subtitleId
 
     m.tracksOpen = false
     m.tracksView.visible = false
-
-    if not audioChanged and not subtitleChanged
-        ' No-op close — just resume the paused video.
+    m.video.setFocus(true)
+    if selectedId = m.currentSubtitleId
         if m.video.state = "paused" then m.video.control = "resume"
-        m.video.setFocus(true)
         return
     end if
-
-    swapTracks(audioChanged, subtitleChanged)
+    m.pendingAudioId = m.currentAudioId
+    m.pendingSubtitleId = selectedId
+    swapTracks(false, true)
 end sub
 
 sub cancelTracksView()
@@ -4388,9 +4943,13 @@ sub attachItemFields(child as object, item as object)
     child.AddField("itemSourceId", "string", false)
     child.AddField("itemTitle", "string", false)
     child.AddField("itemShowTitle", "string", false)
+    ' For episodes: the parent show's identifier on the source server.
+    ' Used by the Go to Show button to open the show-detail browser.
+    child.AddField("itemShowRatingKey", "string", false)
     child.AddField("itemSummary", "string", false)
     child.AddField("itemYear", "string", false)
     child.AddField("itemDuration", "string", false)
+    child.AddField("itemPosterUrl", "string", false)
     child.AddField("itemBackdropUrl", "string", false)
     child.AddField("itemType", "string", false)
     child.AddField("itemWatched", "boolean", false)
@@ -4407,10 +4966,12 @@ sub attachItemFields(child as object, item as object)
     child.itemSourceId = stringField(item, "sourceId")
     child.itemTitle = stringField(item, "title")
     child.itemShowTitle = stringField(item, "showTitle")
+    child.itemShowRatingKey = stringField(item, "showRatingKey")
     child.itemSummary = stringField(item, "summary")
     child.itemYear = stringField(item, "year")
     child.itemDuration = stringField(item, "duration")
     child.itemType = stringField(item, "type")
+    child.itemPosterUrl = resolvePosterUrl(item)
     child.itemBackdropUrl = resolveBackdropUrl(item)
     child.itemStatus = stringField(item, "status")
     availableAt = ""

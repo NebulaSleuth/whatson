@@ -8,6 +8,7 @@ import Sports from './pages/Sports';
 import Library from './pages/Library';
 import Search from './pages/Search';
 import Settings from './pages/Settings';
+import ShowDetail from './pages/ShowDetail';
 import SelectUser from './pages/SelectUser';
 import PairDevice from './pages/PairDevice';
 import { api, getAuthKey, getCurrentUserId } from './lib/api';
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/movies" element={<Movies />} />
           <Route path="/sports" element={<Sports />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/show/:source/:ratingKey" element={<ShowDetail />} />
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/select-user" element={<SelectUser />} />

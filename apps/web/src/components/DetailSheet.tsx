@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import type { ContentItem } from '@whatson/shared';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { SourceBadge } from './SourceBadge';
@@ -12,6 +13,7 @@ interface Props {
 
 export function DetailSheet({ item, onClose }: Props) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [playing, setPlaying] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
 
@@ -90,6 +92,25 @@ export function DetailSheet({ item, onClose }: Props) {
     if (!Number.isFinite(id)) return;
     withWork('Add to Radarr', () => api.addToRadarr(id));
   }
+  function goToShow() {
+    // Navigate to the show-detail page. We pass the show's display
+    // metadata via query params so it renders instantly before the
+    // seasons fetch completes. The show ratingKey is showRatingKey
+    // for episodes, or sourceId when we're already looking at a
+    // show-typed item.
+    const showKey = item.showRatingKey || item.sourceId;
+    if (!showKey) return;
+    const params = new URLSearchParams({
+      title: item.showTitle || item.title,
+      sourceId: showKey,
+    });
+    if (item.artwork?.poster) params.set('poster', item.artwork.poster);
+    if (item.artwork?.background) params.set('backdrop', item.artwork.background);
+    if (item.summary) params.set('summary', item.summary);
+    if (item.year) params.set('year', String(item.year));
+    onClose();
+    navigate(`/show/${item.source}/${encodeURIComponent(showKey)}?${params.toString()}`);
+  }
 
   if (playing) {
     return <VideoPlayer item={item} onClose={() => setPlaying(false)} />;
@@ -155,6 +176,9 @@ export function DetailSheet({ item, onClose }: Props) {
             <div className="flex flex-wrap gap-2 mt-4">
               {isLibraryItem && (
                 <Btn primary onClick={play}>Play</Btn>
+              )}
+              {isLibraryItem && item.type === 'episode' && (item.showRatingKey || item.showTitle) && (
+                <Btn onClick={goToShow}>Go to Show</Btn>
               )}
               {isLibraryItem && !isLiveItem && item.type !== 'show' && !item.progress?.watched && (
                 <Btn onClick={markWatched}>Mark as Watched</Btn>

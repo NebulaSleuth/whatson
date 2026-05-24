@@ -119,6 +119,12 @@ export const api = {
   getLibrary: (type: 'movie' | 'show', source: string = 'plex') =>
     fetchApi<ContentItem[]>(`/api/library/${type}?source=${source}`),
 
+  getShowSeasons: (ratingKey: string, source: string = 'plex') =>
+    fetchApi<Array<{ ratingKey: string; index: number; title: string; episodeCount: number; watchedCount: number; thumb: string }>>(`/api/library/show/${encodeURIComponent(ratingKey)}/seasons?source=${source}`),
+
+  getSeasonEpisodes: (ratingKey: string, source: string = 'plex') =>
+    fetchApi<ContentItem[]>(`/api/library/season/${encodeURIComponent(ratingKey)}/episodes?source=${source}`),
+
   // Search
   searchLibrary: (query: string, type?: 'tv' | 'movie') => {
     const params = new URLSearchParams({ q: query });

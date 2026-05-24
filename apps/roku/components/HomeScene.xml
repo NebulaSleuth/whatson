@@ -159,7 +159,7 @@
                 focusable="true" />
         </Group>
 
-        <!-- ─── Library view: type toggle + full library grid ─── -->
+        <!-- ─── Library view: type + source toggles + library grid ─── -->
         <Group id="libraryView" visible="false">
             <!-- Two-button TV / Movies toggle, mirroring the mobile
                  library tab. Selection swaps the dataset feeding the
@@ -173,10 +173,25 @@
                 <TabButton id="libraryTypeMovie" label="Movies" hideIcon="true" focusable="true" />
             </LayoutGroup>
 
+            <!-- Source filter: All / Plex / Jellyfin / Emby. Mirrors
+                 the web Library page pills. "All" unions every
+                 configured library server; the other pills filter to
+                 a single source. -->
+            <LayoutGroup
+                id="librarySourceToggle"
+                translation="[80, 200]"
+                layoutDirection="horiz"
+                itemSpacings="[8]">
+                <TabButton id="librarySourceAll"      label="All"      hideIcon="true" buttonWidth="140" focusable="true" />
+                <TabButton id="librarySourcePlex"     label="Plex"     hideIcon="true" buttonWidth="140" focusable="true" />
+                <TabButton id="librarySourceJellyfin" label="Jellyfin" hideIcon="true" buttonWidth="140" focusable="true" />
+                <TabButton id="librarySourceEmby"     label="Emby"     hideIcon="true" buttonWidth="140" focusable="true" />
+            </LayoutGroup>
+
             <Label
                 id="libraryStatus"
                 text="Loading library…"
-                translation="[80, 200]"
+                translation="[80, 290]"
                 color="0xb0b0b0ff" />
 
             <!-- itemComponentName tells MarkupGrid which custom component
@@ -186,7 +201,7 @@
             <MarkupGrid
                 id="libraryGrid"
                 itemComponentName="PosterItem"
-                translation="[80, 200]"
+                translation="[80, 290]"
                 itemSize="[220, 400]"
                 itemSpacing="[16, 24]"
                 numRows="2"
@@ -746,6 +761,7 @@
                 layoutDirection="horiz"
                 itemSpacings="[24]">
                 <Button id="playButton" text="Play" minWidth="240" />
+                <Button id="goToShowButton" text="Go to Show" minWidth="240" />
                 <Button id="markWatchedButton" text="Mark as Watched" minWidth="320" />
                 <Button id="markUnwatchedButton" text="Mark as Unwatched" minWidth="340" />
                 <Button id="trackButton" text="Track" minWidth="200" />
@@ -762,6 +778,97 @@
                 width="1300"
                 color="0xe5a00dff"
                 visible="false" />
+        </Group>
+
+        <!-- ─── Show detail view: seasons + episodes browser ─── -->
+        <!-- Reached via the Go to Show button on the regular detail view
+             when an episode is selected. Mirrors mobile's show-detail.tsx
+             layout: backdrop at top, show poster + title + summary on
+             the left, action buttons below; seasons LabelList + episodes
+             MarkupGrid in the lower section. -->
+        <Group id="showDetailView" visible="false">
+            <Poster
+                id="showDetailBackdrop"
+                width="1920"
+                height="540"
+                loadDisplayMode="scaleToFill" />
+            <Rectangle width="1920" height="540" color="0x000000b0" />
+
+            <Poster
+                id="showDetailPoster"
+                translation="[80, 110]"
+                width="240"
+                height="360"
+                loadDisplayMode="scaleToFit" />
+
+            <Label
+                id="showDetailTitle"
+                translation="[340, 120]"
+                width="1500"
+                wrap="false"
+                maxLines="1"
+                font="font:LargeBoldSystemFont"
+                color="0xffffffff" />
+            <Label
+                id="showDetailMeta"
+                translation="[340, 180]"
+                width="1500"
+                color="0xb0b0b0ff" />
+            <Label
+                id="showDetailSummary"
+                translation="[340, 230]"
+                width="1500"
+                height="160"
+                wrap="true"
+                maxLines="4"
+                color="0xdcdcdcff" />
+
+            <ButtonGroup
+                id="showDetailActions"
+                translation="[340, 410]"
+                layoutDirection="horiz"
+                itemSpacings="[24]">
+                <Button id="showDetailMarkAllWatched" text="Mark All Watched" minWidth="320" />
+                <Button id="showDetailMarkAllUnwatched" text="Mark All Unwatched" minWidth="340" />
+                <Button id="showDetailBackButton" text="Back" minWidth="200" />
+            </ButtonGroup>
+
+            <Label
+                translation="[80, 530]"
+                width="240"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff"
+                text="Seasons" />
+            <LabelList
+                id="showDetailSeasonsList"
+                translation="[80, 580]"
+                itemSize="[260, 60]"
+                numRows="7"
+                vertFocusAnimationStyle="floatingFocus"
+                focusable="true" />
+
+            <Label
+                translation="[400, 530]"
+                width="800"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff"
+                text="Episodes" />
+            <Label
+                id="showDetailEpisodesStatus"
+                translation="[400, 580]"
+                width="1400"
+                color="0xb0b0b0ff"
+                text="" />
+            <MarkupGrid
+                id="showDetailEpisodesGrid"
+                itemComponentName="PosterItem"
+                translation="[400, 580]"
+                itemSize="[220, 380]"
+                itemSpacing="[16, 24]"
+                numRows="1"
+                numColumns="6"
+                vertFocusAnimationStyle="floatingFocus"
+                focusable="true" />
         </Group>
 
         <!-- ─── Player view: fullscreen Video ─── -->
@@ -786,47 +893,96 @@
                  subtitle without dismissing, then presses Close to
                  apply both as a single re-issue. Sits on top of the
                  still-visible playerView (just toggles visible). -->
+            <!-- Combined playback-settings picker — opened by Up during
+                 playback. Three tabs (Quality / Audio / Subtitles)
+                 switched by Left/Right. OK on a list item commits +
+                 closes; Back cancels. Down during playback is reserved
+                 for Roku's native transport overlay. -->
             <Group id="tracksView" visible="false">
                 <Rectangle width="1920" height="1080" color="0x000000bb" />
+                <!-- Content panel — lighter, covers full panel area. -->
                 <Rectangle translation="[460, 140]" width="1000" height="800" color="0x202020ff" />
+                <!-- Header strip — slightly darker than the content
+                     area below; visually groups title + tab labels +
+                     the keyboard-hint line. Drawn after the content
+                     panel and before the labels so it sits between
+                     them in the z-order. -->
+                <Rectangle translation="[460, 140]" width="1000" height="180" color="0x161616ff" />
 
                 <Label
-                    text="Tracks"
+                    text="Playback Settings"
                     translation="[500, 160]"
                     font="font:LargeBoldSystemFont"
                     color="0xe5a00dff" />
 
                 <Label
-                    text="Audio"
-                    translation="[500, 220]"
+                    id="tracksTabQualityLabel"
+                    text="Quality"
+                    translation="[500, 230]"
                     font="font:MediumBoldSystemFont"
-                    color="0xb0b0b0ff" />
+                    color="0xe5a00dff" />
+                <Label
+                    id="tracksTabAudioLabel"
+                    text="Audio"
+                    translation="[760, 230]"
+                    font="font:MediumBoldSystemFont"
+                    color="0x808080ff" />
+                <Label
+                    id="tracksTabSubtitleLabel"
+                    text="Subtitles"
+                    translation="[990, 230]"
+                    font="font:MediumBoldSystemFont"
+                    color="0x808080ff" />
+
+                <!-- Hint line. Arrow glyphs are pulled from Noto Sans
+                     Symbols 2 (same font the top-bar tabs use), so
+                     they render correctly. Text labels use the system
+                     font, so we split into multiple Labels inside a
+                     horizontal LayoutGroup. translation x picked to
+                     visually centre the ~520px content row within the
+                     1000px panel (panel left x=460, panel centre
+                     x=960; 960 - 520/2 ≈ 700). -->
+                <LayoutGroup
+                    translation="[610, 292]"
+                    layoutDirection="horiz"
+                    itemSpacings="[8]"
+                    vertAlignment="center">
+                    <Label text="◀ ▶" color="0x606060ff">
+                        <Font role="font" uri="pkg:/fonts/NotoSansSymbols2.ttf" size="20" />
+                    </Label>
+                    <Label text="switch  ·" color="0x606060ff" font="font:SmallSystemFont" />
+                    <Label text="▲ ▼" color="0x606060ff">
+                        <Font role="font" uri="pkg:/fonts/NotoSansSymbols2.ttf" size="20" />
+                    </Label>
+                    <Label text="navigate  ·  OK select  ·  Back cancel" color="0x606060ff" font="font:SmallSystemFont" />
+                </LayoutGroup>
+
+                <!-- Three lists stacked at the same position; only one
+                     is visible at a time. setActiveTab() flips
+                     visibility + focus. -->
+                <LabelList
+                    id="tracksQualityList"
+                    translation="[500, 330]"
+                    itemSize="[920, 50]"
+                    numRows="11"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
                 <LabelList
                     id="tracksAudioList"
-                    translation="[500, 260]"
+                    translation="[500, 330]"
                     itemSize="[920, 50]"
-                    numRows="3"
+                    numRows="11"
                     vertFocusAnimationStyle="floatingFocus"
-                    focusable="true" />
-
-                <Label
-                    text="Subtitle"
-                    translation="[500, 470]"
-                    font="font:MediumBoldSystemFont"
-                    color="0xb0b0b0ff" />
+                    focusable="true"
+                    visible="false" />
                 <LabelList
                     id="tracksSubtitleList"
-                    translation="[500, 510]"
+                    translation="[500, 330]"
                     itemSize="[920, 50]"
-                    numRows="4"
+                    numRows="11"
                     vertFocusAnimationStyle="floatingFocus"
-                    focusable="true" />
-
-                <Button
-                    id="tracksCloseButton"
-                    text="Close"
-                    translation="[840, 870]"
-                    minWidth="240" />
+                    focusable="true"
+                    visible="false" />
             </Group>
 
             <!-- Skip Intro / Skip Credits button. Auto-shows when the
