@@ -786,6 +786,19 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const clientSeekMs = shouldDropStartTicks && startTicks > 0
       ? Math.floor(startTicks / TICKS_PER_MS)
       : 0;
+    // streamParams was built above with the raw startTicks (before we
+    // knew whether to drop them for the image-sub workaround). Fix it
+    // here so the constructed-URL Emby path also drops StartTimeTicks
+    // when needed — otherwise we send the master playlist *and* the
+    // transcoder mismatched start positions, the manifest's fragment
+    // indices don't line up with what the transcoder produces, and
+    // hls.js requests segment N which the transcoder can't serve
+    // (500 Internal Server Error on every segment request).
+    if (shouldDropStartTicks) {
+      delete streamParams.StartTimeTicks;
+    } else {
+      streamParams.StartTimeTicks = String(effectiveStartTicks);
+    }
 
     if (useServerTranscodingUrl) {
       const absolute = tuRaw.startsWith('http') ? tuRaw : `${cfg.url}${tuRaw}`;
