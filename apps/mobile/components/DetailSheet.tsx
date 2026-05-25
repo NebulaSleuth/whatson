@@ -122,13 +122,14 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
   const handleMarkAllWatched = () => {
     const showName = item.showTitle || item.title;
+    const showId = item.type === 'episode' ? item.showRatingKey || item.sourceId : item.sourceId;
     Alert.alert('Mark All as Watched', `Mark all episodes of "${showName}" as watched?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Mark All Watched',
         onPress: async () => {
           try {
-            await api.markAllWatched(showName, item.source, item.sourceId);
+            await api.markAllWatched(showName, item.source, showId);
             onRefresh?.();
             onClose();
           } catch (error) {
@@ -141,13 +142,14 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
   const handleMarkAllUnwatched = () => {
     const showName = item.showTitle || item.title;
+    const showId = item.type === 'episode' ? item.showRatingKey || item.sourceId : item.sourceId;
     Alert.alert('Mark All as Unwatched', `Mark all episodes of "${showName}" as unwatched?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Mark All Unwatched',
         onPress: async () => {
           try {
-            await api.markAllUnwatched(item.sourceId, item.source);
+            await api.markAllUnwatched(showId, item.source);
             onRefresh?.();
             onClose();
           } catch (error) {

@@ -70,11 +70,19 @@ export function DetailSheet({ item, onClose }: Props) {
   function markUnwatched() {
     withWork('Mark unwatched', () => api.markUnwatched(item.sourceId, item.source));
   }
+  function showIdForMarkAll(): string {
+    // For episodes, the parent show's id; for show-type items, sourceId itself.
+    return item.showRatingKey || item.sourceId;
+  }
   function markAllWatched() {
-    withWork('Mark all watched', () => api.markAllWatched(item.showTitle || item.title, item.source, item.sourceId));
+    withWork('Mark all watched', () =>
+      api.markAllWatched(item.showTitle || item.title, item.source, showIdForMarkAll()),
+    );
   }
   function markAllUnwatched() {
-    withWork('Mark all unwatched', () => api.markAllUnwatched(item.sourceId, item.source));
+    withWork('Mark all unwatched', () =>
+      api.markAllUnwatched(showIdForMarkAll(), item.source),
+    );
   }
   function removeTracked() {
     const id = parseInt(item.sourceId, 10);

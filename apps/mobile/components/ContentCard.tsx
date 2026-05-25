@@ -122,7 +122,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
               await api.markAllWatched(
                 item.showTitle || item.title,
                 item.source,
-                item.sourceId,
+                item.type === 'episode' ? item.showRatingKey || item.sourceId : item.sourceId,
               );
               onMarkWatched?.();
             } catch (error) {

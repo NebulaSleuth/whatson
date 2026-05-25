@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { ContentSource } from '@whatson/shared';
 import * as tracked from '../services/tracked.js';
 import { getAdapterForSource } from '../services/adapters/registry.js';
+import type { MediaServerAdapter } from '../services/adapters/types.js';
 import { notifyDataChanged } from '../ws.js';
 
 export const scrobbleRouter = Router();
@@ -58,10 +59,68 @@ scrobbleRouter.post('/unscrobble', async (req, res) => {
 });
 
 /**
- * Mark all episodes of a show as watched. Library-server adapters with
- * hierarchical scrobble (Plex) can accept a show ratingKey directly — but the
- * existing client still sends a show title, so we search + iterate for those.
+ * Apply mark/unmark to every episode of a show. Plex's scrobble endpoint
+ * only affects the single item it's called on, so we enumerate via
+ * seasons → episodes. Jellyfin and Emby recursively mark children when
+ * called on a Series, so one call suffices.
+ *
+ * `showId` is the show's sourceId (Plex grandparent ratingKey for an
+ * episode, or Jellyfin/Emby SeriesId).
  */
+async function applyShowMark(
+  adapter: MediaServerAdapter,
+  source: ContentSource,
+  showId: string,
+  mode: 'watched' | 'unwatched',
+  userToken?: string,
+): Promise<number> {
+  if (source === 'jellyfin' || source === 'emby') {
+    if (mode === 'watched') await adapter.markWatched(showId, userToken);
+    else await adapter.markUnwatched(showId, userToken);
+    return -1;
+  }
+  const seasons = await adapter.getShowSeasons(showId, userToken);
+  let count = 0;
+  for (const season of seasons) {
+    const eps = await adapter.getSeasonEpisodes(season.ratingKey, userToken);
+    for (const ep of eps) {
+      try {
+        if (mode === 'watched') await adapter.markWatched(ep.sourceId, userToken);
+        else await adapter.markUnwatched(ep.sourceId, userToken);
+        count++;
+      } catch {
+        // best-effort: keep going on per-episode failures
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Legacy fallback for older clients that send only a show title. Search
+ * is capped server-side (Jellyfin/Emby Limit=50) so this misses most
+ * episodes for any show with more than a handful; modern clients should
+ * send sourceId.
+ */
+async function markAllByTitle(
+  adapter: MediaServerAdapter,
+  showTitle: string,
+  mode: 'watched' | 'unwatched',
+  userToken?: string,
+): Promise<number> {
+  const items = await adapter.search(showTitle, userToken);
+  const episodes = items.filter(
+    (i) => i.type === 'episode' && i.showTitle?.toLowerCase() === showTitle.toLowerCase(),
+  );
+  for (const ep of episodes) {
+    try {
+      if (mode === 'watched') await adapter.markWatched(ep.sourceId, userToken);
+      else await adapter.markUnwatched(ep.sourceId, userToken);
+    } catch {}
+  }
+  return episodes.length;
+}
+
 scrobbleRouter.post('/scrobble/all', async (req, res) => {
   try {
     const { showTitle, source, sourceId } = req.body as {
@@ -71,15 +130,14 @@ scrobbleRouter.post('/scrobble/all', async (req, res) => {
     };
 
     const adapter = source ? getAdapterForSource(source) : undefined;
-    if (adapter && showTitle) {
-      const items = await adapter.search(showTitle, req.plexUserToken);
-      const episodes = items.filter(
-        (i) => i.type === 'episode' && i.showTitle?.toLowerCase() === showTitle.toLowerCase(),
+    if (adapter && sourceId && source) {
+      const count = await applyShowMark(adapter, source, sourceId, 'watched', req.plexUserToken);
+      console.log(
+        `[Scrobble] Marked show ${sourceId} on ${source} (${count === -1 ? 'recursive' : count + ' episodes'})`,
       );
-      for (const ep of episodes) {
-        try { await adapter.markWatched(ep.sourceId, req.plexUserToken); } catch {}
-      }
-      console.log(`[Scrobble] Marked ${episodes.length} episodes of "${showTitle}" on ${source}`);
+    } else if (adapter && showTitle) {
+      const n = await markAllByTitle(adapter, showTitle, 'watched', req.plexUserToken);
+      console.log(`[Scrobble] Marked ${n} episodes of "${showTitle}" on ${source} (legacy title path)`);
     } else if (source === 'live' && sourceId) {
       tracked.markShowWatched(parseInt(sourceId));
     }
@@ -91,12 +149,26 @@ scrobbleRouter.post('/scrobble/all', async (req, res) => {
   }
 });
 
-/** Mark all episodes of a tracked show as unwatched */
 scrobbleRouter.post('/unscrobble/all', async (req, res) => {
   try {
-    const { sourceId, source } = req.body as { sourceId?: string; source?: ContentSource };
+    const { showTitle, source, sourceId } = req.body as {
+      showTitle?: string;
+      source?: ContentSource;
+      sourceId?: string;
+    };
 
-    if (source === 'live' && sourceId) {
+    const adapter = source ? getAdapterForSource(source) : undefined;
+    if (adapter && sourceId && source) {
+      const count = await applyShowMark(adapter, source, sourceId, 'unwatched', req.plexUserToken);
+      console.log(
+        `[Scrobble] Unmarked show ${sourceId} on ${source} (${count === -1 ? 'recursive' : count + ' episodes'})`,
+      );
+    } else if (adapter && showTitle) {
+      const n = await markAllByTitle(adapter, showTitle, 'unwatched', req.plexUserToken);
+      console.log(
+        `[Scrobble] Unmarked ${n} episodes of "${showTitle}" on ${source} (legacy title path)`,
+      );
+    } else if (source === 'live' && sourceId) {
       tracked.markUnwatched(String(sourceId));
     }
 
