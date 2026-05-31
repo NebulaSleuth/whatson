@@ -299,15 +299,16 @@ function plexToContentItem(item: any, status: ContentItem['status'], userToken?:
     summary: item.summary || '',
     duration,
     artwork: {
-      // For episodes the show poster lives at grandparentThumb; bump on
-      // the show's grandparent updatedAt (item.grandparentRatingKey
-      // wouldn't reflect a poster change to the show itself, but
-      // grandparentArtUpdatedAt/grandparentThumbUpdatedAt do when
-      // exposed). Fall back to the episode's own updatedAt otherwise.
+      // For episodes, prefer the SEASON poster (parentThumb) over the
+      // show poster (grandparentThumb). Users customise season posters
+      // independently (e.g. Spider-Noir's season has a different image
+      // than the show), and Plex's own UI follows the season poster on
+      // season/episode views. Falls back to grandparent (show) when
+      // the season has no custom poster set.
       poster: artworkUrl(
-        isEpisode ? item.grandparentThumb : item.thumb,
+        isEpisode ? (item.parentThumb || item.grandparentThumb) : item.thumb,
         userToken,
-        isEpisode ? (item.grandparentArtUpdatedAt || item.grandparentThumbUpdatedAt || item.updatedAt) : item.updatedAt,
+        item.updatedAt,
       ),
       thumbnail: artworkUrl(item.thumb, userToken, item.updatedAt),
       background: artworkUrl(item.art, userToken, item.updatedAt),
