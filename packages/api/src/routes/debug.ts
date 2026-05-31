@@ -26,8 +26,15 @@ debugRouter.get('/debug/plex/show-poster', async (req, res) => {
     const useTs = req.query.useTs === '1';
 
     // Resolve a show ratingKey via search if the caller didn't pass one.
+    let searchHits: Array<{ title: string; type: string; sourceId: string; showRatingKey?: string }> = [];
     if (!ratingKey && titleQ) {
       const results = await plexSearch(titleQ);
+      searchHits = results.map((r) => ({
+        title: r.title,
+        type: r.type,
+        sourceId: r.sourceId,
+        showRatingKey: r.showRatingKey,
+      }));
       const show = results.find((i) => i.type === 'show') ||
         results.find((i) => i.type === 'episode');
       if (show) {
@@ -37,7 +44,12 @@ debugRouter.get('/debug/plex/show-poster', async (req, res) => {
     }
 
     if (!ratingKey) {
-      res.status(400).json({ error: 'Provide ?title= or ?ratingKey=' });
+      res.status(404).json({
+        error: titleQ
+          ? `No show or episode found in Plex for title "${titleQ}". Pass ?ratingKey=N directly if you know the show's ratingKey (find it in the Plex web URL: /library/metadata/N).`
+          : 'Provide ?title= or ?ratingKey=',
+        searchHits,
+      });
       return;
     }
 
