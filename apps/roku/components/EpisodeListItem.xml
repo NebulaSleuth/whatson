@@ -44,6 +44,15 @@
             width="240"
             height="135"
             loadDisplayMode="scaleToZoom" />
+        <!-- Corner cuts to fake rounded corners on the thumb. Colour
+             matches the cellBg so the corner squares blend with the
+             row background, not the scene. BRS updates the colour on
+             focus change since cellBg darkens on focus. Thumb is
+             240×135 starting at translation (8,8); corner squares 8×8. -->
+        <Rectangle id="thumbCornerTL" translation="[8, 8]"    width="8" height="8" color="0x18181cff" />
+        <Rectangle id="thumbCornerTR" translation="[240, 8]"  width="8" height="8" color="0x18181cff" />
+        <Rectangle id="thumbCornerBL" translation="[8, 135]"  width="8" height="8" color="0x18181cff" />
+        <Rectangle id="thumbCornerBR" translation="[240, 135]" width="8" height="8" color="0x18181cff" />
         <!-- Watched dim overlay on thumb. Visible only when itemWatched. -->
         <Rectangle
             id="thumbDim"

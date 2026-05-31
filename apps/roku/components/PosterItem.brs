@@ -26,6 +26,10 @@ sub init()
     m.focusRingRight = m.top.findNode("focusRingRight")
     m.statusOverlayBg = m.top.findNode("statusOverlayBg")
     m.statusOverlayLabel = m.top.findNode("statusOverlayLabel")
+    m.cornerTL = m.top.findNode("cornerTL")
+    m.cornerTR = m.top.findNode("cornerTR")
+    m.cornerBL = m.top.findNode("cornerBL")
+    m.cornerBR = m.top.findNode("cornerBR")
 
     ' MarkupGrid (Library / Search) has no per-row focus concept and
     ' never writes to rowFocusPercent, so default to 1.0 — the focus
@@ -67,6 +71,9 @@ sub onContentChanged()
     if src = "sports"
         ' Reshape the inset focus ring to wrap the 340×160 sports card.
         layoutFocusRing(340, 160)
+        ' Hide the corner-cut squares — they're positioned for the 220×330
+        ' poster cell and would sit in random spots on a sports card.
+        setCornerCutsVisible(false)
         renderSportsCard(content)
         return
     end if
@@ -77,6 +84,7 @@ sub onContentChanged()
     m.sportsView.visible = false
     m.poster.visible = true
     m.label.visible = true
+    setCornerCutsVisible(true)
     m.poster.uri = content.HDPosterUrl
     m.label.text = content.title
 
@@ -206,6 +214,16 @@ sub setFocusRingColor(c as string)
     m.focusRingBottom.color = c
     m.focusRingLeft.color = c
     m.focusRingRight.color = c
+end sub
+
+' Toggle the 4 corner-cut squares that fake a rounded-corner look on
+' poster cells. Hidden for sports cards (different cell geometry) and
+' when the cell is empty.
+sub setCornerCutsVisible(v as boolean)
+    if m.cornerTL <> invalid then m.cornerTL.visible = v
+    if m.cornerTR <> invalid then m.cornerTR.visible = v
+    if m.cornerBL <> invalid then m.cornerBL.visible = v
+    if m.cornerBR <> invalid then m.cornerBR.visible = v
 end sub
 
 ' Size + position the 4 focus-ring strips to wrap an arbitrary

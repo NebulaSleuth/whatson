@@ -18,6 +18,10 @@ sub init()
     m.focusRingBottom = m.top.findNode("focusRingBottom")
     m.focusRingLeft = m.top.findNode("focusRingLeft")
     m.focusRingRight = m.top.findNode("focusRingRight")
+    m.thumbCornerTL = m.top.findNode("thumbCornerTL")
+    m.thumbCornerTR = m.top.findNode("thumbCornerTR")
+    m.thumbCornerBL = m.top.findNode("thumbCornerBL")
+    m.thumbCornerBR = m.top.findNode("thumbCornerBR")
 end sub
 
 sub onContentChanged()
@@ -99,9 +103,14 @@ sub onFocusChanged()
     m.focusRingRight.visible = focused
     ' Lighten the background a bit on focus so the row visibly lifts
     ' even before the user notices the gold strips.
-    if focused
-        m.cellBg.color = "0x26262cff"
-    else
-        m.cellBg.color = "0x18181cff"
-    end if
+    bgColor = "0x18181cff"
+    if focused then bgColor = "0x26262cff"
+    m.cellBg.color = bgColor
+    ' Corner-cut squares must match the cell background so they blend
+    ' invisibly into the row rather than appearing as dark patches on
+    ' the focused (lighter) state.
+    m.thumbCornerTL.color = bgColor
+    m.thumbCornerTR.color = bgColor
+    m.thumbCornerBL.color = bgColor
+    m.thumbCornerBR.color = bgColor
 end sub
