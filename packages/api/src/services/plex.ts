@@ -299,14 +299,18 @@ function plexToContentItem(item: any, status: ContentItem['status'], userToken?:
     summary: item.summary || '',
     duration,
     artwork: {
-      // For episodes, prefer the SEASON poster (parentThumb) over the
-      // show poster (grandparentThumb). Users customise season posters
-      // independently (e.g. Spider-Noir's season has a different image
-      // than the show), and Plex's own UI follows the season poster on
-      // season/episode views. Falls back to grandparent (show) when
-      // the season has no custom poster set.
+      // Episode poster source is admin-configurable on /setup → Plex.
+      //   'season' (default) — parentThumb, falling back to show
+      //   'show'             — grandparentThumb (show) only
+      // Most shows have parentThumb = show poster by default, so the
+      // 'season' setting only differs visually when the user has
+      // customised a season's poster in Plex.
       poster: artworkUrl(
-        isEpisode ? (item.parentThumb || item.grandparentThumb) : item.thumb,
+        isEpisode
+          ? (config.plex.episodePoster === 'show'
+              ? item.grandparentThumb
+              : (item.parentThumb || item.grandparentThumb))
+          : item.thumb,
         userToken,
         item.updatedAt,
       ),

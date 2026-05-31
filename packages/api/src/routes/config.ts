@@ -9,7 +9,7 @@ import * as radarr from '../services/radarr.js';
 import * as jellyfin from '../services/jellyfin.js';
 import * as emby from '../services/emby.js';
 import { startUpdateScheduler } from '../services/updater.js';
-import { getCached, setCached } from '../cache.js';
+import { getCached, setCached, invalidateAll } from '../cache.js';
 import type { ApiResponse } from '@whatson/shared';
 
 const PLEX_CLIENT_ID = 'whatson-api-server';
@@ -23,6 +23,7 @@ configRouter.get('/config', async (_req, res) => {
       url: config.plex.url || '(auto-discover)',
       token: config.plex.token ? '••••' + config.plex.token.slice(-4) : '',
       configured: Boolean(config.plex.token),
+      episodePoster: config.plex.episodePoster || 'season',
     },
     sonarr: {
       url: config.sonarr.url,
@@ -173,6 +174,10 @@ configRouter.post('/config/save', async (req, res) => {
     if (plexCfg) {
       if ('url' in plexCfg) values.PLEX_URL = plexCfg.url || '';
       if ('token' in plexCfg) values.PLEX_TOKEN = plexCfg.token || '';
+      if ('episodePoster' in plexCfg) {
+        const v = String(plexCfg.episodePoster || 'season').toLowerCase();
+        values.PLEX_EPISODE_POSTER = v === 'show' ? 'show' : 'season';
+      }
     }
     if (sonarrCfg) {
       if ('url' in sonarrCfg) values.SONARR_URL = sonarrCfg.url || '';
@@ -223,6 +228,11 @@ configRouter.post('/config/save', async (req, res) => {
     radarr.resetClient();
     jellyfin.resetClient();
     emby.resetClient();
+
+    // Wipe library / home / on-deck data caches so the next fetch
+    // rebuilds payloads using the new config (URLs, episode-poster
+    // tier, etc.) instead of replaying stale results.
+    invalidateAll();
 
     // Re-arm the update scheduler in case AUTO_UPDATE was toggled
     if (updateCfg) startUpdateScheduler();

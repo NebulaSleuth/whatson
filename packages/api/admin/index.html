@@ -507,6 +507,22 @@
         <input type="text" id="plex-token" placeholder="Your Plex token" />
         <div class="hint">Plex Web &rarr; any item &rarr; Get Info &rarr; View XML &rarr; copy X-Plex-Token from URL</div>
       </div>
+
+      <div class="field">
+        <label>Episode card poster</label>
+        <select id="plex-episode-poster">
+          <option value="season">Season poster (falls back to show)</option>
+          <option value="show">Show poster only</option>
+        </select>
+        <div class="hint">
+          Plex stores three poster tiers for episodes: episode still,
+          season, and show. Pick which one appears on the episode cards
+          in WhatsOn shelves (Continue Watching, Recently Downloaded,
+          etc.). Season poster is what Plex itself uses on season views;
+          flip to "Show only" if you'd rather see the show art everywhere.
+        </div>
+      </div>
+
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="testService('plex')">Test Connection</button>
         <button class="btn btn-primary" onclick="saveService('plex')">Save</button>
@@ -770,6 +786,9 @@
         if (cfg.plex.token) {
           document.getElementById('plex-token').placeholder = 'Configured (' + cfg.plex.token + ')';
         }
+        if (cfg.plex.episodePoster) {
+          document.getElementById('plex-episode-poster').value = cfg.plex.episodePoster;
+        }
         if (cfg.sonarr.url) document.getElementById('sonarr-url').value = cfg.sonarr.url;
         if (cfg.sonarr.apiKey) {
           document.getElementById('sonarr-apikey').placeholder = 'Configured (' + cfg.sonarr.apiKey + ')';
@@ -882,9 +901,11 @@
       if (service === 'plex') {
         const url = document.getElementById('plex-url').value;
         const token = document.getElementById('plex-token').value;
+        const episodePoster = document.getElementById('plex-episode-poster').value;
         body.plex = {};
         body.plex.url = url;
         if (token) body.plex.token = token;
+        body.plex.episodePoster = episodePoster;
       } else if (service === 'sonarr') {
         body.sonarr = {
           url: document.getElementById('sonarr-url').value,

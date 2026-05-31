@@ -29,6 +29,12 @@ function loadConfig(): AppConfig {
     plex: {
       url: trimUrl(process.env.PLEX_URL),
       token: (process.env.PLEX_TOKEN || '').trim(),
+      // PLEX_EPISODE_POSTER=show forces episode cards to use the show
+      // poster (grandparentThumb). Default is 'season' — use the
+      // season poster when customised, fall back to show.
+      episodePoster: (process.env.PLEX_EPISODE_POSTER || 'season').toLowerCase() === 'show'
+        ? 'show'
+        : 'season',
     },
     jellyfin: {
       url: trimUrl(process.env.JELLYFIN_URL),

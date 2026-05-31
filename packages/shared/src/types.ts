@@ -171,6 +171,13 @@ export const STREAMING_PROVIDERS: Record<StreamingProvider, string> = {
 export interface PlexConfig {
   url: string;
   token: string;
+  /**
+   * Which artwork tier to use for episode cards.
+   *   'season' — parentThumb (season poster), falling back to show.
+   *   'show'   — grandparentThumb (show poster) only.
+   * Default 'season' so users who customise season posters see them.
+   */
+  episodePoster?: 'season' | 'show';
 }
 
 /**
