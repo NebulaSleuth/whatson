@@ -647,6 +647,19 @@
       <div class="btn-row">
         <button class="btn btn-primary" onclick="savePort()">Save</button>
       </div>
+
+      <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">Artwork cache</h3>
+      <p style="color:#888;font-size:13px;margin-bottom:12px">
+        The backend caches posters from Plex / Jellyfin / Emby so cards
+        load fast and Roku doesn't choke on 3000×4500 source images.
+        If you change a poster in your media server and the new artwork
+        doesn't appear after a refresh, click below to wipe the cache —
+        the next page load fetches fresh copies upstream.
+      </p>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="clearArtworkCache()">Clear artwork cache</button>
+      </div>
+      <div id="artwork-clear-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
     </div>
     </section>
 
@@ -935,6 +948,25 @@
         }
       } catch (e) {
         showToast('Save failed: ' + e.message, 'error');
+      }
+    }
+
+    async function clearArtworkCache() {
+      const msg = document.getElementById('artwork-clear-msg');
+      msg.textContent = 'Clearing…';
+      try {
+        const r = await fetch(API + '/artwork/clear', { method: 'POST' }).then((r) => r.json());
+        if (r.success) {
+          const { memCount, diskCount } = r.data || {};
+          msg.textContent = `Cleared ${memCount || 0} in-memory + ${diskCount || 0} on-disk entries. Refresh the app to repopulate.`;
+          showToast('Artwork cache cleared');
+        } else {
+          msg.textContent = r.error || 'Clear failed';
+          showToast(r.error || 'Clear failed', 'error');
+        }
+      } catch (e) {
+        msg.textContent = 'Clear failed: ' + e.message;
+        showToast('Clear failed: ' + e.message, 'error');
       }
     }
 

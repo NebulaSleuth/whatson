@@ -4,7 +4,7 @@ import { Jimp, JimpMime } from 'jimp';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { getCached, setCached } from '../cache.js';
+import { getCached, setCached, cache } from '../cache.js';
 import { ARTWORK_CACHE_TTL } from '@whatson/shared';
 import { config } from '../config.js';
 import { ensureSession as ensureJellyfinSession } from '../services/jellyfin.js';
@@ -181,4 +181,44 @@ artworkRouter.get('/artwork', async (req, res) => {
   } catch {
     res.status(502).send('Failed to fetch artwork');
   }
+});
+
+/**
+ * Manual artwork-cache evict. Used when a poster changed in the source
+ * media server (Plex, Jellyfin, Emby) but the cache-busting fallback
+ * (`item.updatedAt` -> `&_v=...`) didn't catch it — e.g. Plex doesn't
+ * bump the parent show's thumb timestamp on a poster swap, so episode
+ * cards still resolve to the old URL.
+ *
+ * Wipes both the in-memory `artwork:*` entries and every file in the
+ * disk cache. After this, the next request for any artwork URL goes
+ * straight to the upstream server.
+ */
+artworkRouter.post('/artwork/clear', async (_req, res) => {
+  let memCount = 0;
+  let diskCount = 0;
+  try {
+    const keys = cache.keys();
+    for (const k of keys) {
+      if (k.startsWith('artwork:')) {
+        cache.del(k);
+        memCount++;
+      }
+    }
+  } catch {}
+  if (DISK_CACHE_DIR) {
+    try {
+      const files = await fs.promises.readdir(DISK_CACHE_DIR);
+      for (const f of files) {
+        if (f.endsWith('.jpg') || f.endsWith('.png')) {
+          try {
+            await fs.promises.unlink(path.join(DISK_CACHE_DIR, f));
+            diskCount++;
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+  console.log(`[artwork] cache cleared — memory=${memCount}, disk=${diskCount}`);
+  res.json({ success: true, data: { memCount, diskCount } });
 });
