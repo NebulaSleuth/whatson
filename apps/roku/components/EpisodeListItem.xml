@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Cell renderer for the show-detail episodes MarkupGrid. Mirrors the
+  mobile / web episode row: landscape thumbnail on the left, episode
+  label (E01) + title + duration / watched check, then a wrap-2 summary
+  below. Replaces the older "horizontal shelf of posters" treatment so
+  Roku's episode list matches the other platforms.
+
+  Cell size: 1380 × 152
+    - Thumb at left: 240 × 135 (16:9), padded 8 from top/left.
+    - Right column at x=272, width ~1080.
+
+  Reads via itemContent (a ContentNode populated by HomeScene.brs):
+    - itemThumbUrl    landscape episode preview URL (artwork.thumbnail)
+    - itemEpisodeLabel "E01"-style prefix (already padded with leading zero on the producer side)
+    - title           plain episode title (no prefix)
+    - itemSummary     episode summary / description
+    - itemDuration    raw duration in minutes (string); cell appends "min"
+    - itemWatched     dim the thumb + show check on the right
+    - itemProgress    0..100 → bottom progress strip on the thumb
+-->
+<component name="EpisodeListItem" extends="Group">
+    <script type="text/brightscript" uri="EpisodeListItem.brs" />
+
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChanged" />
+        <field id="focusPercent" type="float" onChange="onFocusChanged" />
+    </interface>
+
+    <children>
+        <!-- Cell background. Pales when focused; the focus ring lives
+             as 4 thin rectangles around the perimeter (same gold strip
+             pattern PosterItem uses). -->
+        <Rectangle
+            id="cellBg"
+            width="1380"
+            height="152"
+            color="0x18181cff" />
+
+        <!-- ─── Thumbnail ─── -->
+        <Poster
+            id="thumb"
+            translation="[8, 8]"
+            width="240"
+            height="135"
+            loadDisplayMode="scaleToZoom" />
+        <!-- Watched dim overlay on thumb. Visible only when itemWatched. -->
+        <Rectangle
+            id="thumbDim"
+            translation="[8, 8]"
+            width="240"
+            height="135"
+            color="0x000000a0"
+            visible="false" />
+
+        <!-- Progress bar — bottom 4px of the thumb. Shown when
+             0 < progress < 100 and not watched. -->
+        <Rectangle
+            id="progressBg"
+            translation="[8, 139]"
+            width="240"
+            height="4"
+            color="0x00000080"
+            visible="false" />
+        <Rectangle
+            id="progressFill"
+            translation="[8, 139]"
+            width="0"
+            height="4"
+            color="0xe5a00dff"
+            visible="false" />
+
+        <!-- ─── Right column: meta line + title + summary ─── -->
+        <!-- Episode label (E01) + duration + watched check, all on the
+             same baseline. Episode label is the gold accent so it's
+             scannable; duration is dim secondary text. -->
+        <Label
+            id="epLabel"
+            translation="[272, 8]"
+            width="120"
+            height="28"
+            vertAlign="center"
+            color="0xe5a00dff"
+            font="font:SmallBoldSystemFont" />
+        <Label
+            id="epDuration"
+            translation="[400, 8]"
+            width="160"
+            height="28"
+            vertAlign="center"
+            color="0x9a9a9aff"
+            font="font:SmallSystemFont" />
+        <Label
+            id="epWatchedCheck"
+            translation="[1320, 8]"
+            width="40"
+            height="28"
+            horizAlign="right"
+            vertAlign="center"
+            color="0x4caf50ff"
+            font="font:MediumBoldSystemFont"
+            text=""
+            visible="false" />
+
+        <Label
+            id="epTitle"
+            translation="[272, 36]"
+            width="1080"
+            height="32"
+            wrap="false"
+            maxLines="1"
+            color="0xffffffff"
+            font="font:MediumBoldSystemFont" />
+
+        <Label
+            id="epSummary"
+            translation="[272, 76]"
+            width="1080"
+            height="74"
+            wrap="true"
+            maxLines="2"
+            color="0xb8b8b8ff"
+            font="font:SmallSystemFont" />
+
+        <!-- ─── Focus ring (4 gold strips, off by default) ─── -->
+        <Rectangle
+            id="focusRingTop"
+            width="1380"
+            height="3"
+            color="0xe5a00dff"
+            visible="false" />
+        <Rectangle
+            id="focusRingBottom"
+            translation="[0, 149]"
+            width="1380"
+            height="3"
+            color="0xe5a00dff"
+            visible="false" />
+        <Rectangle
+            id="focusRingLeft"
+            width="3"
+            height="152"
+            color="0xe5a00dff"
+            visible="false" />
+        <Rectangle
+            id="focusRingRight"
+            translation="[1377, 0]"
+            width="3"
+            height="152"
+            color="0xe5a00dff"
+            visible="false" />
+    </children>
+</component>

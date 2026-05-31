@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  App-styled rectangular action button. Used in the detail-view and
+  show-detail-view action rows, and as the Skip Intro / Skip Credits
+  button on the player view. Replaces Roku's built-in <Button> (whose
+  default blue-gradient look doesn't match the rest of the channel).
+
+  Visual language matches TabButton: dark `#1A1A1A` surface, gold
+  `#E5A00D` accent on focus (4 thin strips around the perimeter), text
+  shifts from white to gold on focus.
+
+  Sized via `buttonWidth` (defaults to 240). Caller fires by observing
+  `actionSelected`, which flips on every OK press (alwaysNotify so the
+  observer fires even when the field value didn't change).
+-->
+<component name="ActionButton" extends="Group">
+    <script type="text/brightscript" uri="ActionButton.brs" />
+
+    <interface>
+        <field id="text" type="string" onChange="onTextChanged" />
+        <field id="buttonWidth" type="integer" value="240" onChange="onWidthChanged" />
+        <field id="actionSelected" type="boolean" alwaysNotify="true" />
+    </interface>
+
+    <children>
+        <Rectangle id="bg" width="240" height="60" color="0x1a1a1aff" />
+
+        <!-- Focus ring (4 gold strips, off by default). Same pattern
+             PosterItem / EpisodeListItem use. -->
+        <Rectangle id="borderTop" width="240" height="2" color="0xe5a00dff" visible="false" />
+        <Rectangle id="borderBottom" translation="[0, 58]" width="240" height="2" color="0xe5a00dff" visible="false" />
+        <Rectangle id="borderLeft" width="2" height="60" color="0xe5a00dff" visible="false" />
+        <Rectangle id="borderRight" translation="[238, 0]" width="2" height="60" color="0xe5a00dff" visible="false" />
+
+        <Label
+            id="label"
+            width="240"
+            height="60"
+            horizAlign="center"
+            vertAlign="center"
+            wrap="false"
+            maxLines="1"
+            font="font:MediumBoldSystemFont"
+            color="0xffffffff" />
+    </children>
+</component>

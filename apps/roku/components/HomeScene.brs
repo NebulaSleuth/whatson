@@ -34,6 +34,7 @@ sub init()
     m.trackButton = m.top.findNode("trackButton")
     m.addSonarrButton = m.top.findNode("addSonarrButton")
     m.addRadarrButton = m.top.findNode("addRadarrButton")
+    m.backButton = m.top.findNode("backButton")
     m.detailAddStatus = m.top.findNode("detailAddStatus")
 
     ' Show detail view — seasons + episodes browser, reached via the
@@ -449,12 +450,36 @@ sub init()
     m.rowList.observeField("rowItemSelected", "onRowItemSelected")
     m.tvRowList.observeField("rowItemSelected", "onTvRowItemSelected")
     m.moviesRowList.observeField("rowItemSelected", "onMoviesRowItemSelected")
-    m.detailActions.observeField("buttonSelected", "onDetailButtonSelected")
-    ' Show detail view — the button group fires buttonSelected and
-    ' the seasons list / episodes grid fire itemSelected.
-    m.showDetailActions.observeField("buttonSelected", "onShowDetailButtonSelected")
+    ' Detail action row uses ActionButton + LayoutGroup (replacing
+     ' Roku's ButtonGroup + Button) so the look matches the rest of
+     ' the channel. Each button fires its own `actionSelected` field
+     ' on OK press — observe per-button rather than a single switch.
+    m.playButton.observeField("actionSelected", "onPlayPressed")
+    m.goToShowButton.observeField("actionSelected", "onGoToShowPressed")
+    m.markWatchedButton.observeField("actionSelected", "onMarkWatchedPressed")
+    m.markUnwatchedButton.observeField("actionSelected", "onMarkUnwatchedPressed")
+    m.trackButton.observeField("actionSelected", "onTrackPressed")
+    m.addSonarrButton.observeField("actionSelected", "onAddToSonarrPressed")
+    m.addRadarrButton.observeField("actionSelected", "onAddToRadarrPressed")
+    m.backButton.observeField("actionSelected", "returnToDetailOrigin")
+
+    ' Show detail action row — same pattern.
+    m.showDetailMarkAllWatched.observeField("actionSelected", "onShowDetailMarkAllWatched")
+    m.showDetailMarkAllUnwatched.observeField("actionSelected", "onShowDetailMarkAllUnwatched")
+    m.showDetailBackButton.observeField("actionSelected", "closeShowDetail")
     m.showDetailSeasonsList.observeField("itemSelected", "onShowDetailSeasonSelected")
     m.showDetailEpisodesGrid.observeField("itemSelected", "onShowDetailEpisodeSelected")
+
+    ' Per-row helper arrays for the LayoutGroup left/right traversal.
+    m.detailActionButtons = [
+        m.playButton, m.goToShowButton, m.markWatchedButton,
+        m.markUnwatchedButton, m.trackButton, m.addSonarrButton,
+        m.addRadarrButton, m.backButton
+    ]
+    m.showDetailActionButtons = [
+        m.showDetailMarkAllWatched, m.showDetailMarkAllUnwatched,
+        m.showDetailBackButton
+    ]
     ' Each custom TabButton fires `buttonSelected` on OK press. Wire a
     ' single shared handler that walks m.tabButtons to find the source.
     for each btn in m.tabButtons
@@ -570,7 +595,7 @@ sub init()
     m.userList.observeField("itemSelected", "onUserPicked")
     m.video.observeField("state", "onVideoStateChanged")
     m.video.observeField("position", "onVideoPosition")
-    m.skipButton.observeField("buttonSelected", "onSkipPressed")
+    m.skipButton.observeField("actionSelected", "onSkipPressed")
     m.tracksQualityList.observeField("itemSelected", "onTracksQualityItemSelected")
     m.tracksAudioList.observeField("itemSelected", "onTracksAudioItemSelected")
     m.tracksSubtitleList.observeField("itemSelected", "onTracksSubtitleItemSelected")
@@ -945,6 +970,45 @@ sub focusActiveTab()
     idx = m.activeTabIndex
     if idx = invalid or idx < 0 or idx >= m.tabButtons.Count() then idx = 0
     m.tabButtons[idx].setFocus(true)
+end sub
+
+' Focus the first visible ActionButton in a LayoutGroup row. Replaces
+' ButtonGroup.setFocus, which used to auto-delegate to its first
+' focusable child — LayoutGroup doesn't, so callers explicitly target
+' the first visible button.
+sub focusFirstAction(buttons as object)
+    if buttons = invalid then return
+    for i = 0 to buttons.Count() - 1
+        b = buttons[i]
+        if b <> invalid and b.visible then
+            b.setFocus(true)
+            return
+        end if
+    end for
+end sub
+
+' Step focus left/right through a LayoutGroup of ActionButtons.
+' Skips invisible buttons (the detail row hides some buttons for
+' library items vs. tracked / discover items). Stops at the ends of
+' the row rather than wrapping.
+sub stepActionRow(buttons as object, key as string)
+    if buttons = invalid then return
+    delta = -1
+    if key = "right" then delta = 1
+    currentIdx = -1
+    for i = 0 to buttons.Count() - 1
+        if buttons[i] <> invalid and buttons[i].isInFocusChain() then currentIdx = i
+    end for
+    if currentIdx < 0 then return
+    nextIdx = currentIdx + delta
+    while nextIdx >= 0 and nextIdx < buttons.Count()
+        b = buttons[nextIdx]
+        if b <> invalid and b.visible then
+            b.setFocus(true)
+            return
+        end if
+        nextIdx = nextIdx + delta
+    end while
 end sub
 
 ' Mark the active tab on the strip so its TabButton paints the gold
@@ -2177,30 +2241,9 @@ sub attachTrackedFields(child as object, item as object)
     child.itemWatched = false
 end sub
 
-sub onDetailButtonSelected()
-    idx = m.detailActions.buttonSelected
-    print "[HomeScene] detail button selected: "; idx
-    ' Indices map to XML order:
-    '   0=Play, 1=Go to Show, 2=Mark Watched, 3=Mark Unwatched,
-    '   4=Track, 5=Add to Sonarr, 6=Add to Radarr, 7=Back
-    if idx = 0
-        onPlayPressed()
-    else if idx = 1
-        onGoToShowPressed()
-    else if idx = 2
-        onMarkWatchedPressed()
-    else if idx = 3
-        onMarkUnwatchedPressed()
-    else if idx = 4
-        onTrackPressed()
-    else if idx = 5
-        onAddToSonarrPressed()
-    else if idx = 6
-        onAddToRadarrPressed()
-    else if idx = 7
-        returnToDetailOrigin()
-    end if
-end sub
+' Deleted: onDetailButtonSelected (was an index-based switch on
+' ButtonGroup.buttonSelected). Replaced by per-button observers wired
+' in init() now that the row uses ActionButton + LayoutGroup.
 
 sub onGoToShowPressed()
     if m.selectedItem = invalid then return
@@ -2570,6 +2613,23 @@ end function
 ' our internal view stack instead of immediately exiting the channel.
 function onKeyEvent(key as string, press as boolean) as boolean
     print "[HomeScene] onKeyEvent key="; key; " press="; press; " view="; m.currentView
+
+    ' OK during playback toggles play / pause. The Video node with
+    ' enableUI=true consumes the OK press event (its native behaviour
+    ' is to show the title overlay at top), so only the RELEASE event
+    ' bubbles up to the Scene. Handle it here, before the `not press`
+    ' early return below.
+    if key = "OK" and press = false and m.currentView = "player" and m.tracksOpen <> true
+        print "[player-ok] OK release; video.state="; m.video.state
+        m.lastPlayerKeyAt = Uptime(0)
+        if m.video.state = "playing"
+            m.video.control = "pause"
+        else if m.video.state = "paused"
+            m.video.control = "resume"
+        end if
+        return true
+    end if
+
     if not press then return false
 
     ' On the player view, every OK / direction press re-shows Roku's
@@ -2628,6 +2688,19 @@ function onKeyEvent(key as string, press as boolean) as boolean
             end if
             return true
         end if
+    end if
+
+    ' Detail action row (LayoutGroup of ActionButtons). Left/Right
+    ' walks through the visible buttons, skipping any that are hidden
+    ' for this content type (e.g. Add-to-Sonarr is invisible for
+    ' library items). Wraps at the ends rather than bouncing off.
+    if (key = "left" or key = "right") and m.detailActions.isInFocusChain()
+        stepActionRow(m.detailActionButtons, key)
+        return true
+    end if
+    if (key = "left" or key = "right") and m.showDetailActions.isInFocusChain()
+        stepActionRow(m.showDetailActionButtons, key)
+        return true
     end if
 
     ' Same fallback for the Library TV/Movies toggle — also a
@@ -2854,13 +2927,13 @@ function onKeyEvent(key as string, press as boolean) as boolean
         else if m.currentView = "showDetail"
             ' Up chain: seasons/episodes → action row.
             if m.showDetailSeasonsList.isInFocusChain()
-                m.showDetailActions.setFocus(true)
+                focusFirstAction(m.showDetailActionButtons)
                 return true
             end if
             if m.showDetailEpisodesGrid.isInFocusChain()
                 idx = m.showDetailEpisodesGrid.itemFocused
                 if idx = invalid or idx < m.showDetailEpisodesGrid.numColumns
-                    m.showDetailActions.setFocus(true)
+                    focusFirstAction(m.showDetailActionButtons)
                     return true
                 end if
             end if
@@ -3185,7 +3258,7 @@ sub applyDeferredFocus()
     else if m.currentView = "sportsSettings"
         if m.sportsLeagueList.visible then m.sportsLeagueList.setFocus(true)
     else if m.currentView = "detail"
-        m.detailActions.setFocus(true)
+        focusFirstAction(m.detailActionButtons)
     else if m.currentView = "showDetail"
         ' Land on the seasons list — that's where the user wants to be.
         ' If seasons haven't loaded yet (empty list), fall back to the
@@ -3193,7 +3266,7 @@ sub applyDeferredFocus()
         if m.showDetailSeasonsList.content <> invalid and m.showDetailSeasonsList.content.getChildCount() > 0
             m.showDetailSeasonsList.setFocus(true)
         else
-            m.showDetailActions.setFocus(true)
+            focusFirstAction(m.showDetailActionButtons)
         end if
     else if m.currentView = "player"
         ' Focus the Video node so Roku's built-in transport overlay
@@ -3250,7 +3323,20 @@ sub populateDetail(node as object)
     watched = node.itemWatched = true
     isEpisode = node.itemType = "episode"
     hasShowParent = (node.itemShowRatingKey <> invalid and node.itemShowRatingKey <> "") or (node.itemShowTitle <> invalid and node.itemShowTitle <> "")
-    if m.playButton <> invalid then m.playButton.visible = isLibraryItem
+    if m.playButton <> invalid
+        m.playButton.visible = isLibraryItem
+        ' Rename to "Resume" when the user has progress on a partially-
+        ' watched item — pressing it opens a Resume / Start-from-
+        ' beginning prompt instead of going straight to playback.
+        progress = 0
+        if node.itemProgress <> invalid then progress = node.itemProgress
+        hasResume = isLibraryItem and (not watched) and progress > 0
+        if hasResume
+            m.playButton.text = "Resume"
+        else
+            m.playButton.text = "Play"
+        end if
+    end if
     ' Go to Show: library episodes only — gives the user a way into the
     ' full seasons / episodes browser from any episode card.
     if m.goToShowButton <> invalid then m.goToShowButton.visible = isLibraryItem and isEpisode and hasShowParent
@@ -3431,9 +3517,12 @@ sub onSeasonEpisodesResponse(event as object)
     rootNode = CreateObject("roSGNode", "ContentNode")
     for each ep in episodes
         child = rootNode.createChild("ContentNode")
-        epLabel = ""
-        if ep.episodeNumber <> invalid then epLabel = "E" + ep.episodeNumber.toStr() + " "
-        child.title = epLabel + stringField(ep, "title")
+        ' EpisodeListItem reads `title` as the plain episode title and
+        ' shows the "E01" prefix in its own label (itemEpisodeLabel,
+        ' populated by attachItemFields). No prefix on `title`.
+        child.title = stringField(ep, "title")
+        ' Provide a poster fallback in case itemThumbUrl is empty —
+        ' EpisodeListItem.brs reads HDPosterUrl as a last resort.
         posterUrl = resolvePosterUrl(ep)
         if posterUrl <> ""
             child.HDPosterUrl = posterUrl
@@ -3459,19 +3548,8 @@ sub onShowDetailEpisodeSelected()
     showView("detail")
 end sub
 
-sub onShowDetailButtonSelected()
-    idx = m.showDetailActions.buttonSelected
-    print "[HomeScene] showDetail button selected: "; idx
-    ' Indices map to XML order:
-    '   0 = Mark All Watched, 1 = Mark All Unwatched, 2 = Back
-    if idx = 0
-        onShowDetailMarkAllWatched()
-    else if idx = 1
-        onShowDetailMarkAllUnwatched()
-    else if idx = 2
-        closeShowDetail()
-    end if
-end sub
+' Deleted: onShowDetailButtonSelected (same reason — per-button
+' observers replace the switch).
 
 sub onShowDetailMarkAllWatched()
     if m.showDetailContext = invalid then return
@@ -3524,9 +3602,62 @@ end sub
 
 sub onPlayPressed()
     if m.selectedItem = invalid then return
+
+    ' Partially-watched library items get a Resume / Start-from-
+    ' beginning prompt; everything else (movies the user hasn't
+    ' touched, episodes at progress=0) goes straight to playback.
+    progress = 0
+    if m.selectedItem.itemProgress <> invalid then progress = m.selectedItem.itemProgress
+    watched = m.selectedItem.itemWatched = true
+    if progress > 0 and not watched
+        showResumeDialog(progress)
+        return
+    end if
+
+    startPlayback(false)
+end sub
+
+sub showResumeDialog(progressPct as float)
+    title = "Resume"
+    if m.selectedItem <> invalid and m.selectedItem.itemTitle <> invalid and m.selectedItem.itemTitle <> ""
+        title = m.selectedItem.itemTitle
+    end if
+    dlg = createObject("roSGNode", "Dialog")
+    dlg.title = title
+    dlg.message = "You're " + Int(progressPct).toStr() + "% in. Resume or start from the beginning?"
+    dlg.buttons = ["Resume", "Start from beginning", "Cancel"]
+    dlg.observeField("buttonSelected", "onResumeDialogChosen")
+    m.resumeDialog = dlg
+    m.top.dialog = dlg
+end sub
+
+sub onResumeDialogChosen()
+    dlg = m.resumeDialog
+    if dlg = invalid then return
+    idx = dlg.buttonSelected
+    ' Close the dialog regardless of which option was picked.
+    m.top.dialog = invalid
+    m.resumeDialog = invalid
+    if idx = 0
+        startPlayback(false)
+    else if idx = 1
+        startPlayback(true)
+    end if
+end sub
+
+sub startPlayback(fromStart as boolean)
+    if m.selectedItem = invalid then return
     sourceId = m.selectedItem.itemSourceId
     src = m.selectedItem.itemSource
     if sourceId = invalid or sourceId = "" then return
+
+    url = m.apiUrl + "/api/playback/" + sourceId + "?source=" + src
+    ' offset=0 explicitly tells the backend to build the stream from
+    ' t=0 rather than the saved resume position. m.playFromStart is
+    ' read by onPlaybackResponse so it can also skip the client-side
+    ' resume seek on the returned content.
+    m.playFromStart = fromStart
+    if fromStart then url = url + "&offset=0"
 
     ' Source is always one of "plex" / "jellyfin" / "emby" — no encoding
     ' needed and we can't create an roUrlTransfer here anyway (the render
@@ -3534,11 +3665,11 @@ sub onPlayPressed()
     m.playbackTask = CreateObject("roSGNode", "ApiTask")
     m.playbackTask.observeField("response", "onPlaybackResponse")
     m.playbackTask.method = "GET"
-    m.playbackTask.url = m.apiUrl + "/api/playback/" + sourceId + "?source=" + src
+    m.playbackTask.url = url
     setApiTaskAuth(m.playbackTask)
     m.playbackTask.control = "RUN"
 
-    print "[HomeScene] requesting playback for "; sourceId; " ("; src; ")"
+    print "[HomeScene] requesting playback for "; sourceId; " ("; src; ") fromStart="; fromStart
 end sub
 
 sub onPlaybackResponse()
@@ -3612,7 +3743,14 @@ sub onPlaybackResponse()
     '      (which is up to 10s stale from the last reportProgress).
     '   3. viewOffset from the playback info (Plex pre-seek path).
     resumeMs = invalid
-    if info.clientSeekMs <> invalid and info.clientSeekMs > 0
+    if m.playFromStart = true
+        ' Start-from-beginning short-circuits every resume signal.
+        ' Stays at t=0 even if the backend returns a viewOffset or
+        ' clientSeekMs from the user's saved progress.
+        resumeMs = invalid
+        m.qualitySwapResumeMs = invalid
+        m.playFromStart = false
+    else if info.clientSeekMs <> invalid and info.clientSeekMs > 0
         resumeMs = info.clientSeekMs
         m.qualitySwapResumeMs = invalid
     else if m.qualitySwapResumeMs <> invalid and m.qualitySwapResumeMs > 0
@@ -4951,6 +5089,13 @@ sub attachItemFields(child as object, item as object)
     child.AddField("itemDuration", "string", false)
     child.AddField("itemPosterUrl", "string", false)
     child.AddField("itemBackdropUrl", "string", false)
+    ' Landscape thumb URL — `artwork.thumbnail` from the backend. Mobile
+    ' uses this for episode rows; the new EpisodeListItem on Roku reads
+    ' it directly. Other surfaces (poster cells) ignore it.
+    child.AddField("itemThumbUrl", "string", false)
+    ' Episode label ("E01") for the episode-row renderer. Producer-side
+    ' formatted so the cell component doesn't have to handle padding.
+    child.AddField("itemEpisodeLabel", "string", false)
     child.AddField("itemType", "string", false)
     child.AddField("itemWatched", "boolean", false)
     ' Progress percentage 0..100, drives the PosterItem progress bar
@@ -4973,6 +5118,17 @@ sub attachItemFields(child as object, item as object)
     child.itemType = stringField(item, "type")
     child.itemPosterUrl = resolvePosterUrl(item)
     child.itemBackdropUrl = resolveBackdropUrl(item)
+    child.itemThumbUrl = resolveThumbUrl(item)
+    epLabel = ""
+    if stringField(item, "type") = "episode"
+        epNum = item.episodeNumber
+        if epNum <> invalid
+            n = epNum.toStr()
+            if Len(n) < 2 then n = "0" + n
+            epLabel = "E" + n
+        end if
+    end if
+    child.itemEpisodeLabel = epLabel
     child.itemStatus = stringField(item, "status")
     availableAt = ""
     if item.availability <> invalid then availableAt = stringField(item.availability, "availableAt")
@@ -5020,6 +5176,22 @@ function resolvePosterUrl(item as object) as string
     if Left(poster, 4) = "http" then return proxiedArtworkUrl(poster, 360)
     if Left(poster, 1) = "/" then return withAuthQuery(m.apiUrl + poster + "&w=360")
     return poster
+end function
+
+' Landscape episode preview (artwork.thumbnail). Used by the
+' EpisodeListItem on the show-detail page — episodes don't have their
+' own poster art, just the still / screen-cap from the episode. Falls
+' back to background, then poster, so we always render something.
+function resolveThumbUrl(item as object) as string
+    artwork = item.artwork
+    if artwork = invalid then return ""
+    raw = artwork.thumbnail
+    if raw = invalid or raw = "" then raw = artwork.background
+    if raw = invalid or raw = "" then raw = artwork.poster
+    if raw = invalid or raw = "" then return ""
+    if Left(raw, 4) = "http" then return proxiedArtworkUrl(raw, 480)
+    if Left(raw, 1) = "/" then return withAuthQuery(m.apiUrl + raw + "&w=480")
+    return raw
 end function
 
 ' Detail-view backdrop is a fullscreen 1920×1080 image. Pass the same

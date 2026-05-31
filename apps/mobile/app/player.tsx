@@ -262,7 +262,8 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
 
 // ── Main Player Screen ──
 export default function PlayerScreen() {
-  const { ratingKey, source: sourceParam } = useLocalSearchParams<{ ratingKey: string; source?: string }>();
+  const { ratingKey, source: sourceParam, fromStart } = useLocalSearchParams<{ ratingKey: string; source?: string; fromStart?: string }>();
+  const startFromZero = fromStart === '1';
   const source = sourceParam || 'plex';
 
   // Suppress WebSocket updates while playing — prevents stale data overwriting play position
@@ -451,12 +452,19 @@ export default function PlayerScreen() {
       try {
         setLoading(true);
         setError(null);
-        const info = await api.getPlaybackInfo(ratingKey, { source });
+        // fromStart=1 means the user picked "Start from beginning" at
+        // the detail sheet. Force offset=0 so the backend rebuilds the
+        // stream from t=0 instead of resuming from saved progress.
+        const info = await api.getPlaybackInfo(ratingKey, {
+          source,
+          ...(startFromZero ? { offset: 0 } : {}),
+        });
         if (cancelled) return;
 
         setPlaybackInfo({
           sessionId: info.sessionId, title: info.title, duration: info.duration,
-          viewOffset: info.viewOffset, clientSeekMs: info.clientSeekMs ?? 0,
+          viewOffset: startFromZero ? 0 : info.viewOffset,
+          clientSeekMs: startFromZero ? 0 : (info.clientSeekMs ?? 0),
           serverUrl: info.serverUrl,
           subtitles: info.subtitles || [], audioTracks: info.audioTracks || [],
           markers: info.markers || [],
@@ -472,9 +480,11 @@ export default function PlayerScreen() {
         // clientSeekMs wins over viewOffset — when the backend signals
         // it, the stream actually starts at t=0 and we seek the video
         // element instead. This is the Jellyfin image-subtitle path.
-        if (info.clientSeekMs && info.clientSeekMs > 0) {
+        // Both are skipped when fromStart=1 so the user genuinely
+        // starts at 0 instead of jumping to their saved position.
+        if (!startFromZero && info.clientSeekMs && info.clientSeekMs > 0) {
           currentPositionRef.current = info.clientSeekMs;
-        } else if (info.viewOffset > 0) {
+        } else if (!startFromZero && info.viewOffset > 0) {
           const offsetSec = Math.floor(info.viewOffset / 1000);
           url = url.replace(/offset=\d+/, `offset=${offsetSec}`);
           currentPositionRef.current = info.viewOffset;

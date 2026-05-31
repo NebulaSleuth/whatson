@@ -168,9 +168,35 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
     undefined;
   const canGoToShow = isLibraryItem && !!showKey;
 
-  const handlePlay = () => {
+  const hasResume = (item.progress?.percentage ?? 0) > 0 && !item.progress?.watched;
+
+  const startPlayback = (fromStart: boolean) => {
     onClose();
-    router.push({ pathname: '/player', params: { ratingKey: item.sourceId, source: item.source } });
+    router.push({
+      pathname: '/player',
+      params: {
+        ratingKey: item.sourceId,
+        source: item.source,
+        ...(fromStart ? { fromStart: '1' } : {}),
+      },
+    });
+  };
+
+  const handlePlay = () => {
+    if (!hasResume) {
+      startPlayback(false);
+      return;
+    }
+    const pct = Math.round(item.progress.percentage);
+    Alert.alert(
+      item.showTitle || item.title,
+      `You're ${pct}% in. Resume or start from the beginning?`,
+      [
+        { text: 'Resume', onPress: () => startPlayback(false) },
+        { text: 'Start from beginning', onPress: () => startPlayback(true) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   };
 
   const handleGoToShow = () => {
@@ -276,7 +302,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 <View style={styles.tvActions}>
                   {isLibraryItem && hasVideoPlayer ? (
                     <FocusButton
-                      title="Play"
+                      title={hasResume ? 'Resume' : 'Play'}
                       style={styles.playButton}
                       textStyle={styles.playButtonText}
                       onPress={handlePlay}
@@ -420,7 +446,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 <View style={styles.actions}>
                   {isLibraryItem && hasVideoPlayer ? (
                     <Pressable style={styles.playButton} onPress={handlePlay}>
-                      <Text style={styles.playButtonText}>Play</Text>
+                      <Text style={styles.playButtonText}>{hasResume ? 'Resume' : 'Play'}</Text>
                     </Pressable>
                   ) : null}
 

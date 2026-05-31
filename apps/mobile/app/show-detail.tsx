@@ -70,9 +70,34 @@ export default function ShowDetailScreen() {
     enabled: !!selectedSeason,
   });
 
-  const handlePlayEpisode = useCallback((ep: ContentItem) => {
-    router.push({ pathname: '/player', params: { ratingKey: ep.sourceId, source: ep.source } } as any);
+  const launchEpisode = useCallback((ep: ContentItem, fromStart: boolean) => {
+    router.push({
+      pathname: '/player',
+      params: {
+        ratingKey: ep.sourceId,
+        source: ep.source,
+        ...(fromStart ? { fromStart: '1' } : {}),
+      },
+    } as any);
   }, []);
+
+  const handlePlayEpisode = useCallback((ep: ContentItem) => {
+    const hasResume = (ep.progress?.percentage ?? 0) > 0 && !ep.progress?.watched;
+    if (!hasResume) {
+      launchEpisode(ep, false);
+      return;
+    }
+    const pct = Math.round(ep.progress.percentage);
+    Alert.alert(
+      ep.title,
+      `You're ${pct}% in. Resume or start from the beginning?`,
+      [
+        { text: 'Resume', onPress: () => launchEpisode(ep, false) },
+        { text: 'Start from beginning', onPress: () => launchEpisode(ep, true) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [launchEpisode]);
 
   const queryClient = useQueryClient();
 

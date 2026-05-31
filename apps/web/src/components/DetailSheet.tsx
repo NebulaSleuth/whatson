@@ -15,7 +15,10 @@ export function DetailSheet({ item, onClose }: Props) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [playing, setPlaying] = useState(false);
+  const [playFromStart, setPlayFromStart] = useState(false);
   const [working, setWorking] = useState<string | null>(null);
+
+  const hasResume = (item.progress?.percentage ?? 0) > 0 && !item.progress?.watched;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -62,6 +65,16 @@ export function DetailSheet({ item, onClose }: Props) {
   }
 
   function play() {
+    if (!hasResume) {
+      setPlayFromStart(false);
+      setPlaying(true);
+      return;
+    }
+    const pct = Math.round(item.progress.percentage);
+    const resume = window.confirm(
+      `You're ${pct}% in. Click OK to resume, or Cancel to start from the beginning.`,
+    );
+    setPlayFromStart(!resume);
     setPlaying(true);
   }
   function markWatched() {
@@ -121,7 +134,7 @@ export function DetailSheet({ item, onClose }: Props) {
   }
 
   if (playing) {
-    return <VideoPlayer item={item} onClose={() => setPlaying(false)} />;
+    return <VideoPlayer item={item} fromStart={playFromStart} onClose={() => setPlaying(false)} />;
   }
 
   return (
@@ -183,7 +196,7 @@ export function DetailSheet({ item, onClose }: Props) {
 
             <div className="flex flex-wrap gap-2 mt-4">
               {isLibraryItem && (
-                <Btn primary onClick={play}>Play</Btn>
+                <Btn primary onClick={play}>{hasResume ? 'Resume' : 'Play'}</Btn>
               )}
               {isLibraryItem && item.type === 'episode' && (item.showRatingKey || item.showTitle) && (
                 <Btn onClick={goToShow}>Go to Show</Btn>

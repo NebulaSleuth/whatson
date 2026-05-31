@@ -6,6 +6,12 @@ import { api } from '@/lib/api';
 
 interface Props {
   item: ContentItem;
+  /**
+   * When true, the player starts at t=0 regardless of saved progress.
+   * Set by DetailSheet when the user picks "Start from beginning" on
+   * a partially-watched item.
+   */
+  fromStart?: boolean;
   onClose: () => void;
 }
 
@@ -24,7 +30,7 @@ const QUALITY_PRESETS: Array<{ label: string; maxBitrate?: number }> = [
 
 type PlaybackInfo = Awaited<ReturnType<typeof api.getPlaybackInfo>>;
 
-export function VideoPlayer({ item, onClose }: Props) {
+export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -84,9 +90,13 @@ export function VideoPlayer({ item, onClose }: Props) {
       setError(null);
       setStatus('Requesting stream…');
       const reqStart = performance.now();
+      // First-load offset: 0 if the user picked "Start from beginning",
+      // else the saved resume position. Subsequent swaps explicitly
+      // pass `opts.offset` to preserve position across quality changes.
+      const firstLoadOffset = fromStart ? 0 : item.progress?.currentPosition;
       const next = await api.getPlaybackInfo(item.sourceId, {
         source: item.source,
-        offset: opts.offset ?? (info ? undefined : item.progress?.currentPosition),
+        offset: opts.offset ?? (info ? undefined : firstLoadOffset),
         audioStreamID: opts.audio,
         subtitleStreamID: opts.subtitle,
         maxBitrate: opts.bitrate,
@@ -168,8 +178,14 @@ export function VideoPlayer({ item, onClose }: Props) {
       // the user actually wants to be. The stream starts at 0, the
       // client seeks the video element to clientSeekMs.
       const isSwap = opts.offset !== undefined;
+      // fromStart forces 0 on the initial load — overrides viewOffset
+      // and clientSeekMs from the saved-progress response so the user
+      // actually starts at the beginning.
+      const isFirstLoadFromStart = fromStart && !isSwap;
       let seekToMs: number;
-      if (clientSeekMs > 0) {
+      if (isFirstLoadFromStart) {
+        seekToMs = 0;
+      } else if (clientSeekMs > 0) {
         seekToMs = clientSeekMs;
       } else if (isSwap) {
         seekToMs = 0;

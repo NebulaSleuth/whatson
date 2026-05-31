@@ -19,18 +19,22 @@
 
         <!-- Surface strip behind the tab bar — matches mobile's
              tabBarStyle.backgroundColor (#1A1A1A) with a 1px
-             cardBorder line at the bottom edge (#2A2A2A). -->
+             cardBorder line at the bottom edge (#2A2A2A). 92px tall
+             so the 80px buttons sit with 6px of breathing room above
+             AND below; the gap between the border and the content
+             below (which stays at y=120) shrinks to compensate, so
+             nothing else moves. -->
         <Rectangle
             id="tabBarSurface"
             width="1920"
-            height="80"
+            height="92"
             translation="[0, 0]"
             color="0x1a1a1aff" />
         <Rectangle
             id="tabBarBorder"
             width="1920"
             height="1"
-            translation="[0, 80]"
+            translation="[0, 92]"
             color="0x2a2a2aff" />
 
         <!-- Brand mark — top-left, kept above (not in) the tab bar
@@ -45,10 +49,12 @@
             color="0xe5a00dff" />
 
         <!-- Real-time clock — overlays the right edge of the tab
-             bar strip (matches the mobile Clock overlay top-right). -->
+             bar strip (matches the mobile Clock overlay top-right).
+             Shifted down 6px to stay vertically centered after the
+             tab bar grew from 80 to 92px tall. -->
         <Label
             id="clockLabel"
-            translation="[1700, 26]"
+            translation="[1700, 32]"
             width="160"
             horizAlign="right"
             font="font:MediumBoldSystemFont"
@@ -61,7 +67,7 @@
              bitmap, so the mobile look requires this custom node. -->
         <LayoutGroup
             id="tabBar"
-            translation="[80, 0]"
+            translation="[80, 6]"
             layoutDirection="horiz"
             itemSpacings="[8]">
             <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" focusable="true" />
@@ -755,20 +761,27 @@
                    - sports / sonarr / radarr: Back
                  ButtonGroup skips invisible buttons in its focus chain
                  so the user only steps through what's relevant. -->
-            <ButtonGroup
+            <!-- App-styled ActionButton + LayoutGroup replaces Roku's
+                 built-in ButtonGroup + Button so the action row matches
+                 the rest of the channel's gold-on-dark theme. Each
+                 ActionButton fires its own `actionSelected` field; the
+                 handler observers live in init() rather than the
+                 single buttonSelected switch ButtonGroup used to drive.
+                 Left/Right traversal is wired manually in onKeyEvent. -->
+            <LayoutGroup
                 id="detailActions"
                 translation="[120, 720]"
                 layoutDirection="horiz"
                 itemSpacings="[24]">
-                <Button id="playButton" text="Play" minWidth="240" />
-                <Button id="goToShowButton" text="Go to Show" minWidth="240" />
-                <Button id="markWatchedButton" text="Mark as Watched" minWidth="320" />
-                <Button id="markUnwatchedButton" text="Mark as Unwatched" minWidth="340" />
-                <Button id="trackButton" text="Track" minWidth="200" />
-                <Button id="addSonarrButton" text="Add to Sonarr" minWidth="280" />
-                <Button id="addRadarrButton" text="Add to Radarr" minWidth="280" />
-                <Button id="backButton" text="Back" minWidth="240" />
-            </ButtonGroup>
+                <ActionButton id="playButton" text="Play" buttonWidth="240" focusable="true" />
+                <ActionButton id="goToShowButton" text="Go to Show" buttonWidth="240" focusable="true" />
+                <ActionButton id="markWatchedButton" text="Mark as Watched" buttonWidth="320" focusable="true" />
+                <ActionButton id="markUnwatchedButton" text="Mark as Unwatched" buttonWidth="340" focusable="true" />
+                <ActionButton id="trackButton" text="Track" buttonWidth="200" focusable="true" />
+                <ActionButton id="addSonarrButton" text="Add to Sonarr" buttonWidth="280" focusable="true" />
+                <ActionButton id="addRadarrButton" text="Add to Radarr" buttonWidth="280" focusable="true" />
+                <ActionButton id="backButton" text="Back" buttonWidth="240" focusable="true" />
+            </LayoutGroup>
 
             <!-- Inline status row for Add → "Adding…" / "Added to Sonarr" /
                  error messages. Sits just below the action row. -->
@@ -787,11 +800,17 @@
              the left, action buttons below; seasons LabelList + episodes
              MarkupGrid in the lower section. -->
         <Group id="showDetailView" visible="false">
+            <!-- scaleToZoom = aspect-preserving crop (CSS object-fit:
+                 cover). scaleToFill stretches the image to the exact
+                 box dims, which looked smushed on backdrops whose
+                 native ratio isn't 1920×540 (≈ 3.56:1) — most backdrops
+                 are 16:9 (≈ 1.78:1) so they were horizontally
+                 stretched. -->
             <Poster
                 id="showDetailBackdrop"
                 width="1920"
                 height="540"
-                loadDisplayMode="scaleToFill" />
+                loadDisplayMode="scaleToZoom" />
             <Rectangle width="1920" height="540" color="0x000000b0" />
 
             <Poster
@@ -823,15 +842,15 @@
                 maxLines="4"
                 color="0xdcdcdcff" />
 
-            <ButtonGroup
+            <LayoutGroup
                 id="showDetailActions"
                 translation="[340, 410]"
                 layoutDirection="horiz"
                 itemSpacings="[24]">
-                <Button id="showDetailMarkAllWatched" text="Mark All Watched" minWidth="320" />
-                <Button id="showDetailMarkAllUnwatched" text="Mark All Unwatched" minWidth="340" />
-                <Button id="showDetailBackButton" text="Back" minWidth="200" />
-            </ButtonGroup>
+                <ActionButton id="showDetailMarkAllWatched" text="Mark All Watched" buttonWidth="320" focusable="true" />
+                <ActionButton id="showDetailMarkAllUnwatched" text="Mark All Unwatched" buttonWidth="340" focusable="true" />
+                <ActionButton id="showDetailBackButton" text="Back" buttonWidth="200" focusable="true" />
+            </LayoutGroup>
 
             <Label
                 translation="[80, 530]"
@@ -859,14 +878,18 @@
                 width="1400"
                 color="0xb0b0b0ff"
                 text="" />
+            <!-- Vertical episode list: landscape thumb + title + summary
+                 per row, mirrors mobile/web. Single-column MarkupGrid
+                 with 3 visible rows; user scrolls down through episodes
+                 rather than panning sideways. -->
             <MarkupGrid
                 id="showDetailEpisodesGrid"
-                itemComponentName="PosterItem"
+                itemComponentName="EpisodeListItem"
                 translation="[400, 580]"
-                itemSize="[220, 380]"
-                itemSpacing="[16, 24]"
-                numRows="1"
-                numColumns="6"
+                itemSize="[1380, 152]"
+                itemSpacing="[0, 14]"
+                numRows="3"
+                numColumns="1"
                 vertFocusAnimationStyle="floatingFocus"
                 focusable="true" />
         </Group>
@@ -990,12 +1013,13 @@
                  and gets focus so OK fires it. Back dismisses for the
                  remainder of that marker (so users can watch the intro
                  if they want without the button popping back up). -->
-            <Button
+            <ActionButton
                 id="skipButton"
                 text="Skip Intro"
                 translation="[1500, 820]"
-                minWidth="320"
-                visible="false" />
+                buttonWidth="320"
+                visible="false"
+                focusable="true" />
         </Group>
     </children>
 </component>
