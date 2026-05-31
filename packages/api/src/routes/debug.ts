@@ -19,6 +19,45 @@ export const debugRouter = Router();
  * header so the browser downloads it. Open this URL while logged
  * into /setup (cookie auth) to grab the file.
  */
+/**
+ * Returns what the backend would currently send to a client as the
+ * artwork URL for a given Plex show. Useful for verifying that
+ * artworkUrl() is building stripped (no /timestamp) URLs after the
+ * v0.1.98 fix — if the URL here still has a trailing /digits, the
+ * fix isn't being applied (likely an older cached library payload).
+ *
+ * GET /api/debug/plex/show-url?title=spider-noir
+ */
+debugRouter.get('/debug/plex/show-url', async (req, res) => {
+  try {
+    const titleQ = (req.query.title as string) || '';
+    if (!titleQ) {
+      res.status(400).json({ error: 'Provide ?title=' });
+      return;
+    }
+    const results = await plexSearch(titleQ);
+    const show = results.find((i) => i.type === 'show') ||
+      results.find((i) => i.type === 'episode');
+    if (!show) {
+      res.status(404).json({ error: 'No match', searchHits: results.map((r) => ({ title: r.title, type: r.type, sourceId: r.sourceId })) });
+      return;
+    }
+    res.json({
+      sourceId: show.sourceId,
+      showRatingKey: show.showRatingKey,
+      type: show.type,
+      title: show.title,
+      artwork: show.artwork,
+      // Quick check: if poster ends in /digits, the strip-ts fix isn't
+      // active for this item (either the deployed build is older or
+      // this item came from a stale data cache).
+      posterStripped: !/\/\d+(\?|$)/.test(show.artwork.poster),
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 debugRouter.get('/debug/plex/show-poster', async (req, res) => {
   try {
     const titleQ = (req.query.title as string) || '';
