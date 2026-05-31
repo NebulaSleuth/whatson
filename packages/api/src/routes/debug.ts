@@ -31,27 +31,71 @@ export const debugRouter = Router();
 debugRouter.get('/debug/plex/show-url', async (req, res) => {
   try {
     const titleQ = (req.query.title as string) || '';
+    const ratingKeyQ = (req.query.ratingKey as string) || '';
+
+    // Direct ratingKey path — fetch metadata for the exact item the
+    // user pointed at. Bypasses search entirely so it works even if
+    // Plex's hub-search misreports the item type.
+    if (ratingKeyQ) {
+      const serverUrl = await getServerUrl();
+      if (!serverUrl) {
+        res.status(503).json({ error: 'Plex server URL not resolved' });
+        return;
+      }
+      const r = await axios.get(`${serverUrl}/library/metadata/${ratingKeyQ}`, {
+        params: { 'X-Plex-Token': config.plex.token },
+        timeout: 10000,
+      });
+      const item = r.data?.MediaContainer?.Metadata?.[0];
+      if (!item) {
+        res.status(404).json({ error: 'No item at that ratingKey' });
+        return;
+      }
+      res.json({
+        ratingKey: item.ratingKey,
+        type: item.type,
+        title: item.title,
+        rawThumb: item.thumb,
+        rawArt: item.art,
+        rawGrandparentThumb: item.grandparentThumb,
+        addedAt: item.addedAt,
+        updatedAt: item.updatedAt,
+        // What we'd serve to a client. Re-derive via the public path
+        // by hitting search? Simpler: just show the raw thumb path and
+        // let the caller eyeball whether it ends in /<digits>.
+      });
+      return;
+    }
+
     if (!titleQ) {
-      res.status(400).json({ error: 'Provide ?title=' });
+      res.status(400).json({ error: 'Provide ?title= or ?ratingKey=' });
       return;
     }
     const results = await plexSearch(titleQ);
-    const show = results.find((i) => i.type === 'show') ||
+    // Movies first, then shows, then episodes — covers any Plex content type.
+    const hit = results.find((i) => i.type === 'movie') ||
+      results.find((i) => i.type === 'show') ||
       results.find((i) => i.type === 'episode');
-    if (!show) {
-      res.status(404).json({ error: 'No match', searchHits: results.map((r) => ({ title: r.title, type: r.type, sourceId: r.sourceId })) });
+    if (!hit) {
+      res.status(404).json({
+        error: 'No match',
+        searchHits: results.map((r) => ({ title: r.title, type: r.type, sourceId: r.sourceId })),
+      });
       return;
     }
     res.json({
-      sourceId: show.sourceId,
-      showRatingKey: show.showRatingKey,
-      type: show.type,
-      title: show.title,
-      artwork: show.artwork,
+      sourceId: hit.sourceId,
+      showRatingKey: hit.showRatingKey,
+      type: hit.type,
+      title: hit.title,
+      artwork: hit.artwork,
       // Quick check: if poster ends in /digits, the strip-ts fix isn't
       // active for this item (either the deployed build is older or
       // this item came from a stale data cache).
-      posterStripped: !/\/\d+(\?|$)/.test(show.artwork.poster),
+      posterStripped: !/\/\d+(\?|$)/.test(hit.artwork.poster),
+      // Other search hits so the caller can pick a different one if
+      // the first match is the wrong type / wrong show.
+      otherHits: results.map((r) => ({ title: r.title, type: r.type, sourceId: r.sourceId })),
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
