@@ -230,12 +230,20 @@ async function getClient(userToken?: string): Promise<AxiosInstance> {
   return client;
 }
 
-function artworkUrl(path: string | undefined, userToken?: string): string {
+function artworkUrl(path: string | undefined, userToken?: string, updatedAt?: number): string {
   if (!path) return '';
   // Prefer local URL for artwork — the backend proxy fetches it, so it must be reachable from the backend
   const base = localPlexUrl || resolvedServerUrl;
   if (!base) return '';
-  return `${base}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
+  // `_v` is a cache-buster keyed on the item's updatedAt — when the
+  // user changes the poster in Plex, the underlying thumb URL doesn't
+  // always bump its trailing version, but `updatedAt` reliably does.
+  // The artwork proxy keys its cache on the full URL, so a different
+  // `_v` forces a fresh upstream fetch. Plex itself ignores unknown
+  // query params, so this doesn't disturb the image fetch.
+  let url = `${base}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
+  if (updatedAt && updatedAt > 0) url += `&_v=${updatedAt}`;
+  return url;
 }
 
 /** Get all discovered Plex connections for client-side testing */
@@ -282,9 +290,18 @@ function plexToContentItem(item: any, status: ContentItem['status'], userToken?:
     summary: item.summary || '',
     duration,
     artwork: {
-      poster: artworkUrl(isEpisode ? item.grandparentThumb : item.thumb, userToken),
-      thumbnail: artworkUrl(item.thumb, userToken),
-      background: artworkUrl(item.art, userToken),
+      // For episodes the show poster lives at grandparentThumb; bump on
+      // the show's grandparent updatedAt (item.grandparentRatingKey
+      // wouldn't reflect a poster change to the show itself, but
+      // grandparentArtUpdatedAt/grandparentThumbUpdatedAt do when
+      // exposed). Fall back to the episode's own updatedAt otherwise.
+      poster: artworkUrl(
+        isEpisode ? item.grandparentThumb : item.thumb,
+        userToken,
+        isEpisode ? (item.grandparentArtUpdatedAt || item.grandparentThumbUpdatedAt || item.updatedAt) : item.updatedAt,
+      ),
+      thumbnail: artworkUrl(item.thumb, userToken, item.updatedAt),
+      background: artworkUrl(item.art, userToken, item.updatedAt),
     },
     source: 'plex',
     sourceId: String(item.ratingKey),
@@ -513,7 +530,7 @@ export async function getShowSeasons(showRatingKey: string, userToken?: string):
       title: s.title || `Season ${s.index}`,
       episodeCount: s.leafCount || 0,
       watchedCount: s.viewedLeafCount || 0,
-      thumb: artworkUrl(s.thumb, userToken),
+      thumb: artworkUrl(s.thumb, userToken, s.updatedAt),
     }));
 }
 
