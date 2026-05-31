@@ -237,6 +237,136 @@
       color: #444;
       font-size: 12px;
     }
+
+    /* ── Sidebar layout ──
+       Replaces the single-column container for the logged-in view.
+       Sidebar holds brand + section nav + log-out; main holds the
+       active section's card. */
+    .app-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: #111;
+      border-right: 1px solid #2a2a2a;
+      padding: 24px 0 16px;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .sidebar-brand {
+      padding: 0 24px 20px;
+      border-bottom: 1px solid #2a2a2a;
+      margin-bottom: 12px;
+    }
+    .sidebar-brand h1 {
+      font-size: 22px;
+      color: #e5a00d;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+    .sidebar-brand p {
+      color: #888;
+      font-size: 11px;
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .sidebar-nav {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 24px;
+      background: transparent;
+      border: none;
+      border-left: 3px solid transparent;
+      color: #aaa;
+      font-size: 14px;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .nav-item:hover {
+      background: rgba(229, 160, 13, 0.08);
+      color: #e0e0e0;
+    }
+    .nav-item.active {
+      background: rgba(229, 160, 13, 0.12);
+      border-left-color: #e5a00d;
+      color: #e5a00d;
+      font-weight: 600;
+    }
+    .nav-item .status-dot {
+      margin-left: auto;
+    }
+    .sidebar-footer {
+      padding: 16px 24px 0;
+      border-top: 1px solid #2a2a2a;
+      margin-top: 12px;
+    }
+    .sidebar-footer a {
+      color: #888;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .sidebar-footer a:hover { color: #ccc; }
+
+    .main {
+      flex: 1;
+      padding: 32px 40px;
+      max-width: 720px;
+    }
+    .section {
+      display: none;
+    }
+    .section.active {
+      display: block;
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #f0f0f0;
+      margin-bottom: 20px;
+    }
+
+    /* Narrow screens: sidebar collapses to a horizontal top strip,
+       brand label hides, sections stack as a row of pills. */
+    @media (max-width: 720px) {
+      .app-layout { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        padding: 12px;
+        border-right: none;
+        border-bottom: 1px solid #2a2a2a;
+      }
+      .sidebar-brand { padding: 4px 12px 12px; border-bottom: none; margin-bottom: 8px; }
+      .sidebar-nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+      .nav-item {
+        padding: 8px 12px;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        border-radius: 6px 6px 0 0;
+      }
+      .nav-item.active {
+        border-left: none;
+        border-bottom-color: #e5a00d;
+      }
+      .sidebar-footer { display: none; }
+      .main { padding: 20px 16px; max-width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -276,14 +406,48 @@
     </div>
   </div>
 
-  <div class="container" id="main-container" style="display:none">
-    <div class="header">
-      <h1>Whats On</h1>
-      <p>Server Configuration</p>
-      <div style="margin-top:8px"><a href="#" onclick="doLogout(event)" style="color:#888;font-size:12px">Log out</a></div>
-    </div>
+  <div id="main-container" style="display:none">
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <h1>Whats On</h1>
+          <p>Server Configuration</p>
+        </div>
+        <nav class="sidebar-nav" id="sidebar-nav">
+          <button type="button" class="nav-item" data-section="security">Security &amp; Devices</button>
+          <button type="button" class="nav-item" data-section="plex">
+            Plex
+            <span class="status-dot unconfigured" id="nav-status-plex"></span>
+          </button>
+          <button type="button" class="nav-item" data-section="sonarr">
+            Sonarr
+            <span class="status-dot unconfigured" id="nav-status-sonarr"></span>
+          </button>
+          <button type="button" class="nav-item" data-section="jellyfin">
+            Jellyfin
+            <span class="status-dot unconfigured" id="nav-status-jellyfin"></span>
+          </button>
+          <button type="button" class="nav-item" data-section="emby">
+            Emby
+            <span class="status-dot unconfigured" id="nav-status-emby"></span>
+          </button>
+          <button type="button" class="nav-item" data-section="radarr">
+            Radarr
+            <span class="status-dot unconfigured" id="nav-status-radarr"></span>
+          </button>
+          <button type="button" class="nav-item" data-section="tmdb">TMDB</button>
+          <button type="button" class="nav-item" data-section="server">Server</button>
+          <button type="button" class="nav-item" data-section="updates">Updates</button>
+        </nav>
+        <div class="sidebar-footer">
+          <a href="#" onclick="doLogout(event)">Log out</a>
+        </div>
+      </aside>
+
+      <main class="main">
 
     <!-- Security & Devices -->
+    <section class="section" data-section="security">
     <div class="card" id="security-card">
       <div class="card-header"><h2>Security &amp; Devices</h2></div>
 
@@ -315,8 +479,10 @@
       <button class="btn btn-secondary" onclick="changePassword()">Update password</button>
       <div id="change-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
     </div>
+    </section>
 
     <!-- Plex -->
+    <section class="section" data-section="plex">
     <div class="card" id="plex-card">
       <div class="card-header">
         <h2>Plex</h2>
@@ -346,8 +512,10 @@
         <button class="btn btn-primary" onclick="saveService('plex')">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Sonarr -->
+    <section class="section" data-section="sonarr">
     <div class="card">
       <div class="card-header">
         <h2>Sonarr <span style="color:#888;font-size:13px;font-weight:400">(TV Shows)</span></h2>
@@ -367,8 +535,10 @@
         <button class="btn btn-primary" onclick="saveService('sonarr')">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Jellyfin -->
+    <section class="section" data-section="jellyfin">
     <div class="card">
       <div class="card-header">
         <h2>Jellyfin <span style="color:#888;font-size:13px;font-weight:400">(alternative media server)</span></h2>
@@ -392,8 +562,10 @@
         <button class="btn btn-primary" onclick="saveService('jellyfin')">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Emby -->
+    <section class="section" data-section="emby">
     <div class="card">
       <div class="card-header">
         <h2>Emby <span style="color:#888;font-size:13px;font-weight:400">(alternative media server)</span></h2>
@@ -417,8 +589,10 @@
         <button class="btn btn-primary" onclick="saveService('emby')">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Radarr -->
+    <section class="section" data-section="radarr">
     <div class="card">
       <div class="card-header">
         <h2>Radarr <span style="color:#888;font-size:13px;font-weight:400">(Movies)</span></h2>
@@ -438,8 +612,10 @@
         <button class="btn btn-primary" onclick="saveService('radarr')">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- TMDB -->
+    <section class="section" data-section="tmdb">
     <div class="card">
       <div class="card-header">
         <h2>TMDB <span style="color:#888;font-size:13px;font-weight:400">(optional)</span></h2>
@@ -454,8 +630,10 @@
         <button class="btn btn-primary" onclick="saveTmdb()">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Server -->
+    <section class="section" data-section="server">
     <div class="card">
       <div class="card-header">
         <h2>Server</h2>
@@ -470,8 +648,10 @@
         <button class="btn btn-primary" onclick="savePort()">Save</button>
       </div>
     </div>
+    </section>
 
     <!-- Updates -->
+    <section class="section" data-section="updates">
     <div class="card">
       <div class="card-header">
         <h2>Updates</h2>
@@ -502,9 +682,12 @@
         <button class="btn btn-primary" onclick="saveUpdate()">Save</button>
       </div>
     </div>
+    </section>
 
-    <div class="footer">
-      Whats On Server &mdash; configuration is saved to the .env file on this machine
+        <div class="footer" style="text-align:left;margin-top:32px">
+          Whats On Server &mdash; configuration is saved to the .env file on this machine
+        </div>
+      </main>
     </div>
   </div>
 
@@ -512,6 +695,41 @@
 
   <script>
     const API = window.location.origin + '/api';
+
+    // ── Sidebar section switching ──
+    // Each .nav-item carries `data-section` matching a <section data-section>
+    // in the main column. Active section's display flips to block; the
+    // active nav-item gets the gold accent treatment. Selection persists
+    // across reloads via localStorage so a settings page survives a
+    // refresh after Save.
+    function activateSection(name) {
+      const sections = document.querySelectorAll('.section');
+      let matched = false;
+      sections.forEach((el) => {
+        const isMatch = el.dataset.section === name;
+        el.classList.toggle('active', isMatch);
+        if (isMatch) matched = true;
+      });
+      // Fall back to the first section if the saved name isn't valid
+      // (e.g. we renamed/removed it between releases).
+      if (!matched && sections.length > 0) {
+        sections[0].classList.add('active');
+        name = sections[0].dataset.section;
+      }
+      document.querySelectorAll('.nav-item').forEach((el) => {
+        el.classList.toggle('active', el.dataset.section === name);
+      });
+      try { localStorage.setItem('whatson-admin-section', name); } catch {}
+    }
+
+    function initSidebar() {
+      document.querySelectorAll('.nav-item').forEach((btn) => {
+        btn.addEventListener('click', () => activateSection(btn.dataset.section));
+      });
+      let saved = 'security';
+      try { saved = localStorage.getItem('whatson-admin-section') || 'security'; } catch {}
+      activateSection(saved);
+    }
 
     // ── Toast ──
     function showToast(message, type = 'success') {
@@ -586,8 +804,13 @@
     function updateStatusDot(service, status) {
       const dot = document.getElementById(service + '-status');
       const label = document.getElementById(service + '-status-label');
-      dot.className = 'status-dot ' + (status === 'connected' ? 'connected' : status === 'error' ? 'error' : 'unconfigured');
+      const cls = 'status-dot ' + (status === 'connected' ? 'connected' : status === 'error' ? 'error' : 'unconfigured');
+      dot.className = cls;
       label.textContent = status === 'connected' ? 'Connected' : status === 'error' ? 'Connection failed' : 'Not configured';
+      // Mirror the dot into the sidebar nav (Plex / Sonarr / Jellyfin /
+      // Emby / Radarr — TMDB / Server / Updates have no live status).
+      const navDot = document.getElementById('nav-status-' + service);
+      if (navDot) navDot.className = cls;
     }
 
     // ── Test Connection ──
@@ -899,6 +1122,10 @@
     function showMain() {
       hide('auth-gate');
       show('main-container');
+      // Wire the sidebar nav once we're in the secured UI (before the
+      // sections are visible they'd all measure as `display:none` and
+      // the initial activateSection() call wouldn't lay anything out).
+      initSidebar();
       // Refresh main-screen state when entering the secured UI.
       if (typeof loadStatus === 'function') loadStatus();
       if (typeof loadUpdateStatus === 'function') loadUpdateStatus();

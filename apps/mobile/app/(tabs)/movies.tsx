@@ -57,6 +57,17 @@ export default function MoviesScreen() {
     queryFn: api.getMoviesDownloading,
   });
 
+  // Recently downloaded — every recently-added movie regardless of
+  // watch state, sorted by addedAt desc.
+  const {
+    data: recentlyDownloaded,
+    refetch: refetchRecentlyDownloaded,
+  } = useQuery({
+    queryKey: ['movies', 'recently-downloaded'],
+    queryFn: api.getMoviesRecentlyDownloaded,
+    enabled: isReady,
+  });
+
   const isLoading = loadingRecent || loadingUpcoming;
   const error = errorRecent;
 
@@ -64,7 +75,8 @@ export default function MoviesScreen() {
     refetchRecent();
     refetchUpcoming();
     refetchDownloading();
-  }, [refetchRecent, refetchUpcoming, refetchDownloading]);
+    refetchRecentlyDownloaded();
+  }, [refetchRecent, refetchUpcoming, refetchDownloading, refetchRecentlyDownloaded]);
 
   const handleItemPress = useCallback((item: ContentItem) => {
     setSelectedItem(item);
@@ -110,7 +122,8 @@ export default function MoviesScreen() {
               const sections: ContentSection[] = [];
               if (downloadingItems.length > 0) sections.push({ id: 'movies-downloading', title: 'Downloading', type: 'movie', items: downloadingItems, sortOrder: 0 });
               if (recentItems.length > 0) sections.push({ id: 'movies-recent', title: 'Ready to Watch', type: 'movie', items: recentItems, sortOrder: 1 });
-              if (comingSoonItems.length > 0) sections.push({ id: 'movies-coming', title: 'Coming Soon', type: 'movie', items: comingSoonItems, sortOrder: 2 });
+              if (recentlyDownloaded && recentlyDownloaded.length > 0) sections.push({ id: 'movies-recently-downloaded', title: 'Recently Downloaded', type: 'movie', items: recentlyDownloaded, sortOrder: 2 });
+              if (comingSoonItems.length > 0) sections.push({ id: 'movies-coming', title: 'Coming Soon', type: 'movie', items: comingSoonItems, sortOrder: 3 });
               if (sections.length === 0) return null;
               return (
                 <ShelfList

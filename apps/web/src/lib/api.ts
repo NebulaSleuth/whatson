@@ -109,9 +109,11 @@ export const api = {
 
   // TV / Movies shelves
   getTvRecent: () => fetchApi<ContentItem[]>('/api/tv/recent'),
+  getTvRecentlyDownloaded: () => fetchApi<ContentItem[]>('/api/tv/recently-downloaded'),
   getTvUpcoming: (days = 7) => fetchApi<ContentItem[]>(`/api/tv/upcoming?days=${days}`),
   getTvDownloading: () => fetchApi<ContentItem[]>('/api/tv/downloading'),
   getMoviesRecent: () => fetchApi<ContentItem[]>('/api/movies/recent'),
+  getMoviesRecentlyDownloaded: () => fetchApi<ContentItem[]>('/api/movies/recently-downloaded'),
   getMoviesUpcoming: (days = 30) => fetchApi<ContentItem[]>(`/api/movies/upcoming?days=${days}`),
   getMoviesDownloading: () => fetchApi<ContentItem[]>('/api/movies/downloading'),
 

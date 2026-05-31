@@ -49,7 +49,7 @@ export function PosterCard({ item, onClick }: Props) {
       onClick={() => onClick?.(item)}
       className="relative w-[180px] shrink-0 text-left group focus:outline-none"
     >
-      <div className="relative w-[180px] h-[270px] rounded overflow-hidden bg-surface border-2 border-transparent group-hover:border-primary group-focus:border-primary transition-colors">
+      <div className="relative w-[180px] h-[270px] rounded-lg overflow-hidden bg-surface border-2 border-transparent group-hover:border-primary group-focus:border-primary transition-colors">
         {poster ? (
           <img
             src={poster}

@@ -8,6 +8,7 @@ import { DetailSheet } from '@/components/DetailSheet';
 export default function Movies() {
   const [selected, setSelected] = useState<ContentItem | null>(null);
   const recent = useQuery({ queryKey: ['movies', 'recent'], queryFn: api.getMoviesRecent });
+  const recentlyDownloaded = useQuery({ queryKey: ['movies', 'recently-downloaded'], queryFn: api.getMoviesRecentlyDownloaded });
   const upcoming = useQuery({ queryKey: ['movies', 'upcoming'], queryFn: () => api.getMoviesUpcoming(30) });
   const downloading = useQuery({ queryKey: ['movies', 'downloading'], queryFn: api.getMoviesDownloading });
 
@@ -17,10 +18,12 @@ export default function Movies() {
     if (dl.length > 0) out.push({ id: 'mv-downloading', title: 'Downloading', type: 'movie', items: dl, sortOrder: 0 });
     const ready = (recent.data ?? []).filter((i) => !i.progress.watched);
     if (ready.length > 0) out.push({ id: 'mv-ready', title: 'Ready to Watch', type: 'movie', items: ready, sortOrder: 1 });
+    const recentDl = recentlyDownloaded.data ?? [];
+    if (recentDl.length > 0) out.push({ id: 'mv-recently-downloaded', title: 'Recently Downloaded', type: 'movie', items: recentDl, sortOrder: 2 });
     const coming = upcoming.data ?? [];
-    if (coming.length > 0) out.push({ id: 'mv-coming', title: 'Coming Soon', type: 'movie', items: coming, sortOrder: 2 });
+    if (coming.length > 0) out.push({ id: 'mv-coming', title: 'Coming Soon', type: 'movie', items: coming, sortOrder: 3 });
     return out;
-  }, [recent.data, upcoming.data, downloading.data]);
+  }, [recent.data, recentlyDownloaded.data, upcoming.data, downloading.data]);
 
   const isLoading = recent.isLoading || upcoming.isLoading;
 

@@ -145,6 +145,63 @@ tvRouter.get('/tv/recent', async (req, res) => {
   }
 });
 
+/**
+ * Recently downloaded TV — every recently-added episode from each
+ * configured library server, regardless of watch state. Collapses
+ * multiple episodes of the same show into a single card showing the
+ * earliest UNwatched episode (so the user lands on "next to watch"
+ * if anything is left), or the latest episode if every available
+ * one is already watched. Sorted by addedAt desc.
+ */
+tvRouter.get('/tv/recently-downloaded', async (req, res) => {
+  try {
+    const limit = 40;
+    const adapters = getConfiguredAdapters();
+    const perAdapterRecent = await Promise.all(
+      adapters.map((a) =>
+        a.getRecentlyAdded(limit, req.plexUserToken).catch(() => [] as ContentItem[]),
+      ),
+    );
+    const allEpisodes = perAdapterRecent.flat().filter((i) => i.type === 'episode');
+
+    // Group by source+showTitle so the same show on different library
+    // servers keeps a separate card (matches aggregator dedup behaviour).
+    const groups = new Map<string, ContentItem[]>();
+    for (const ep of allEpisodes) {
+      if (!ep.showTitle) continue;
+      const key = `${ep.source}-${ep.showTitle.toLowerCase()}`;
+      const arr = groups.get(key);
+      if (arr) arr.push(ep);
+      else groups.set(key, [ep]);
+    }
+
+    const collapsed: ContentItem[] = [];
+    for (const eps of groups.values()) {
+      // Sort within the show by season+episode ascending.
+      const sorted = [...eps].sort((a, b) => {
+        const aIdx = (a.seasonNumber || 0) * 1000 + (a.episodeNumber || 0);
+        const bIdx = (b.seasonNumber || 0) * 1000 + (b.episodeNumber || 0);
+        return aIdx - bIdx;
+      });
+      const earliestUnwatched = sorted.find((e) => !e.progress.watched);
+      const pick = earliestUnwatched || sorted[sorted.length - 1];
+      collapsed.push(pick);
+    }
+
+    // Sort cross-show by addedAt desc — newest downloads on the left.
+    collapsed.sort((a, b) => {
+      const aDate = a.addedAt ? new Date(a.addedAt).getTime() : 0;
+      const bDate = b.addedAt ? new Date(b.addedAt).getTime() : 0;
+      return bDate - aDate;
+    });
+
+    const response: ApiResponse<ContentItem[]> = { success: true, data: proxyArtworkUrls(collapsed) };
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
 tvRouter.get('/tv/downloading', async (_req, res) => {
   try {
     const data = config.sonarr.url ? await sonarr.getQueue() : [];

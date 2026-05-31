@@ -28,6 +28,7 @@ function trackedShowToContentItem(t: Awaited<ReturnType<typeof api.getAllTracked
 export default function TV() {
   const [selected, setSelected] = useState<ContentItem | null>(null);
   const recent = useQuery({ queryKey: ['tv', 'recent'], queryFn: api.getTvRecent });
+  const recentlyDownloaded = useQuery({ queryKey: ['tv', 'recently-downloaded'], queryFn: api.getTvRecentlyDownloaded });
   const upcoming = useQuery({ queryKey: ['tv', 'upcoming'], queryFn: () => api.getTvUpcoming(7) });
   const downloading = useQuery({ queryKey: ['tv', 'downloading'], queryFn: api.getTvDownloading });
   const tracked = useQuery({ queryKey: ['tracked', 'tv', 'all'], queryFn: api.getAllTrackedTv });
@@ -38,12 +39,14 @@ export default function TV() {
     if (dl.length > 0) out.push({ id: 'tv-downloading', title: 'Downloading', type: 'tv', items: dl, sortOrder: 0 });
     const ready = (recent.data ?? []).filter((i) => !i.progress.watched);
     if (ready.length > 0) out.push({ id: 'tv-ready', title: 'Ready to Watch', type: 'tv', items: ready, sortOrder: 1 });
+    const recentDl = recentlyDownloaded.data ?? [];
+    if (recentDl.length > 0) out.push({ id: 'tv-recently-downloaded', title: 'Recently Downloaded', type: 'tv', items: recentDl, sortOrder: 2 });
     const coming = upcoming.data ?? [];
-    if (coming.length > 0) out.push({ id: 'tv-coming', title: 'Coming Soon', type: 'tv', items: coming, sortOrder: 2 });
+    if (coming.length > 0) out.push({ id: 'tv-coming', title: 'Coming Soon', type: 'tv', items: coming, sortOrder: 3 });
     const trackedItems = (tracked.data ?? []).slice().sort((a, b) => a.title.localeCompare(b.title)).map(trackedShowToContentItem);
-    if (trackedItems.length > 0) out.push({ id: 'tv-tracked', title: 'Tracked', type: 'tv', items: trackedItems, sortOrder: 3 });
+    if (trackedItems.length > 0) out.push({ id: 'tv-tracked', title: 'Tracked', type: 'tv', items: trackedItems, sortOrder: 4 });
     return out;
-  }, [recent.data, upcoming.data, downloading.data, tracked.data]);
+  }, [recent.data, recentlyDownloaded.data, upcoming.data, downloading.data, tracked.data]);
 
   const isLoading = recent.isLoading || upcoming.isLoading;
 

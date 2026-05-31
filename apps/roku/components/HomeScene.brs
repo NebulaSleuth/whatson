@@ -2271,9 +2271,13 @@ sub onGoToShowPressed()
         summary: m.selectedItem.itemSummary,
         year: m.selectedItem.itemYear,
     }
-    ' Where to go on Back from showDetail — back to the detail of the
-    ' originating episode/show.
-    m.showDetailReturnTo = "detail"
+    ' Where to go on Back from showDetail. We bubble up to the SHELF
+    ' the original detail page came from (home/tv/movies/library/…)
+    ' rather than back to the detail page itself. Otherwise:
+    '   shelf → detail → showDetail → episode → detail → Back →
+    '   showDetail → Back → detail … (infinite loop, since the detail
+    '   page now thinks showDetail is its origin).
+    m.showDetailReturnTo = m.detailReturnTo
     openShowDetail()
 end sub
 
@@ -3588,11 +3592,21 @@ sub sendShowDetailScrobbleAll(endpoint as string, watched as boolean)
 end sub
 
 sub closeShowDetail()
-    ' Return wherever we came from. Currently always the detail view
-    ' (we set m.showDetailReturnTo = "detail" when opening), but kept
-    ' as a switch so future callers can plumb a different origin.
-    if m.showDetailReturnTo = "detail"
-        showView("detail")
+    ' Return to whichever shelf opened the original detail page that
+    ' led here (onGoToShowPressed copies m.detailReturnTo into
+    ' m.showDetailReturnTo for exactly this). Falls back to home if
+    ' something unexpected is stored.
+    target = m.showDetailReturnTo
+    if target = "tv"
+        showView("tv")
+    else if target = "movies"
+        showView("movies")
+    else if target = "library"
+        showView("library")
+    else if target = "search"
+        showView("search")
+    else if target = "sports"
+        showView("sports")
     else
         showView("home")
     end if

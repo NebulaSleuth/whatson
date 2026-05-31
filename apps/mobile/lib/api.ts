@@ -127,10 +127,12 @@ export const api = {
   // TV Shows
   getTvUpcoming: (days = 7) => fetchApi<ContentItem[]>(`/tv/upcoming?days=${days}`),
   getTvRecent: () => fetchApi<ContentItem[]>('/tv/recent'),
+  getTvRecentlyDownloaded: () => fetchApi<ContentItem[]>('/tv/recently-downloaded'),
   getTvDownloading: () => fetchApi<ContentItem[]>('/tv/downloading'),
 
   // Movies
   getMoviesRecent: () => fetchApi<ContentItem[]>('/movies/recent'),
+  getMoviesRecentlyDownloaded: () => fetchApi<ContentItem[]>('/movies/recently-downloaded'),
   getMoviesUpcoming: (days = 30) => fetchApi<ContentItem[]>(`/movies/upcoming?days=${days}`),
   getMoviesDownloading: () => fetchApi<ContentItem[]>('/movies/downloading'),
 

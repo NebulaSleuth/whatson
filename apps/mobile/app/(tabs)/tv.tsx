@@ -83,6 +83,18 @@ export default function TVShowsScreen() {
     queryFn: api.getTvDownloading,
   });
 
+  // Recently downloaded — every recently-added episode regardless of
+  // watch state, collapsed to one card per show (earliest unwatched,
+  // or latest if everything is watched).
+  const {
+    data: recentlyDownloaded,
+    refetch: refetchRecentlyDownloaded,
+  } = useQuery({
+    queryKey: ['tv', 'recently-downloaded'],
+    queryFn: api.getTvRecentlyDownloaded,
+    enabled: isReady,
+  });
+
   const {
     data: trackedTv,
     refetch: refetchTracked,
@@ -98,8 +110,9 @@ export default function TVShowsScreen() {
     refetchRecent();
     refetchUpcoming();
     refetchDownloading();
+    refetchRecentlyDownloaded();
     refetchTracked();
-  }, [refetchRecent, refetchUpcoming, refetchDownloading, refetchTracked]);
+  }, [refetchRecent, refetchUpcoming, refetchDownloading, refetchRecentlyDownloaded, refetchTracked]);
 
   const handleItemPress = useCallback((item: ContentItem) => {
     setSelectedItem(item);
@@ -169,8 +182,9 @@ export default function TVShowsScreen() {
               const sections: ContentSection[] = [];
               if (downloadingItems.length > 0) sections.push({ id: 'tv-downloading', title: 'Downloading', type: 'tv', items: downloadingItems, sortOrder: 0 });
               if (readyItems.length > 0) sections.push({ id: 'tv-ready', title: 'Ready to Watch', type: 'tv', items: readyItems, sortOrder: 1 });
-              if (comingSoonItems.length > 0) sections.push({ id: 'tv-coming', title: 'Coming Soon', type: 'tv', items: comingSoonItems, sortOrder: 2 });
-              if (trackedItems.length > 0) sections.push({ id: 'tv-tracked', title: 'Tracked', type: 'tv', items: trackedItems, sortOrder: 3 });
+              if (recentlyDownloaded && recentlyDownloaded.length > 0) sections.push({ id: 'tv-recently-downloaded', title: 'Recently Downloaded', type: 'tv', items: recentlyDownloaded, sortOrder: 2 });
+              if (comingSoonItems.length > 0) sections.push({ id: 'tv-coming', title: 'Coming Soon', type: 'tv', items: comingSoonItems, sortOrder: 3 });
+              if (trackedItems.length > 0) sections.push({ id: 'tv-tracked', title: 'Tracked', type: 'tv', items: trackedItems, sortOrder: 4 });
               if (sections.length === 0) return null;
               return (
                 <ShelfList
