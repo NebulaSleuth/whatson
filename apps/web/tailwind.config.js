@@ -14,7 +14,10 @@ export default {
         text: '#FFFFFF',
         'text-muted': '#666666',
         'text-secondary': '#B0B0B0',
-        focus: '#E5A00D',
+        // Pale gold for focus rings. Distinguishes focus from the
+        // brand-gold-filled buttons (Play, Add, etc.) — focus drawn in
+        // the same brand shade is invisible against those fills.
+        focus: '#F5D87A',
       },
     },
   },

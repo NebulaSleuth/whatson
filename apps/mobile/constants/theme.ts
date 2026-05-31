@@ -28,7 +28,12 @@ export const colors = {
   sourceSonarr: '#35C5F4',
   sourceRadarr: '#FFC230',
   sourceLive: '#4CAF50',
-  focus: '#E5A00D',
+  // Pale gold for TV focus rings. Brand gold `#E5A00D` is too close
+  // to gold-coloured buttons (Play, Save, etc.) — a focus ring drawn
+  // in the same shade is nearly invisible against them. This is the
+  // brand hue shifted ~+20% lightness so the highlight reads as gold
+  // but stays distinct from the button fill.
+  focus: '#F5D87A',
 } as const;
 
 export const spacing = {

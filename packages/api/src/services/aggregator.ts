@@ -220,7 +220,14 @@ function sortByDate(items: ContentItem[]): ContentItem[] {
   });
 }
 
-/** Keep only the earliest unwatched episode per show */
+/**
+ * Keep only the earliest unwatched episode per show. Keyed on
+ * `source-showTitle` so a show that exists on multiple library servers
+ * (e.g. Plex + Jellyfin) keeps a card per server — they're separate
+ * playable files. Cross-source merging happens earlier via
+ * mergeWithPlexState (Sonarr items get re-tagged to the matching
+ * library source before they reach this function).
+ */
 function oneEpisodePerShow(items: ContentItem[]): ContentItem[] {
   const seen = new Set<string>();
   // Sort by season+episode so earliest comes first
@@ -234,19 +241,27 @@ function oneEpisodePerShow(items: ContentItem[]): ContentItem[] {
   });
   return sorted.filter((item) => {
     if (item.type !== 'episode' || !item.showTitle) return true; // keep movies as-is
-    const key = item.showTitle.toLowerCase();
+    const key = `${item.source}-${item.showTitle}`.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
+/**
+ * Deduplicate items that resolve to the same physical playable. Keyed
+ * by `source-...` so two library servers (Plex / Jellyfin / Emby) each
+ * keep their own copy — they're different files on different boxes
+ * and the user might want to pick a specific one. Same-source dupes
+ * (e.g. a Plex episode coming through both Continue Watching and
+ * Recently Added) still collapse to one card.
+ */
 function deduplicateById(items: ContentItem[]): ContentItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     const key = item.type === 'episode' && item.showTitle
-      ? `${item.showTitle}-S${item.seasonNumber}E${item.episodeNumber}`.toLowerCase()
-      : `${item.title}-${item.year}`.toLowerCase();
+      ? `${item.source}-${item.showTitle}-S${item.seasonNumber}E${item.episodeNumber}`.toLowerCase()
+      : `${item.source}-${item.title}-${item.year}`.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

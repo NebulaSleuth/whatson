@@ -194,7 +194,7 @@ sub onFocusChanged()
     if rowPct = invalid then rowPct = 0
     if pct >= 0.5 and rowPct >= 0.5
         m.label.color = "0xffffffff"
-        setFocusRingColor("0xe5a00dff")
+        setFocusRingColor("0xf5d87aff")
     else
         m.label.color = "0xb0b0b0ff"
         setFocusRingColor("0x00000000")

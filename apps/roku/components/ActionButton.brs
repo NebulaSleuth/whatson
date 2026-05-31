@@ -44,7 +44,7 @@ sub onFocusChanged()
     m.borderRight.visible = focused
     if focused
         m.bg.color = "0x26262cff"
-        m.label.color = "0xe5a00dff"
+        m.label.color = "0xf5d87aff"
     else
         m.bg.color = "0x1a1a1aff"
         m.label.color = "0xffffffff"

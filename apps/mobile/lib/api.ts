@@ -52,23 +52,43 @@ function getPlexConnectionType(): string {
   return useAppStore.getState().plexConnectionType;
 }
 
-async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+type FetchApiOptions = RequestInit & { timeoutMs?: number };
+
+async function fetchApi<T>(path: string, options?: FetchApiOptions): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
   const userId = getUserId();
   const connType = getPlexConnectionType();
   const authKey = useAppStore.getState().authKey;
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(userId ? { 'X-Plex-User': userId } : {}),
-      'X-Plex-Connection': connType,
-      ...(authKey ? { 'X-Whatson-Auth': authKey } : {}),
-      ...options?.headers,
-    },
-    ...options,
-  });
+  const { timeoutMs, ...rest } = options || {};
+  // RN's fetch has no default timeout — when the backend URL points at
+  // an unreachable host the request hangs forever, which is what made
+  // the pair-device screen spin indefinitely on a fresh TV install.
+  // Callers that need bounded latency pass `timeoutMs` to abort.
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(userId ? { 'X-Plex-User': userId } : {}),
+        'X-Plex-Connection': connType,
+        ...(authKey ? { 'X-Whatson-Auth': authKey } : {}),
+        ...rest.headers,
+      },
+      ...rest,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new Error(`Request to ${path} timed out`);
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   // Read response as text first to avoid JSON parse errors on HTML responses
   const text = await response.text();
@@ -274,18 +294,32 @@ export const api = {
 
   // Device pairing — see packages/api/src/routes/auth.ts. Open endpoints
   // (no auth header required) so unpaired clients can onboard.
-  getAdminStatus: () => fetchApi<{ hasAdminPassword: boolean }>('/auth/admin-status'),
+  // 8s timeout — the pair screen is the only place users can recover
+  // from a misconfigured URL, so it must surface "unreachable" quickly
+  // rather than spinning indefinitely on a wrong IP.
+  getAdminStatus: () => fetchApi<{ hasAdminPassword: boolean }>('/auth/admin-status', { timeoutMs: 8000 }),
   pairStart: (deviceLabel?: string) =>
     fetchApi<{ code: string; expiresAt: number }>('/auth/pair/start', {
       method: 'POST',
       body: JSON.stringify({ deviceLabel: deviceLabel || '' }),
+      timeoutMs: 8000,
     }),
   // Custom because the backend returns 410 + { success: false } for
   // expired codes — fetchApi would throw on non-2xx, but the caller
   // needs to react to the expired state to re-issue automatically.
   pairPoll: async (code: string): Promise<{ status: 'pending' | 'completed' | 'expired'; key?: string }> => {
     const url = `${getBaseUrl()}/auth/pair/poll?code=${encodeURIComponent(code)}`;
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    let response: Response;
+    try {
+      response = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') throw new Error('Pair poll timed out');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     const text = await response.text();
     let json: ApiResponse<{ status: 'pending' | 'completed' | 'expired'; key?: string }>;
     try {

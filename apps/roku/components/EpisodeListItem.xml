@@ -127,27 +127,27 @@
             id="focusRingTop"
             width="1380"
             height="3"
-            color="0xe5a00dff"
+            color="0xf5d87aff"
             visible="false" />
         <Rectangle
             id="focusRingBottom"
             translation="[0, 149]"
             width="1380"
             height="3"
-            color="0xe5a00dff"
+            color="0xf5d87aff"
             visible="false" />
         <Rectangle
             id="focusRingLeft"
             width="3"
             height="152"
-            color="0xe5a00dff"
+            color="0xf5d87aff"
             visible="false" />
         <Rectangle
             id="focusRingRight"
             translation="[1377, 0]"
             width="3"
             height="152"
-            color="0xe5a00dff"
+            color="0xf5d87aff"
             visible="false" />
     </children>
 </component>

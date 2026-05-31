@@ -182,8 +182,10 @@ export default function PairDeviceScreen() {
           <View style={styles.codeBox}>
             {code ? (
               <Text style={styles.codeText}>{code}</Text>
-            ) : (
+            ) : busy ? (
               <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <Text style={styles.codePlaceholder}>—</Text>
             )}
           </View>
         )}
@@ -195,13 +197,25 @@ export default function PairDeviceScreen() {
             <Pressable
               onPress={() => void requestPairCode()}
               disabled={busy}
-              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, busy && styles.buttonDisabled]}>
+              focusable
+              style={({ pressed, focused }) => [
+                styles.button,
+                pressed && styles.buttonPressed,
+                focused && styles.buttonFocused,
+                busy && styles.buttonDisabled,
+              ]}>
               <Text style={styles.buttonText}>{busy ? 'Working…' : 'New code'}</Text>
             </Pressable>
           )}
           <Pressable
             onPress={() => setEditingUrl((v) => !v)}
-            style={({ pressed }) => [styles.button, styles.buttonSecondary, pressed && styles.buttonPressed]}>
+            focusable
+            style={({ pressed, focused }) => [
+              styles.button,
+              styles.buttonSecondary,
+              pressed && styles.buttonPressed,
+              focused && styles.buttonFocused,
+            ]}>
             <Text style={styles.buttonText}>{editingUrl ? 'Cancel' : hasUrl ? 'Edit server URL' : 'Set server URL'}</Text>
           </Pressable>
         </View>
@@ -210,7 +224,12 @@ export default function PairDeviceScreen() {
           <View style={styles.urlEdit}>
             <Pressable
               onPress={() => setUseHttps((v) => !v)}
-              style={({ pressed }) => [styles.checkboxRow, pressed && styles.buttonPressed]}>
+              focusable
+              style={({ pressed, focused }) => [
+                styles.checkboxRow,
+                pressed && styles.buttonPressed,
+                focused && styles.checkboxRowFocused,
+              ]}>
               <View style={[styles.checkbox, useHttps && styles.checkboxChecked]}>
                 {useHttps && <Text style={styles.checkboxMark}>✓</Text>}
               </View>
@@ -249,7 +268,13 @@ export default function PairDeviceScreen() {
 
             <Pressable
               onPress={() => void saveUrl()}
-              style={({ pressed }) => [styles.button, styles.saveButton, pressed && styles.buttonPressed]}>
+              focusable
+              style={({ pressed, focused }) => [
+                styles.button,
+                styles.saveButton,
+                pressed && styles.buttonPressed,
+                focused && styles.buttonFocused,
+              ]}>
               <Text style={styles.buttonText}>Save</Text>
             </Pressable>
           </View>
@@ -290,6 +315,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   codeText: { fontSize: 48, fontWeight: '700', letterSpacing: 8, color: colors.text },
+  codePlaceholder: { fontSize: 48, fontWeight: '700', color: colors.textMuted },
   status: { ...typography.body, color: colors.textSecondary },
   actions: { flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap', marginTop: spacing.sm },
   button: {
@@ -300,7 +326,21 @@ const styles = StyleSheet.create({
   },
   buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.cardBorder },
   buttonPressed: { opacity: 0.7 },
+  // TV focus: pale-gold ring (colors.focus). Pressable's `focused`
+  // render prop is set when the D-pad lands on the button.
+  buttonFocused: {
+    borderWidth: 3,
+    borderColor: colors.focus,
+    transform: [{ scale: 1.05 }],
+  },
   buttonDisabled: { opacity: 0.5 },
+  checkboxRowFocused: {
+    borderWidth: 2,
+    borderColor: colors.focus,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   buttonText: { color: colors.text, fontWeight: '600', fontSize: 16 },
   urlEdit: { flexDirection: 'column', gap: spacing.md, marginTop: spacing.sm },
   checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, alignSelf: 'flex-start' },

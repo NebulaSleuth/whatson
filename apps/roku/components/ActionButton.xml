@@ -27,10 +27,10 @@
 
         <!-- Focus ring (4 gold strips, off by default). Same pattern
              PosterItem / EpisodeListItem use. -->
-        <Rectangle id="borderTop" width="240" height="2" color="0xe5a00dff" visible="false" />
-        <Rectangle id="borderBottom" translation="[0, 58]" width="240" height="2" color="0xe5a00dff" visible="false" />
-        <Rectangle id="borderLeft" width="2" height="60" color="0xe5a00dff" visible="false" />
-        <Rectangle id="borderRight" translation="[238, 0]" width="2" height="60" color="0xe5a00dff" visible="false" />
+        <Rectangle id="borderTop" width="240" height="2" color="0xf5d87aff" visible="false" />
+        <Rectangle id="borderBottom" translation="[0, 58]" width="240" height="2" color="0xf5d87aff" visible="false" />
+        <Rectangle id="borderLeft" width="2" height="60" color="0xf5d87aff" visible="false" />
+        <Rectangle id="borderRight" translation="[238, 0]" width="2" height="60" color="0xf5d87aff" visible="false" />
 
         <Label
             id="label"
