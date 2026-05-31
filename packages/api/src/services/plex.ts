@@ -235,13 +235,22 @@ function artworkUrl(path: string | undefined, userToken?: string, updatedAt?: nu
   // Prefer local URL for artwork — the backend proxy fetches it, so it must be reachable from the backend
   const base = localPlexUrl || resolvedServerUrl;
   if (!base) return '';
-  // `_v` is a cache-buster keyed on the item's updatedAt — when the
-  // user changes the poster in Plex, the underlying thumb URL doesn't
-  // always bump its trailing version, but `updatedAt` reliably does.
-  // The artwork proxy keys its cache on the full URL, so a different
-  // `_v` forces a fresh upstream fetch. Plex itself ignores unknown
-  // query params, so this doesn't disturb the image fetch.
-  let url = `${base}${path}?X-Plex-Token=${getTokenForClient(userToken)}`;
+  // Plex artwork paths come back as `/library/metadata/{id}/thumb/{ts}`
+  // where {ts} is a poster-version timestamp. Plex serves the SPECIFIC
+  // version at that URL — when a user swaps the poster in Plex's UI,
+  // the new poster has a new version, but the old version stays
+  // accessible at the old URL. The library payload may continue to
+  // reference the OLD ts (or a stale-cached one), so we'd serve old
+  // art forever.
+  //
+  // Stripping the trailing `/{ts}` makes Plex serve whatever is
+  // currently selected — verified with the /api/debug/plex/show-poster
+  // probe. Combined with the `_v` cache-buster below, fresh posters
+  // propagate after a Clear Artwork Cache + refresh.
+  const cleanPath = path.replace(/\/(\d+)$/, '');
+  // `_v` cache-busts our own artwork proxy when the item's metadata
+  // updates. Plex itself ignores unknown query params.
+  let url = `${base}${cleanPath}?X-Plex-Token=${getTokenForClient(userToken)}`;
   if (updatedAt && updatedAt > 0) url += `&_v=${updatedAt}`;
   return url;
 }
