@@ -1,8 +1,83 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { config } from '../config.js';
+import { search as plexSearch, getServerUrl } from '../services/plex.js';
 
 export const debugRouter = Router();
+
+/**
+ * Fetch the Plex SHOW poster at /library/metadata/{showId}/thumb
+ * (NO timestamp), bypassing the cache-busting `_v` query and the
+ * /api/artwork proxy entirely. This is the most-current poster Plex
+ * is willing to serve — if it still matches the OLD artwork after
+ * a poster swap, the issue is on the Plex side; if it matches the
+ * NEW one then our cache or URL building is the culprit.
+ *
+ * GET /api/debug/plex/show-poster?title=spider-noir[&ratingKey=N][&useTs=1]
+ *
+ * Returns the image bytes with a Content-Disposition: attachment
+ * header so the browser downloads it. Open this URL while logged
+ * into /setup (cookie auth) to grab the file.
+ */
+debugRouter.get('/debug/plex/show-poster', async (req, res) => {
+  try {
+    const titleQ = (req.query.title as string) || '';
+    let ratingKey = (req.query.ratingKey as string) || '';
+    const useTs = req.query.useTs === '1';
+
+    // Resolve a show ratingKey via search if the caller didn't pass one.
+    if (!ratingKey && titleQ) {
+      const results = await plexSearch(titleQ);
+      const show = results.find((i) => i.type === 'show') ||
+        results.find((i) => i.type === 'episode');
+      if (show) {
+        // For an episode, use the parent show via showRatingKey.
+        ratingKey = show.showRatingKey || show.sourceId;
+      }
+    }
+
+    if (!ratingKey) {
+      res.status(400).json({ error: 'Provide ?title= or ?ratingKey=' });
+      return;
+    }
+
+    const serverUrl = await getServerUrl();
+    if (!serverUrl) {
+      res.status(503).json({ error: 'Plex server URL not resolved' });
+      return;
+    }
+
+    // Build URL — `/thumb` (no timestamp) returns whatever poster is
+    // currently selected. `/thumb/{ts}` returns the specific version
+    // (the one with the matching versioned ID).
+    let upstream = `${serverUrl}/library/metadata/${ratingKey}/thumb`;
+    if (useTs) upstream += '/'; // signals to use last-known versioned URL
+    upstream += `?X-Plex-Token=${config.plex.token}`;
+    upstream += `&_bust=${Date.now()}`; // hard-no-cache
+
+    console.log(`[debug/plex] fetching ${upstream.replace(/X-Plex-Token=[^&]+/, 'X-Plex-Token=***')}`);
+
+    const response = await axios.get(upstream, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      // No 304 / If-None-Match — every request is fresh from Plex.
+      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+    });
+
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    const ext = contentType.includes('png') ? 'png' : 'jpg';
+    res.set('Content-Type', contentType);
+    res.set('Content-Disposition', `attachment; filename="plex-show-${ratingKey}.${ext}"`);
+    res.set('Cache-Control', 'no-store');
+    res.send(Buffer.from(response.data));
+  } catch (e: any) {
+    res.status(500).json({
+      error: e.message,
+      status: e.response?.status,
+      responseData: typeof e.response?.data === 'string' ? e.response.data.slice(0, 400) : undefined,
+    });
+  }
+});
 
 /**
  * Raw debug endpoint — hits Sonarr/Radarr directly and returns the raw response.
