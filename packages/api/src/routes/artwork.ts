@@ -4,7 +4,7 @@ import { Jimp, JimpMime } from 'jimp';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { getCached, setCached, cache } from '../cache.js';
+import { getCached, setCached, cache, invalidateAll } from '../cache.js';
 import { ARTWORK_CACHE_TTL } from '@whatson/shared';
 import { config } from '../config.js';
 import { ensureSession as ensureJellyfinSession } from '../services/jellyfin.js';
@@ -219,6 +219,11 @@ artworkRouter.post('/artwork/clear', async (_req, res) => {
       }
     } catch {}
   }
-  console.log(`[artwork] cache cleared — memory=${memCount}, disk=${diskCount}`);
+  // Also wipe the library / home / recently-added / etc. data caches so
+  // the next fetch from Plex returns fresh `thumb` paths. Without this
+  // we'd re-fetch artwork at the SAME stale URL the cached library
+  // payload still points at, defeating the artwork-cache flush.
+  invalidateAll();
+  console.log(`[artwork] cache cleared — memory=${memCount}, disk=${diskCount} (data cache also invalidated)`);
   res.json({ success: true, data: { memCount, diskCount } });
 });
