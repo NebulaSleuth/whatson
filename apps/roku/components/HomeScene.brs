@@ -3125,14 +3125,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 m.video.setFocus(true)
                 return true
             end if
-            ' First Back while the transport overlay is (likely) still
-            ' visible: absorb it. Second Back: actually stop. The
-            ' overlay tracking is heuristic — we mark the time of the
-            ' last player key (OK / Up / Down / Left / Right) since
-            ' Roku auto-hides the overlay after a few seconds of
-            ' inactivity. m.lastPlayerKeyAt = 0 means "no recent
-            ' activity, overlay is hidden, Back exits".
-            if m.lastPlayerKeyAt <> invalid and m.lastPlayerKeyAt > 0
+            ' First Back while the VOD transport overlay is (likely)
+            ' still visible: absorb it. Second Back: actually stop.
+            ' Skipped for live TV — the overlay there has no scrub /
+            ' resume value and the user just wants one Back to exit.
+            if m.isLive <> true and m.lastPlayerKeyAt <> invalid and m.lastPlayerKeyAt > 0
                 elapsed = Uptime(0) - m.lastPlayerKeyAt
                 print "[back/player] transport-overlay-check: elapsed="; elapsed
                 if elapsed < 5
@@ -3141,11 +3138,25 @@ function onKeyEvent(key as string, press as boolean) as boolean
                     return true
                 end if
             end if
-            print "[back/player] branch: stopPlayback + route. isLive="; m.isLive
+            ' Capture wasLive BEFORE stopPlayback. On Roku, setting
+            ' Video.control="stop" fires the state-change observer
+            ' SYNCHRONOUSLY, which already routes (live → tunerLive,
+            ' VOD → detail) and clears m.isLive. Without capturing
+            ' it first, our post-stop check sees m.isLive=false even
+            ' for a live exit and routes to detail, stomping on the
+            ' tunerLive view the state handler just set.
+            wasLive = (m.isLive = true)
+            print "[back/player] branch: stopPlayback + route. wasLive="; wasLive
             stopPlayback()
-            if m.isLive = true
-                ' Live channels don't have a detail view to fall back
-                ' to — go straight back to the Live TV grid.
+            ' If the state-change handler already navigated (currentView
+            ' moved off "player"), leave well enough alone.
+            if m.currentView <> "player"
+                print "[back/player] state handler already routed -> "; m.currentView
+                return true
+            end if
+            ' State didn't fire (rare — Video was already stopped or
+            ' content was never set). Route ourselves.
+            if wasLive
                 print "[back/player] -> showView(tunerLive); clearing isLive"
                 m.isLive = false
                 m.liveChannelId = invalid
