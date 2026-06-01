@@ -39,15 +39,13 @@ interface HlsSession {
   ready: boolean;
 }
 
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min keep-warm — channels recently
-                                         // watched stay tuned so flipping back
-                                         // to them within a quarter hour is
-                                         // instant. HDHomeRun tuner stays
-                                         // allocated; trade tuner availability
-                                         // for snappy UX.
+const IDLE_TIMEOUT_MS = 2 * 60 * 1000;  // 2 min — reap idle sessions so an
+                                         // HDHomeRun tuner doesn't stay
+                                         // allocated long after the user
+                                         // left.
 const STARTUP_WAIT_MS = 6 * 1000;       // 6s ceiling for first .ts segment —
-                                         // smaller after the low-latency tune
-                                         // below typically lands in ~1.5s.
+                                         // the low-latency ffmpeg tune below
+                                         // typically gets there in ~1.5s.
 
 let baseDir: string | null = null;
 let resolvedFfmpegPath: string | null = null;

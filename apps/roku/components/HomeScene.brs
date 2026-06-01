@@ -85,6 +85,15 @@ sub init()
     m.tunerLiveView = m.top.findNode("tunerLiveView")
     m.tunerLiveGrid = m.top.findNode("tunerLiveGrid")
     m.tunerLiveStatus = m.top.findNode("tunerLiveStatus")
+    ' Live TV tuning overlay — busy state while ffmpeg session spins
+    ' up. Visible from OK-press until video.state="playing" or the
+    ' tune timeout fires.
+    m.liveTuningOverlay = m.top.findNode("liveTuningOverlay")
+    m.liveTuningTitle = m.top.findNode("liveTuningTitle")
+    m.liveTuningSubtitle = m.top.findNode("liveTuningSubtitle")
+    m.liveTuningDots = m.top.findNode("liveTuningDots")
+    m.liveTuneError = m.top.findNode("liveTuneError")
+    m.liveTuneErrorMsg = m.top.findNode("liveTuneErrorMsg")
     m.activeTabIndex = 0
     m.tvView = m.top.findNode("tvView")
     m.tvStatus = m.top.findNode("tvStatus")
@@ -336,6 +345,22 @@ sub init()
     m.clockTimer.observeField("fire", "onClockTick")
     m.clockTimer.control = "start"
     updateClock()
+
+    ' Live TV tuning UX timers.
+    ' liveTuneTimeoutTimer fires once after 12s — if the video still
+    ' hasn't reached "playing" the overlay flips to an error message
+    ' (covers HDHomeRun-can't-lock-signal and ffmpeg-crashed cases).
+    ' liveTuningDotsTimer drives the "…" animation while the overlay
+    ' is visible so the user can tell the box hasn't frozen.
+    m.liveTuneTimeoutTimer = CreateObject("roSGNode", "Timer")
+    m.liveTuneTimeoutTimer.duration = 12
+    m.liveTuneTimeoutTimer.repeat = false
+    m.liveTuneTimeoutTimer.observeField("fire", "onLiveTuneTimeout")
+    m.liveTuningDotsTimer = CreateObject("roSGNode", "Timer")
+    m.liveTuningDotsTimer.duration = 0.4
+    m.liveTuningDotsTimer.repeat = true
+    m.liveTuningDotsTimer.observeField("fire", "onLiveTuningDotsTick")
+    m.liveTuningDotsState = 1
 
 
     ' Resolve apiUrl. Three sources, in order:
@@ -3057,6 +3082,27 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     if key = "back"
         if m.currentView = "player"
+            ' Back while the live-tune error overlay is shown: dismiss
+            ' the error + return to the channel grid. Same path as a
+            ' successful playback exit, just without a session to stop.
+            if m.liveTuneError <> invalid and m.liveTuneError.visible
+                m.isLive = false
+                m.liveChannelId = invalid
+                hideLiveTuningOverlay()
+                showView("tunerLive")
+                return true
+            end if
+            ' Back while we're still tuning (overlay visible, video
+            ' not yet playing) — abort the in-flight tune attempt and
+            ' bail to the grid.
+            if m.liveTuningOverlay <> invalid and m.liveTuningOverlay.visible
+                cancelInFlightLiveTune()
+                m.isLive = false
+                m.liveChannelId = invalid
+                hideLiveTuningOverlay()
+                showView("tunerLive")
+                return true
+            end if
             ' Back while the Tracks overlay is open: cancel without
             ' applying any pending selections, keep playing.
             if m.tracksOpen = true
@@ -3836,6 +3882,13 @@ sub onVideoStateChanged()
     state = m.video.state
     print "[HomeScene] video state -> "; state
 
+    ' Once the live stream is actually playing, drop the tuning
+    ' overlay + cancel the timeout timer. Same path is fine for VOD
+    ' (m.liveTuningOverlay is hidden anyway) so no isLive gate.
+    if state = "playing"
+        hideLiveTuningOverlay()
+    end if
+
     ' When the Video node enters the "error" state Roku populates
     ' errorMsg / errorCode / errorStr / streamInfo with the actual
     ' failure reason. Dump them so we can diagnose "playback failed"
@@ -3854,6 +3907,15 @@ sub onVideoStateChanged()
         if m.video.content <> invalid and m.video.content.url <> invalid
             print "[HomeScene] failing url="; m.video.content.url
         end if
+        ' Surface live-stream errors in the tuning overlay rather
+        ' than silently returning to the grid — gives the user
+        ' actionable feedback.
+        if m.isLive = true
+            errText = "Playback failed."
+            if msg <> "?" then errText = msg
+            showLiveTuneError(errText)
+            return
+        end if
     end if
 
     if state = "finished" or state = "stopped" or state = "error"
@@ -3868,10 +3930,12 @@ sub onVideoStateChanged()
         ' / Plex / Jellyfin / Emby live sources don't track progress
         ' for live streams the same way VOD does. Skip the progress +
         ' stop POSTs and return to the Live TV channel grid instead
-        ' of the (empty) detail view.
-        if m.isLive = true
+        ' of the (empty) detail view. Don't return early if the live
+        ' tune-error overlay is active — let the user Back out of it.
+        if m.isLive = true and not m.liveTuneError.visible
             m.isLive = false
             m.liveChannelId = invalid
+            hideLiveTuningOverlay()
             showView("tunerLive")
             return
         end if
@@ -4819,13 +4883,43 @@ sub onTunerLiveChannelSelected()
     if node = invalid or node.itemChannelId = invalid or node.itemChannelId = ""
         return
     end if
-    print "[HomeScene] tuner channel selected: "; node.itemChannelId
-    startLivePlayback(node.itemChannelId)
+    title = ""
+    if node.itemChannelName <> invalid then title = node.itemChannelName
+    if node.itemChannelNumber <> invalid and node.itemChannelNumber <> ""
+        if title <> "" then title = title + " · "
+        title = title + node.itemChannelNumber
+    end if
+    print "[HomeScene] tuner channel selected: "; node.itemChannelId; " ("; title; ")"
+    startLivePlayback(node.itemChannelId, title)
 end sub
 
-sub startLivePlayback(channelId as string)
+sub startLivePlayback(channelId as string, displayTitle as string)
+    ' Cancel any in-flight tune attempt. The previous attempt's
+    ' response handler checks m.liveChannelId — when it sees a
+    ' different one came in after, it bails out instead of stomping
+    ' on the new tune.
+    cancelInFlightLiveTune()
+
     m.isLive = true
     m.liveChannelId = channelId
+    m.liveTuneTitle = displayTitle
+
+    ' Show the overlay immediately so the user sees feedback the
+    ' instant OK is pressed — even before the API call lands.
+    showLiveTuningOverlay(displayTitle)
+
+    ' Move to the player view straight away. Video is black behind
+    ' the overlay; once the stream lands we hide the overlay.
+    showView("player")
+
+    ' 12s ceiling on the whole tune attempt (API request + ffmpeg
+    ' first segment + Roku buffering). If the video hasn't reached
+    ' "playing" by then, the overlay flips to an error.
+    m.liveTuneTimeoutTimer.control = "start"
+
+    ' Kick off the API request. The response handler verifies
+    ' m.liveChannelId still matches before applying — handles the
+    ' "user impatiently switched channels" race.
     task = CreateObject("roSGNode", "ApiTask")
     task.observeField("response", "onLiveStreamResponse")
     task.method = "GET"
@@ -4838,18 +4932,92 @@ sub startLivePlayback(channelId as string)
     setApiTaskAuth(task)
     task.control = "RUN"
     m.liveStreamTask = task
+    m.liveStreamTaskFor = channelId
+end sub
+
+sub cancelInFlightLiveTune()
+    ' Stop the API request if one's running.
+    if m.liveStreamTask <> invalid
+        m.liveStreamTask.unobserveField("response")
+        m.liveStreamTask.control = "STOP"
+        m.liveStreamTask = invalid
+        m.liveStreamTaskFor = invalid
+    end if
+    ' Stop any partially-started playback so a stale buffering state
+    ' doesn't fire the timeout we just reset for the new tune.
+    if m.video <> invalid and m.video.state <> "stopped" and m.video.state <> "none"
+        m.video.control = "stop"
+    end if
+    m.liveTuneTimeoutTimer.control = "stop"
+end sub
+
+sub showLiveTuningOverlay(displayTitle as string)
+    m.liveTuningTitle.text = "Tuning…"
+    m.liveTuningSubtitle.text = displayTitle
+    m.liveTuningOverlay.visible = true
+    m.liveTuneError.visible = false
+    m.liveTuningDotsState = 1
+    m.liveTuningDots.text = "."
+    m.liveTuningDotsTimer.control = "start"
+end sub
+
+sub hideLiveTuningOverlay()
+    m.liveTuningOverlay.visible = false
+    m.liveTuneError.visible = false
+    m.liveTuningDotsTimer.control = "stop"
+    m.liveTuneTimeoutTimer.control = "stop"
+end sub
+
+sub showLiveTuneError(msg as string)
+    m.liveTuningOverlay.visible = false
+    m.liveTuningDotsTimer.control = "stop"
+    m.liveTuneTimeoutTimer.control = "stop"
+    m.liveTuneErrorMsg.text = msg
+    m.liveTuneError.visible = true
+    ' Stop the video so we're not still trying to buffer behind the
+    ' error UI — Back from here returns to the channel grid.
+    if m.video <> invalid then m.video.control = "stop"
+end sub
+
+sub onLiveTuningDotsTick()
+    m.liveTuningDotsState = m.liveTuningDotsState + 1
+    if m.liveTuningDotsState > 3 then m.liveTuningDotsState = 1
+    if m.liveTuningDotsState = 1
+        m.liveTuningDots.text = "."
+    else if m.liveTuningDotsState = 2
+        m.liveTuningDots.text = ". ."
+    else
+        m.liveTuningDots.text = ". . ."
+    end if
+end sub
+
+sub onLiveTuneTimeout()
+    if not m.isLive then return
+    if m.video.state = "playing" then return
+    print "[HomeScene] live tune timeout for "; m.liveChannelId
+    showLiveTuneError("No signal after 12 seconds. The tuner couldn't lock on this channel — try another, or check antenna position.")
 end sub
 
 sub onLiveStreamResponse()
     if m.liveStreamTask = invalid then return
     resp = m.liveStreamTask.response
+    taskFor = m.liveStreamTaskFor
     m.liveStreamTask = invalid
+    m.liveStreamTaskFor = invalid
+
+    ' Channel-switch race: if the user already picked a different
+    ' channel between this task firing and the response landing, do
+    ' nothing — the new attempt is in flight with its own task.
+    if taskFor <> m.liveChannelId
+        print "[HomeScene] live stream response for stale channel "; taskFor; " (now wanted: "; m.liveChannelId; ") — dropping"
+        return
+    end if
 
     if resp = invalid or resp.success <> true or resp.data = invalid
         msg = "Couldn't tune to channel."
         if resp <> invalid and resp.error <> invalid then msg = resp.error
         print "[HomeScene] live stream failed: "; msg
-        m.isLive = false
+        showLiveTuneError(msg)
         return
     end if
 
@@ -4857,7 +5025,7 @@ sub onLiveStreamResponse()
     streamUrl = info.url
     if streamUrl = invalid or streamUrl = ""
         print "[HomeScene] live stream missing URL"
-        m.isLive = false
+        showLiveTuneError("Backend returned an empty stream URL.")
         return
     end if
 
@@ -4872,26 +5040,25 @@ sub onLiveStreamResponse()
     ' OTA broadcast TV (ATSC 1.0) uses MPEG-2 video + AC-3 audio.
     ' Roku decodes the video fine without a hint, but the AC-3 audio
     ' elementary stream isn't always picked up unless we explicitly
-    ' set audioFormat. This is a no-op for HLS / future Plex+Jellyfin
-    ' Live TV which auto-detect their formats. ATSC 3.0 channels use
-    ' AC-4 which Roku doesn't decode at all — we'll need a backend
-    ' transcode for those, planned in week 3.
+    ' set audioFormat. No-op for HLS sources which negotiate format
+    ' from the playlist.
     if format = "mpeg-ts" then content.audioFormat = "ac3"
 
-    title = "Live TV"
+    title = m.liveTuneTitle
     if info.channel <> invalid
         if info.channel.name <> invalid then title = info.channel.name
         if info.channel.number <> invalid
-            title = title + " . " + info.channel.number
+            title = title + " · " + info.channel.number
         end if
     end if
     content.title = title
 
     ' No duration / no playStart — live streams have no resume.
+    ' Overlay stays visible; onVideoStateChanged hides it when state
+    ' actually reaches "playing".
     m.video.content = content
     m.video.control = "play"
     m.lastPlayerKeyAt = Uptime(0)
-    showView("player")
 end sub
 
 ' ─── Existing TVmaze channel picker (Settings -> Configure Channels) ───

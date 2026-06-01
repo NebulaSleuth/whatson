@@ -948,6 +948,76 @@
                  transport doesn't surface those. -->
             <Video id="video" width="1920" height="1080" enableUI="true" />
 
+            <!-- Live TV tuning overlay. Visible only while the
+                 stream is being negotiated + the first segment is
+                 still buffering. Hidden as soon as video.state goes
+                 to "playing" (see onVideoStateChanged in BRS), or
+                 swapped to error text if the tune times out / the
+                 backend rejects the request. Sits on top of the
+                 Video node which is black during tuning anyway. -->
+            <Group id="liveTuningOverlay" visible="false">
+                <Rectangle width="1920" height="1080" color="0x000000ff" opacity="0.78" />
+                <Label
+                    id="liveTuningTitle"
+                    translation="[0, 460]"
+                    width="1920"
+                    horizAlign="center"
+                    font="font:LargeBoldSystemFont"
+                    color="0xffffffff"
+                    text="Tuning…" />
+                <Label
+                    id="liveTuningSubtitle"
+                    translation="[0, 540]"
+                    width="1920"
+                    horizAlign="center"
+                    color="0xb0b0b0ff"
+                    text="" />
+                <!-- Animated dots provide a "working" cue without a
+                     real spinner asset — Roku has no built-in spinner.
+                     A BrightScript timer cycles the label text through
+                     "." -> ".." -> "..." -> "." while the overlay is
+                     visible. -->
+                <Label
+                    id="liveTuningDots"
+                    translation="[0, 620]"
+                    width="1920"
+                    horizAlign="center"
+                    font="font:LargeBoldSystemFont"
+                    color="0xe5a00dff"
+                    text="." />
+            </Group>
+
+            <!-- Error variant — same overlay shell, different
+                 content. Shown when the backend returns an error or
+                 when the tuning timeout fires (TUNE_TIMEOUT_SECONDS
+                 in BRS). User presses Back to return to the channel
+                 grid. -->
+            <Group id="liveTuneError" visible="false">
+                <Rectangle width="1920" height="1080" color="0x000000ff" opacity="0.78" />
+                <Label
+                    translation="[0, 440]"
+                    width="1920"
+                    horizAlign="center"
+                    font="font:LargeBoldSystemFont"
+                    color="0xff8080ff"
+                    text="Couldn't tune to this channel" />
+                <Label
+                    id="liveTuneErrorMsg"
+                    translation="[100, 520]"
+                    width="1720"
+                    horizAlign="center"
+                    wrap="true"
+                    maxLines="3"
+                    color="0xcccccccff"
+                    text="" />
+                <Label
+                    translation="[0, 660]"
+                    width="1920"
+                    horizAlign="center"
+                    color="0x808080ff"
+                    text="Press Back to return to the channel grid." />
+            </Group>
+
             <!-- Tracks picker overlay — opened by Down key during
                  playback. Multi-select: user can change audio AND
                  subtitle without dismissing, then presses Close to
