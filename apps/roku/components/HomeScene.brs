@@ -3940,6 +3940,14 @@ sub onVideoStateChanged()
             return
         end if
 
+        ' Guard the VOD scrobble + return-to-detail path on an actual
+        ' VOD session existing. Without this, the async "stopped"
+        ' event that arrives AFTER a live Back has already cleared
+        ' m.isLive falls into here and ships the user to whatever
+        ' detail page was last populated — the "Back from Live TV
+        ' lands on a random episode" bug.
+        if m.playbackInfo = invalid or m.selectedItem = invalid then return
+
         ' Real stop — save final position + tell Plex we're done.
         reportProgress(true)
         sendStop()
@@ -4903,6 +4911,11 @@ sub startLivePlayback(channelId as string, displayTitle as string)
     m.isLive = true
     m.liveChannelId = channelId
     m.liveTuneTitle = displayTitle
+    ' Wipe any lingering VOD playback context. Without this, the
+    ' async stop-state from a future live-Back can pattern-match on
+    ' a stale m.playbackInfo and route to the wrong detail view.
+    m.playbackInfo = invalid
+    m.selectedItem = invalid
 
     ' Show the overlay immediately so the user sees feedback the
     ' instant OK is pressed — even before the API call lands.

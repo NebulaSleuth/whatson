@@ -172,11 +172,24 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
   const existingId = byChannel.get(channelId);
   if (existingId) {
     const s = sessions.get(existingId);
+    // proc.exitCode is null while the process is alive — but it stays
+    // null even if ffmpeg is HUNG (no longer producing segments).
+    // Additionally check the playlist mtime: a healthy session
+    // rewrites index.m3u8 every ~2s (one per segment). If it hasn't
+    // been touched in 10s, treat the session as dead even though
+    // ffmpeg hasn't formally exited.
     if (s && s.ready && s.proc.exitCode === null) {
-      s.lastAccessAt = Date.now();
-      return s;
+      try {
+        const mtimeMs = fs.statSync(path.join(s.dir, 'index.m3u8')).mtimeMs;
+        if (Date.now() - mtimeMs < 10000) {
+          s.lastAccessAt = Date.now();
+          return s;
+        }
+        console.warn(`[hls ${s.id}] playlist stale (${Math.round((Date.now() - mtimeMs) / 1000)}s) — respawning`);
+      } catch {
+        console.warn(`[hls ${s.id}] playlist missing — respawning`);
+      }
     }
-    // Stale — clean up before starting fresh
     if (s) killSession(s);
   }
 
@@ -228,7 +241,12 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
     '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '192k', '-ac', '2', '-ar', '48000',
     '-f', 'hls',
     '-hls_time', '2',
-    '-hls_list_size', '6',
+    // 20-segment rolling window (~40s) gives the client room to
+    // recover from a buffer underrun without falling off the end
+    // of the playlist. 6 segments (12s) was too tight — a single
+    // Roku hiccup put it past the oldest segment and it couldn't
+    // resume, requiring a full re-tune.
+    '-hls_list_size', '20',
     '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
     '-hls_segment_filename', segmentPattern,
     playlistPath,
