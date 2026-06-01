@@ -51,10 +51,11 @@
         <!-- Real-time clock — overlays the right edge of the tab
              bar strip (matches the mobile Clock overlay top-right).
              Shifted down 6px to stay vertically centered after the
-             tab bar grew from 80 to 92px tall. -->
+             tab bar grew from 80 to 92px tall. Moved right to 1740
+             so the 8-tab strip has a ~50px gap before the clock. -->
         <Label
             id="clockLabel"
-            translation="[1700, 32]"
+            translation="[1740, 32]"
             width="160"
             horizAlign="right"
             font="font:MediumBoldSystemFont"
@@ -65,28 +66,27 @@
              bottom-border focus indicator). Roku's built-in Button
              only supports inline icons and a rectangular focus
              bitmap, so the mobile look requires this custom node. -->
-        <!-- 8 tabs now (added Live TV). Default 220px buttons + 8px
-             gaps + 80px left = 1896px right edge, which overlaps the
-             clock at x=1700. Tightened to buttonWidth=180, spacing=2,
-             left=40 → right edge ~1494, clock has 200+px of breathing
-             room. -->
+        <!-- 8 tabs now (Live TV added). Default 220×8tab=1760 + 7×8 gap
+             + 80 left = 1896 right edge → overlaps the clock at 1700.
+             Sized to 200×8 + 7×4 + 60 = 1688 right edge; clock nudged
+             to 1740 so there's a comfortable ~50px gap. -->
         <LayoutGroup
             id="tabBar"
-            translation="[40, 6]"
+            translation="[60, 6]"
             layoutDirection="horiz"
-            itemSpacings="[2]">
-            <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" buttonWidth="180" focusable="true" />
-            <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" buttonWidth="180" focusable="true" />
-            <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" buttonWidth="180" focusable="true" />
+            itemSpacings="[4]">
+            <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" buttonWidth="200" focusable="true" />
+            <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" buttonWidth="200" focusable="true" />
+            <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" buttonWidth="200" focusable="true" />
             <!-- ◐ / ◯ from Geometric Shapes (same block as Home's icons) —
                  Math Operators chars like ⊚/⊙ aren't in Roku's default
                  font, so the focused state used to render as a tofu
                  rectangle. -->
-            <TabButton id="tabLiveTv" label="Live TV" iconFocused="◐" iconUnfocused="◯" buttonWidth="180" focusable="true" />
-            <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" buttonWidth="180" focusable="true" />
-            <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" buttonWidth="180" focusable="true" />
-            <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" buttonWidth="180" focusable="true" />
-            <TabButton id="tabSettings" label="Settings" iconFocused="⚙" iconUnfocused="⚙" iconFontUri="pkg:/fonts/NotoSansSymbols.ttf" iconYOffset="-6" buttonWidth="180" focusable="true" />
+            <TabButton id="tabLiveTv" label="Live TV" iconFocused="◐" iconUnfocused="◯" buttonWidth="200" focusable="true" />
+            <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" buttonWidth="200" focusable="true" />
+            <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" buttonWidth="200" focusable="true" />
+            <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" buttonWidth="200" focusable="true" />
+            <TabButton id="tabSettings" label="Settings" iconFocused="⚙" iconUnfocused="⚙" iconFontUri="pkg:/fonts/NotoSansSymbols.ttf" iconYOffset="-6" buttonWidth="200" focusable="true" />
         </LayoutGroup>
 
         <!-- ─── Home view: status + RowList of shelves ─── -->
