@@ -4829,7 +4829,12 @@ sub startLivePlayback(channelId as string)
     task = CreateObject("roSGNode", "ApiTask")
     task.observeField("response", "onLiveStreamResponse")
     task.method = "GET"
-    task.url = m.apiUrl + "/api/live/stream/" + channelId
+    ' ?format=hls forces the backend to transcode the upstream MPEG-TS
+    ' through ffmpeg and serve HLS. Required for HDHomeRun direct
+    ' streams because Roku doesn't pick up AC-3 audio from raw OTA
+    ' MPEG-2/AC-3 elementary streams. Sources that natively return
+    ' HLS (Plex / Jellyfin / Emby live in Phase 2) ignore the hint.
+    task.url = m.apiUrl + "/api/live/stream/" + channelId + "?format=hls"
     setApiTaskAuth(task)
     task.control = "RUN"
     m.liveStreamTask = task
