@@ -4864,6 +4864,14 @@ sub onLiveStreamResponse()
     content.streamFormat = format
     content.url = streamUrl
     content.contentType = "movie"
+    ' OTA broadcast TV (ATSC 1.0) uses MPEG-2 video + AC-3 audio.
+    ' Roku decodes the video fine without a hint, but the AC-3 audio
+    ' elementary stream isn't always picked up unless we explicitly
+    ' set audioFormat. This is a no-op for HLS / future Plex+Jellyfin
+    ' Live TV which auto-detect their formats. ATSC 3.0 channels use
+    ' AC-4 which Roku doesn't decode at all — we'll need a backend
+    ' transcode for those, planned in week 3.
+    if format = "mpeg-ts" then content.audioFormat = "ac3"
 
     title = "Live TV"
     if info.channel <> invalid
