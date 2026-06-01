@@ -472,10 +472,22 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
       // return to the home page. The backend also broadcasts a
       // WebSocket invalidation on stop, but we don't subscribe to it
       // from the web client yet; this is the local equivalent.
-      queryClient.invalidateQueries({ queryKey: ['home'] });
-      queryClient.invalidateQueries({ queryKey: ['tv'] });
-      queryClient.invalidateQueries({ queryKey: ['movies'] });
-      queryClient.invalidateQueries({ queryKey: ['library'] });
+      //
+      // Two-stage delay: invalidate once right away (catches the easy
+      // case) and again after 1s to handle Plex's internal scrobble
+      // race — leafCount / viewedLeafCount take a beat to update after
+      // /playback/stop returns, so an immediate refetch can still pull
+      // the old "in progress" payload.
+      const refreshShelves = () => {
+        queryClient.invalidateQueries({ queryKey: ['home'] });
+        queryClient.invalidateQueries({ queryKey: ['tv'] });
+        queryClient.invalidateQueries({ queryKey: ['movies'] });
+        queryClient.invalidateQueries({ queryKey: ['library'] });
+        queryClient.invalidateQueries({ queryKey: ['show-seasons'] });
+        queryClient.invalidateQueries({ queryKey: ['season-episodes'] });
+      };
+      refreshShelves();
+      setTimeout(refreshShelves, 1200);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);

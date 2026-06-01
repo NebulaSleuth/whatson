@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
@@ -262,6 +263,7 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
 
 // ── Main Player Screen ──
 export default function PlayerScreen() {
+  const queryClient = useQueryClient();
   const { ratingKey, source: sourceParam, fromStart } = useLocalSearchParams<{ ratingKey: string; source?: string; fromStart?: string }>();
   const startFromZero = fromStart === '1';
   const source = sourceParam || 'plex';
@@ -523,7 +525,23 @@ export default function PlayerScreen() {
     }
     if (progressInterval.current) clearInterval(progressInterval.current);
     router.back();
-  }, [ratingKey, playbackInfo, source]);
+
+    // Refresh shelves so a finished item disappears from Continue
+    // Watching, the now-played episode rolls forward in Ready to Watch,
+    // etc. Backend broadcasts a WS invalidation on /playback/stop —
+    // this client-side invalidate is the belt-and-braces version for
+    // when the WS message gets eaten by the suppression flag's release
+    // timing. Two-stage delay handles Plex's leafCount / viewedLeafCount
+    // race (the scrobble side-effect takes ~1s to flush internally).
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['home'] });
+      queryClient.invalidateQueries({ queryKey: ['tv'] });
+      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+      queryClient.invalidateQueries({ queryKey: ['show-seasons'] });
+      queryClient.invalidateQueries({ queryKey: ['season-episodes'] });
+    }, 800);
+  }, [ratingKey, playbackInfo, source, queryClient]);
 
   // Back — hides controls first, then exits player on second press
   const handleBack = useCallback(async () => {

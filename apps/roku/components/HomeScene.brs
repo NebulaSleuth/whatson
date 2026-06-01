@@ -3821,6 +3821,16 @@ sub onVideoStateChanged()
         ' Real stop — save final position + tell Plex we're done.
         reportProgress(true)
         sendStop()
+
+        ' Mark every cached shelf stale so the next time the user
+        ' visits Home / TV / Movies / Library, we refetch from the
+        ' backend. Otherwise a finished item lingers in Continue
+        ' Watching (showView short-circuits to the cached payload).
+        m.homeStale = true
+        m.tvStale = true
+        m.moviesStale = true
+        m.libraryCache = { show: invalid, movie: invalid }
+
         showView("detail")
     end if
 end sub
