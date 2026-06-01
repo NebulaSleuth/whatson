@@ -39,8 +39,15 @@ interface HlsSession {
   ready: boolean;
 }
 
-const IDLE_TIMEOUT_MS = 2 * 60 * 1000;  // 2 min — typical user tab close grace
-const STARTUP_WAIT_MS = 8 * 1000;       // wait up to 8s for first .ts segment
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min keep-warm — channels recently
+                                         // watched stay tuned so flipping back
+                                         // to them within a quarter hour is
+                                         // instant. HDHomeRun tuner stays
+                                         // allocated; trade tuner availability
+                                         // for snappy UX.
+const STARTUP_WAIT_MS = 6 * 1000;       // 6s ceiling for first .ts segment —
+                                         // smaller after the low-latency tune
+                                         // below typically lands in ~1.5s.
 
 let baseDir: string | null = null;
 let resolvedFfmpegPath: string | null = null;
@@ -182,32 +189,47 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
   const playlistPath = path.join(dir, 'index.m3u8');
   const segmentPattern = path.join(dir, 'seg%05d.ts');
 
-  // veryfast preset keeps CPU manageable for realtime; crf 23 gives
-  // ~3-5 Mbps for 1080i broadcasts. -ac 2 forces stereo so we don't
-  // hand Roku a 5.1 stream that might still cause downmix issues.
+  // Tuned for low first-segment latency:
+  //   -fflags +nobuffer       — skip the default 5s probe
+  //   -probesize / -analyzeduration  — cap input probing to ~1MB / 1s
+  //   -tune zerolatency       — libx264: drop B-frames, look-ahead → 0
+  //   -g 30 -keyint_min 30 -sc_threshold 0
+  //                           — force a keyframe every 30 frames (~1s),
+  //                             scene-cut keyframes disabled. HLS
+  //                             segments only start on keyframes, so
+  //                             this is what makes the first segment
+  //                             land in ~1.5s instead of waiting for
+  //                             the next natural OTA keyframe (often
+  //                             0.5–2s away).
+  //   -hls_time 2             — smaller segments → first one finishes
+  //                             quicker; subsequent ones still snappy.
   //
-  // -map 0:v:0? -map 0:a:0? — explicit first-video + first-audio
-  // selection. The `?` makes it optional so ffmpeg doesn't error if
-  // a track is missing (some test channels have video-only).
+  // Encoding:
+  //   -map 0:v:0? -map 0:a:0? — explicit first-video + first-audio;
+  //                              `?` makes the audio mapping optional
+  //                              so video-only test channels still
+  //                              transmux.
+  //   -c:v libx264 -preset veryfast -crf 23
+  //                            — ~3-5 Mbps for 1080i broadcasts.
+  //   -c:a aac -profile:a aac_low -ar 48000 -ac 2 -b:a 192k
+  //                            — Roku HLS wants AAC-LC stereo at a
+  //                              fixed sample rate.
   //
-  // -profile:a aac_low + -ar 48000 — Roku HLS spec wants AAC-LC at
-  // a fixed sample rate. The default ffmpeg AAC encoder usually picks
-  // these but pinning them avoids edge cases like 32kHz fallbacks.
-  //
-  // -loglevel info raised from warning so the input-stream listing
-  // ("Stream #0:0: Video: mpeg2video..." / "Stream #0:1: Audio: ac3...")
-  // lands in the backend log on every startup — makes diagnostics
-  // possible without re-shipping.
+  // -loglevel info on stderr → the input stream listing lands in
+  // /api/logs every session start, which is invaluable for diagnosis.
   const args = [
     '-hide_banner', '-loglevel', 'info',
-    '-fflags', '+genpts+discardcorrupt',
+    '-fflags', '+genpts+discardcorrupt+nobuffer',
+    '-probesize', '1000000',
+    '-analyzeduration', '1000000',
     '-i', sourceUrl,
     '-map', '0:v:0?', '-map', '0:a:0?',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-crf', '23',
+    '-g', '30', '-keyint_min', '30', '-sc_threshold', '0',
     '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '192k', '-ac', '2', '-ar', '48000',
     '-f', 'hls',
-    '-hls_time', '4',
+    '-hls_time', '2',
     '-hls_list_size', '6',
     '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
     '-hls_segment_filename', segmentPattern,

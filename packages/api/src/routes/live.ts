@@ -168,6 +168,38 @@ liveRouter.get('/live/stream/:channelId', async (req, res) => {
 });
 
 /**
+ * Pre-warm a live channel session — fire-and-forget. Returns
+ * immediately (no waiting for the first segment) so the client can
+ * call this on a channel-focus event without blocking the UI. By the
+ * time the user actually hits OK to tune, ffmpeg is already running
+ * and the playlist is ready, so /stream/:id resolves instantly.
+ */
+liveRouter.post('/live/warm/:channelId', async (req, res) => {
+  try {
+    const channelId = req.params.channelId;
+    const source = getLiveSourceForChannel(channelId);
+    if (!source) {
+      res.status(404).json({ success: false, error: 'No live source for channel' });
+      return;
+    }
+    const info = await source.getStreamInfo(channelId, req.plexUserToken);
+    // Only HLS-proxied (MPEG-TS) sources benefit from warm. Native-HLS
+    // sources (Plex / Jellyfin / Emby live) have no per-session warmup
+    // we can do — their playlist is generated on-demand by their own
+    // server.
+    if (info.format === 'mpeg-ts') {
+      // Don't await — the client wants this to be non-blocking.
+      ensureHlsSession(channelId, info.url).catch((e) =>
+        console.warn(`[hls] warm failed for ${channelId}: ${(e as Error).message}`),
+      );
+    }
+    res.json({ success: true, data: { warming: info.format === 'mpeg-ts' } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
  * Serve HLS playlist + segments produced by the ffmpeg transmuxer.
  * The session id comes from the stream endpoint above; expired
  * sessions return 404. Touching the session here resets the idle
