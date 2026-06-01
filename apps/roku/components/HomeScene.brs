@@ -3926,6 +3926,14 @@ sub onVideoStateChanged()
         ' starts.
         if m.swapping = true then return
 
+        ' If the user already navigated away from the player view
+        ' (Back handler routed them synchronously, view-swap timer
+        ' already fired), the async "stopped" event has nothing to
+        ' decide. They're already where they want to be. Without
+        ' this guard we used to flip them BACK to a stale detail
+        ' page after they'd already landed on the channel grid.
+        if m.currentView <> "player" then return
+
         ' Live tuner playback has no session to scrobble — HDHomeRun
         ' / Plex / Jellyfin / Emby live sources don't track progress
         ' for live streams the same way VOD does. Skip the progress +
@@ -3940,12 +3948,10 @@ sub onVideoStateChanged()
             return
         end if
 
-        ' Guard the VOD scrobble + return-to-detail path on an actual
-        ' VOD session existing. Without this, the async "stopped"
-        ' event that arrives AFTER a live Back has already cleared
-        ' m.isLive falls into here and ships the user to whatever
-        ' detail page was last populated — the "Back from Live TV
-        ' lands on a random episode" bug.
+        ' Belt-and-braces: gate the VOD scrobble + return-to-detail
+        ' path on an actual VOD session existing. Reachable only if
+        ' currentView is still "player" but neither live nor VOD is
+        ' fully set up (rare — startup races).
         if m.playbackInfo = invalid or m.selectedItem = invalid then return
 
         ' Real stop — save final position + tell Plex we're done.
