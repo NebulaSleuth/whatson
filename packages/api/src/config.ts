@@ -69,6 +69,10 @@ function loadConfig(): AppConfig {
       adminPasswordHash: (process.env.ADMIN_PASSWORD_HASH || '').trim(),
       sessionSecret: (process.env.WHATSON_SESSION_SECRET || '').trim(),
     },
+    hdhomerun: {
+      url: trimUrl(process.env.HDHOMERUN_URL),
+      deviceAuth: (process.env.HDHOMERUN_DEVICE_AUTH || '').trim(),
+    },
   };
 }
 

@@ -227,6 +227,16 @@ export interface AuthConfig {
   sessionSecret: string;
 }
 
+/**
+ * HDHomeRun network tuner. URL is the device's HTTP base
+ * (e.g. http://192.168.1.50). DeviceAuth is read from /discover.json
+ * and used for Silicondust's free cloud EPG. Empty URL = disabled.
+ */
+export interface HdHomeRunConfig {
+  url: string;
+  deviceAuth: string;
+}
+
 export interface ServerConfig {
   plex: PlexConfig;
   jellyfin: JellyfinConfig;
@@ -236,6 +246,55 @@ export interface ServerConfig {
   epg: EpgConfig;
   update: UpdateConfig;
   auth: AuthConfig;
+  hdhomerun: HdHomeRunConfig;
+}
+
+// ── Live TV ──
+
+/**
+ * Single live channel from any source (HDHomeRun direct, Plex DVR,
+ * Jellyfin Live TV, Emby Live TV, etc). `id` is source-prefixed so
+ * the stream endpoint can dispatch without ambiguity.
+ */
+export interface LiveChannel {
+  /** Source-prefixed channel id, e.g. "hdhr-5.1", "jellyfin-abc123" */
+  id: string;
+  /** Source tag */
+  source: 'hdhr' | 'plex' | 'jellyfin' | 'emby' | 'm3u';
+  /** Display name, e.g. "WCBS-DT" */
+  name: string;
+  /** Channel number as a string, e.g. "5.1", "504" */
+  number?: string;
+  /** Network call sign, often the same as name */
+  callSign?: string;
+  /** Proxied artwork URL (logo). Clients fall back to a generic icon. */
+  logoUrl?: string;
+  /** True if the source flags the channel as HD */
+  hd?: boolean;
+  /** True if the source flags the channel as DRM-restricted (can't stream) */
+  drm?: boolean;
+}
+
+export interface LiveStreamInfo {
+  /** Playable URL — MPEG-TS for direct tuner, HLS for media-server / web-proxy */
+  url: string;
+  /** Container format — drives Roku Video node config + player branching */
+  format: 'mpeg-ts' | 'hls';
+  /** Session id to pass back on stop, if the source needs it */
+  sessionId?: string;
+  /** Channel info for the player's title overlay */
+  channel: LiveChannel;
+}
+
+export interface LiveProgram {
+  channelId: string;     // source-prefixed
+  startMs: number;       // epoch ms
+  endMs: number;
+  title: string;
+  episodeTitle?: string;
+  description?: string;
+  rating?: string;
+  thumbUrl?: string;
 }
 
 // ── API Request/Response ──

@@ -436,6 +436,10 @@
             <span class="status-dot unconfigured" id="nav-status-radarr"></span>
           </button>
           <button type="button" class="nav-item" data-section="tmdb">TMDB</button>
+          <button type="button" class="nav-item" data-section="tuners">
+            Tuners
+            <span class="status-dot unconfigured" id="nav-status-hdhomerun"></span>
+          </button>
           <button type="button" class="nav-item" data-section="server">Server</button>
           <button type="button" class="nav-item" data-section="updates">Updates</button>
         </nav>
@@ -648,6 +652,54 @@
     </div>
     </section>
 
+    <!-- Tuners -->
+    <section class="section" data-section="tuners">
+    <div class="card">
+      <div class="card-header">
+        <h2>Tuners <span style="color:#888;font-size:13px;font-weight:400">(Live TV)</span></h2>
+        <div></div>
+      </div>
+      <p style="color:#888;font-size:13px;margin-bottom:16px">
+        Direct support for network tuners. WhatsOn talks to the device
+        over HTTP — no Plex / Jellyfin / Emby DVR needed. Streams play
+        natively on Roku and mobile; the web player needs a transcode
+        proxy (coming in a follow-up).
+      </p>
+
+      <h3 style="margin-bottom:8px;color:#ccc;font-size:14px">
+        HDHomeRun
+        <span style="margin-left:8px"><span class="status-dot unconfigured" id="hdhomerun-status"></span><span class="status-label" id="hdhomerun-status-label">not configured</span></span>
+      </h3>
+
+      <div class="field">
+        <label>Tuner URL</label>
+        <input type="text" id="hdhomerun-url" placeholder="http://192.168.1.50" />
+        <div class="hint">
+          Local HTTP base for your HDHomeRun. The device IP is shown in
+          the HDHomeRun app or at <a href="https://my.hdhomerun.com" target="_blank" style="color:#e5a00d">my.hdhomerun.com</a>.
+          No port needed — HDHomeRun's HTTP API is on 80.
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Device Auth (optional, auto-filled)</label>
+        <input type="text" id="hdhomerun-device-auth" placeholder="Auto-populated from /discover.json on first Test" />
+        <div class="hint">
+          Silicondust token from the device. Used by the free cloud EPG.
+          You don't need to fill this in — it's populated automatically
+          when you Test the connection.
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="testService('hdhomerun')">Test Connection</button>
+        <button class="btn btn-primary" onclick="saveService('hdhomerun')">Save</button>
+      </div>
+
+      <div id="hdhomerun-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+    </div>
+    </section>
+
     <!-- Server -->
     <section class="section" data-section="server">
     <div class="card">
@@ -789,6 +841,17 @@
         if (cfg.plex.episodePoster) {
           document.getElementById('plex-episode-poster').value = cfg.plex.episodePoster;
         }
+        if (cfg.hdhomerun && cfg.hdhomerun.url) {
+          document.getElementById('hdhomerun-url').value = cfg.hdhomerun.url;
+        }
+        if (cfg.hdhomerun && cfg.hdhomerun.deviceAuth) {
+          document.getElementById('hdhomerun-device-auth').placeholder =
+            'Configured (' + cfg.hdhomerun.deviceAuth + ')';
+        }
+        // Mirror the HDHomeRun configured-state to the sidebar dot.
+        // The /live/sources endpoint gives us a true connectivity check;
+        // call it lazily so /config loads stay fast.
+        refreshHdHomeRunStatus().catch(() => {});
         if (cfg.sonarr.url) document.getElementById('sonarr-url').value = cfg.sonarr.url;
         if (cfg.sonarr.apiKey) {
           document.getElementById('sonarr-apikey').placeholder = 'Configured (' + cfg.sonarr.apiKey + ')';
@@ -872,6 +935,8 @@
         body.url = document.getElementById('emby-url').value;
         body.username = document.getElementById('emby-username').value;
         body.password = document.getElementById('emby-password').value || undefined;
+      } else if (service === 'hdhomerun') {
+        body.url = document.getElementById('hdhomerun-url').value;
       }
 
       try {
@@ -932,6 +997,12 @@
         };
         const pw = document.getElementById('emby-password').value;
         if (pw) body.emby.password = pw;
+      } else if (service === 'hdhomerun') {
+        body.hdhomerun = {
+          url: document.getElementById('hdhomerun-url').value,
+        };
+        const auth = document.getElementById('hdhomerun-device-auth').value;
+        if (auth) body.hdhomerun.deviceAuth = auth;
       }
 
       try {
@@ -970,6 +1041,38 @@
       } catch (e) {
         showToast('Save failed: ' + e.message, 'error');
       }
+    }
+
+    /**
+     * Live-source status refresh — currently just HDHomeRun. Hits
+     * /api/live/sources which returns one entry per source kind with
+     * configured / connected / channelCount. Used to paint the
+     * inline status line under the HDHomeRun section heading AND the
+     * sidebar nav dot.
+     */
+    async function refreshHdHomeRunStatus() {
+      const dot = document.getElementById('hdhomerun-status');
+      const navDot = document.getElementById('nav-status-hdhomerun');
+      const label = document.getElementById('hdhomerun-status-label');
+      try {
+        const r = await fetch(API + '/live/sources').then((r) => r.json());
+        if (!r.success || !Array.isArray(r.data)) return;
+        const hdhr = r.data.find((s) => s.kind === 'hdhr');
+        let cls = 'status-dot unconfigured';
+        let txt = 'not configured';
+        if (hdhr && hdhr.configured) {
+          if (hdhr.connected) {
+            cls = 'status-dot connected';
+            txt = `${hdhr.channelCount} channels`;
+          } else {
+            cls = 'status-dot error';
+            txt = 'unreachable';
+          }
+        }
+        if (dot) dot.className = cls;
+        if (label) label.textContent = txt;
+        if (navDot) navDot.className = cls;
+      } catch {}
     }
 
     async function clearArtworkCache() {

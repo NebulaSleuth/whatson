@@ -25,6 +25,13 @@ configRouter.get('/config', async (_req, res) => {
       configured: Boolean(config.plex.token),
       episodePoster: config.plex.episodePoster || 'season',
     },
+    hdhomerun: {
+      url: config.hdhomerun?.url || '',
+      deviceAuth: config.hdhomerun?.deviceAuth
+        ? '••••' + config.hdhomerun.deviceAuth.slice(-4)
+        : '',
+      configured: Boolean(config.hdhomerun?.url),
+    },
     sonarr: {
       url: config.sonarr.url,
       apiKey: config.sonarr.apiKey ? '••••' + config.sonarr.apiKey.slice(-4) : '',
@@ -149,6 +156,18 @@ configRouter.post('/config/test', async (req, res) => {
       config.emby.username = origUser;
       config.emby.password = origPass;
       emby.resetClient();
+    } else if (service === 'hdhomerun') {
+      // HDHomeRun is read via simple GET — no client to reset, no
+      // auth to swap. Test directly against the proposed URL by
+      // temporarily overriding config, then restore.
+      const { resetHdHomeRunCache, hdhomerunSource } = await import('../services/live/hdhomerun.js');
+      const orig = { ...config.hdhomerun };
+      if (!config.hdhomerun) config.hdhomerun = { url: '', deviceAuth: '' };
+      config.hdhomerun.url = url;
+      resetHdHomeRunCache();
+      connected = await hdhomerunSource.testConnection();
+      config.hdhomerun = orig;
+      resetHdHomeRunCache();
     }
   } catch {
     connected = false;
@@ -177,6 +196,15 @@ configRouter.post('/config/save', async (req, res) => {
       if ('episodePoster' in plexCfg) {
         const v = String(plexCfg.episodePoster || 'season').toLowerCase();
         values.PLEX_EPISODE_POSTER = v === 'show' ? 'show' : 'season';
+      }
+    }
+    if (req.body.hdhomerun) {
+      const hdhrCfg = req.body.hdhomerun;
+      if ('url' in hdhrCfg) values.HDHOMERUN_URL = hdhrCfg.url || '';
+      // DeviceAuth is normally populated by the service from /discover.json,
+      // but allow manual override here too.
+      if ('deviceAuth' in hdhrCfg && hdhrCfg.deviceAuth) {
+        values.HDHOMERUN_DEVICE_AUTH = hdhrCfg.deviceAuth;
       }
     }
     if (sonarrCfg) {
