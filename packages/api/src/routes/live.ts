@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as liveTv from '../services/liveTv.js';
 import { config } from '../config.js';
-import type { ApiResponse, ContentItem, LiveChannel, LiveStreamInfo } from '@whatson/shared';
+import type { ApiResponse, ContentItem, LiveChannel, LiveProgram, LiveStreamInfo } from '@whatson/shared';
 import {
   allLiveSources,
   getConfiguredLiveSources,
@@ -161,6 +161,50 @@ liveRouter.get('/live/stream/:channelId', async (req, res) => {
     }
 
     const response: ApiResponse<LiveStreamInfo> = { success: true, data: info };
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * EPG batch endpoint. Clients pass `channelIds=a,b,c` and we group by
+ * source, calling each source's getProgramsForChannel only when it
+ * actually implements EPG. Returns a flat array of LiveProgram
+ * spanning every requested channel within `hours` (default 4).
+ *
+ * GET /api/live/epg?channelIds=hdhr-5.1,hdhr-4.1&hours=4
+ */
+liveRouter.get('/live/epg', async (req, res) => {
+  try {
+    const ids = parseChannels(req.query.channelIds);
+    const hours = Math.max(1, Math.min(24, parseInt((req.query.hours as string) || '4', 10) || 4));
+    if (ids.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    // Group by source so a single Silicondust cloud-guide fetch
+    // covers every channel from that tuner — the source-level
+    // getProgramsForChannel is expected to filter from a shared
+    // cache, not re-fetch per-channel.
+    const bySource = new Map<ReturnType<typeof getLiveSourceForChannel>, string[]>();
+    for (const id of ids) {
+      const src = getLiveSourceForChannel(id);
+      if (!src) continue;
+      const list = bySource.get(src) || [];
+      list.push(id);
+      bySource.set(src, list);
+    }
+    const lookups: Promise<LiveProgram[]>[] = [];
+    for (const [src, list] of bySource) {
+      if (!src || !src.getProgramsForChannel) continue;
+      for (const id of list) {
+        lookups.push(src.getProgramsForChannel(id, hours).catch(() => [] as LiveProgram[]));
+      }
+    }
+    const results = await Promise.all(lookups);
+    const programs = results.flat();
+    const response: ApiResponse<LiveProgram[]> = { success: true, data: programs };
     res.json(response);
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });

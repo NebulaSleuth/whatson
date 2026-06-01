@@ -4890,6 +4890,7 @@ end sub
 
 sub renderTunerLiveChannels(channels as object)
     root = CreateObject("roSGNode", "ContentNode")
+    channelIds = []
     for each ch in channels
         cell = root.createChild("ContentNode")
         cell.AddField("itemChannelId", "string", false)
@@ -4898,13 +4899,17 @@ sub renderTunerLiveChannels(channels as object)
         cell.AddField("itemChannelCallSign", "string", false)
         cell.AddField("itemChannelLogoUrl", "string", false)
         cell.AddField("itemChannelHd", "boolean", false)
+        cell.AddField("itemNowProgram", "string", false)
+        cell.AddField("itemNextProgram", "string", false)
         cell.itemChannelId = stringField(ch, "id")
         cell.itemChannelNumber = stringField(ch, "number")
         cell.itemChannelName = stringField(ch, "name")
         cell.itemChannelCallSign = stringField(ch, "callSign")
-        ' Logos go through the artwork proxy when present. HDHomeRun's
-        ' lineup doesn't include them; LiveChannelItem falls back to a
-        ' large channel number when empty.
+        channelIds.Push(cell.itemChannelId)
+        ' Logos go through the artwork proxy when present.
+        ' Silicondust's cloud guide provides them via the URL the
+        ' backend builds (/api/artwork?url=...); the HDHomeRun
+        ' lineup alone never has them.
         logo = stringField(ch, "logoUrl")
         if logo <> ""
             if Left(logo, 4) = "http"
@@ -4920,6 +4925,96 @@ sub renderTunerLiveChannels(channels as object)
     m.tunerLiveGrid.content = root
     m.tunerLiveGrid.visible = true
     m.tunerLiveStatus.visible = false
+
+    ' Kick off EPG fetch — fills "Now: …" + "Next: …" on the cards.
+    ' Async; the cells render with names + logos first, then EPG
+    ' decorates them when the response lands.
+    if channelIds.Count() > 0 then fetchTunerLiveEpg(channelIds)
+end sub
+
+sub fetchTunerLiveEpg(channelIds as object)
+    if channelIds = invalid or channelIds.Count() = 0 then return
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onTunerLiveEpgResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/live/epg?hours=4&channelIds=" + joinStrings(channelIds, ",")
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.tunerLiveEpgTask = task
+end sub
+
+sub onTunerLiveEpgResponse()
+    if m.tunerLiveEpgTask = invalid then return
+    resp = m.tunerLiveEpgTask.response
+    m.tunerLiveEpgTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid then return
+
+    ' Bucket programs by channelId, sort each list by startMs, pick
+    ' the current one ("Now") and the next-up one. nowMs lets us tell
+    ' which entry is currently airing — startMs <= now < endMs.
+    nowMs = (CreateObject("roDateTime")).AsSeconds() * 1000.0#
+    byChannel = {}
+    for each p in resp.data
+        cid = stringField(p, "channelId")
+        if cid = "" then continue for
+        list = byChannel[cid]
+        if list = invalid
+            list = []
+            byChannel[cid] = list
+        end if
+        list.Push(p)
+    end for
+
+    root = m.tunerLiveGrid.content
+    if root = invalid then return
+    for i = 0 to root.getChildCount() - 1
+        cell = root.getChild(i)
+        if cell = invalid then continue for
+        cid = cell.itemChannelId
+        progs = byChannel[cid]
+        if progs = invalid or progs.Count() = 0 then continue for
+        ' Sort programs ascending by startMs
+        sortAsc(progs)
+        nowTitle = ""
+        nextTitle = ""
+        for each p in progs
+            startMs = 0
+            endMs = 0
+            if p.startMs <> invalid then startMs = p.startMs
+            if p.endMs <> invalid then endMs = p.endMs
+            if startMs <= nowMs and nowMs < endMs and nowTitle = ""
+                nowTitle = stringField(p, "title")
+            else if startMs > nowMs and nextTitle = ""
+                nextTitle = stringField(p, "title")
+            end if
+            if nowTitle <> "" and nextTitle <> "" then exit for
+        end for
+        cell.itemNowProgram = nowTitle
+        cell.itemNextProgram = nextTitle
+    end for
+end sub
+
+' Small in-place insertion sort for the per-channel program lists.
+' BrightScript arrays don't have a .Sort() with a comparator on older
+' firmware, so we do this by hand. Lists are short (~4-hour lookahead
+' typically returns 4-8 programs), so n^2 is fine.
+sub sortAsc(list as object)
+    if list = invalid then return
+    n = list.Count()
+    for i = 1 to n - 1
+        cur = list[i]
+        j = i - 1
+        while j >= 0
+            a = 0
+            b = 0
+            if list[j].startMs <> invalid then a = list[j].startMs
+            if cur.startMs <> invalid then b = cur.startMs
+            if a <= b then exit while
+            list[j + 1] = list[j]
+            j = j - 1
+        end while
+        list[j + 1] = cur
+    end for
 end sub
 
 sub onTunerLiveChannelSelected()

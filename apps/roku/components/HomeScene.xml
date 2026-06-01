@@ -735,11 +735,15 @@
                 translation="[80, 120]"
                 width="1700"
                 color="0xb0b0b0ff" />
+            <!-- itemSize bumped from [280, 200] to [280, 220] when
+                 EPG lines were added; numRows still 4 (4 × 220 + 3 × 16
+                 = 928, fits under the 1080 - 120 = 960 px below the
+                 tab bar). -->
             <MarkupGrid
                 id="tunerLiveGrid"
                 itemComponentName="LiveChannelItem"
                 translation="[80, 120]"
-                itemSize="[280, 200]"
+                itemSize="[280, 220]"
                 itemSpacing="[16, 16]"
                 numRows="4"
                 numColumns="6"

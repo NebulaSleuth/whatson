@@ -1,20 +1,30 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!--
-  Cell renderer for the Live TV channel grid. HDHomeRun's lineup
-  doesn't include channel logos (Phase 1 limitation — Phase 4 EPG
-  fetch from Silicondust's cloud guide will add them), so each card
-  shows the channel number in large gold text and the call sign
-  below. Logos light up later when a source actually provides them.
+  Cell renderer for the Live TV channel grid. Layout:
 
-  Cell size: 280 × 200 — wider than poster cells, room for HD badge.
+    Cell 280 × 220 wide
+      ┌────────────────────────┐
+      │      [channel logo]    │  ← visible when itemChannelLogoUrl
+      │   or 5.1 (big number)  │     is set; otherwise the fallback
+      │                        │     number + callSign occupies the
+      │       WCBS-DT          │     same vertical band.
+      ├────────────────────────┤
+      │       WCBS-DT          │  ← always visible, single line
+      │  Now: 60 Minutes       │  ← from Silicondust cloud guide
+      │  Next: NFL Football    │  ← if EPG returned the next slot
+      └────────────────────────┘
+      HD chip in the top-right corner when applicable.
 
   Reads via itemContent (ContentNode populated by HomeScene.brs):
     - itemChannelId       source-prefixed id (`hdhr-5.1`)
     - itemChannelNumber   string (`5.1`)
     - itemChannelName     display name (`WCBS-DT`)
     - itemChannelCallSign (often same as name)
-    - itemChannelLogoUrl  optional artwork URL (empty for HDHomeRun)
+    - itemChannelLogoUrl  optional artwork URL (Silicondust guide
+                          provides them; HDHomeRun lineup alone does not)
     - itemChannelHd       boolean — show HD chip in top-right
+    - itemNowProgram      "60 Minutes" (current program title)
+    - itemNextProgram     "NFL Football" (next program title)
 -->
 <component name="LiveChannelItem" extends="Group">
     <script type="text/brightscript" uri="LiveChannelItem.brs" />
@@ -27,15 +37,15 @@
 
     <children>
         <!-- Cell background; darkens when focused. -->
-        <Rectangle id="cellBg" width="280" height="200" color="0x1a1a1aff" />
+        <Rectangle id="cellBg" width="280" height="220" color="0x1a1a1aff" />
 
         <!-- Logo poster — visible when itemChannelLogoUrl is set.
-             Hidden when empty (HDHomeRun lineup case). -->
+             Hidden when empty (forced fallback to text below). -->
         <Poster
             id="logo"
-            translation="[12, 12]"
+            translation="[12, 8]"
             width="256"
-            height="156"
+            height="108"
             loadDisplayMode="scaleToFit"
             visible="false" />
 
@@ -43,14 +53,14 @@
              sign beneath. -->
         <Label
             id="channelNumber"
-            translation="[0, 32]"
+            translation="[0, 18]"
             width="280"
             horizAlign="center"
             color="0xffffffff"
             font="font:LargeBoldSystemFont" />
         <Label
             id="channelCallSign"
-            translation="[0, 122]"
+            translation="[0, 86]"
             width="280"
             horizAlign="center"
             color="0xb0b0b0ff"
@@ -60,14 +70,14 @@
              only visible when the source flags the channel as HD. -->
         <Rectangle
             id="hdChipBg"
-            translation="[228, 12]"
+            translation="[228, 8]"
             width="40"
             height="20"
             color="0xe5a00dff"
             visible="false" />
         <Label
             id="hdChipLabel"
-            translation="[228, 12]"
+            translation="[228, 8]"
             width="40"
             height="20"
             horizAlign="center"
@@ -77,23 +87,49 @@
             text="HD"
             visible="false" />
 
-        <!-- Channel name strip at the bottom — always visible, gives
-             extra context next to the number. -->
+        <!-- Channel name strip. Always visible; provides callsign
+             context even when the logo dominates the top half. -->
         <Label
             id="channelName"
-            translation="[12, 170]"
+            translation="[12, 122]"
             width="256"
-            height="24"
+            height="22"
             horizAlign="center"
             color="0xccccccff"
-            font="font:SmallSystemFont"
+            font="font:SmallBoldSystemFont"
             wrap="false"
             maxLines="1" />
 
+        <!-- EPG: now-playing + next-up. Hidden when no EPG data is
+             available (HDHomeRun without DeviceAuth, or non-EPG
+             source). Text drawn in pale-gold so it visually links
+             to the focused state without competing with the
+             channel name above. -->
+        <Label
+            id="nowProgram"
+            translation="[10, 156]"
+            width="260"
+            height="22"
+            color="0xf5d87aff"
+            font="font:SmallSystemFont"
+            wrap="false"
+            maxLines="1"
+            visible="false" />
+        <Label
+            id="nextProgram"
+            translation="[10, 184]"
+            width="260"
+            height="22"
+            color="0x808080ff"
+            font="font:SmallSystemFont"
+            wrap="false"
+            maxLines="1"
+            visible="false" />
+
         <!-- Focus ring (4 pale-gold strips, same pattern as PosterItem). -->
         <Rectangle id="focusRingTop" width="280" height="3" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingBottom" translation="[0, 197]" width="280" height="3" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingLeft" width="3" height="200" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingRight" translation="[277, 0]" width="3" height="200" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingBottom" translation="[0, 217]" width="280" height="3" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingLeft" width="3" height="220" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingRight" translation="[277, 0]" width="3" height="220" color="0xf5d87aff" visible="false" />
     </children>
 </component>

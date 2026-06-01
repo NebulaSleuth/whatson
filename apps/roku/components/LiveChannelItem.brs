@@ -9,6 +9,8 @@ sub init()
     m.channelName = m.top.findNode("channelName")
     m.hdChipBg = m.top.findNode("hdChipBg")
     m.hdChipLabel = m.top.findNode("hdChipLabel")
+    m.nowProgram = m.top.findNode("nowProgram")
+    m.nextProgram = m.top.findNode("nextProgram")
     m.focusRingTop = m.top.findNode("focusRingTop")
     m.focusRingBottom = m.top.findNode("focusRingBottom")
     m.focusRingLeft = m.top.findNode("focusRingLeft")
@@ -53,6 +55,32 @@ sub onContentChanged()
     hd = content.itemChannelHd = true
     m.hdChipBg.visible = hd
     m.hdChipLabel.visible = hd
+
+    ' EPG lines. Show "Now: title" in pale gold; "Next: title" in
+    ' dim grey beneath. Both hidden when the source didn't provide
+    ' EPG data for this channel (HDHomeRun cloud guide can be
+    ' patchy for low-power / specialty stations).
+    nowText = ""
+    if content.itemNowProgram <> invalid and content.itemNowProgram <> ""
+        nowText = "Now: " + content.itemNowProgram
+    end if
+    if nowText <> ""
+        m.nowProgram.text = nowText
+        m.nowProgram.visible = true
+    else
+        m.nowProgram.visible = false
+    end if
+
+    nextText = ""
+    if content.itemNextProgram <> invalid and content.itemNextProgram <> ""
+        nextText = "Next: " + content.itemNextProgram
+    end if
+    if nextText <> ""
+        m.nextProgram.text = nextText
+        m.nextProgram.visible = true
+    else
+        m.nextProgram.visible = false
+    end if
 end sub
 
 sub onFocusChanged()

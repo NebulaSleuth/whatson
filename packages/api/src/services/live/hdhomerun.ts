@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { LiveChannel, LiveStreamInfo } from '@whatson/shared';
+import type { LiveChannel, LiveProgram, LiveStreamInfo } from '@whatson/shared';
 import { config, saveConfigToEnv } from '../../config.js';
 import { getCached, setCached } from '../../cache.js';
 import type { LiveSource } from './types.js';
@@ -42,9 +42,39 @@ interface LineupChannel {
   AudioCodec?: string;
 }
 
+/**
+ * Silicondust's cloud guide format. One entry per channel; the `Guide`
+ * array holds programs sorted by StartTime. Source documented at
+ * https://info.hdhomerun.com/info/http_api (EPG section).
+ */
+interface CloudGuideChannel {
+  GuideNumber?: string;
+  GuideName?: string;
+  Affiliate?: string;
+  /** Channel logo on Silicondust CDN — re-served through /api/artwork */
+  ImageURL?: string;
+  Guide?: CloudGuideProgram[];
+}
+
+interface CloudGuideProgram {
+  StartTime?: number;  // unix seconds
+  EndTime?: number;
+  Title?: string;
+  EpisodeTitle?: string;
+  Synopsis?: string;
+  EpisodeNumber?: string;
+  ImageURL?: string;
+  Filter?: string[];
+  OriginalAirdate?: number;
+}
+
 const CACHE_TTL_DISCOVER = 60 * 60; // 1 hour
 const CACHE_TTL_LINEUP = 10 * 60;   // 10 minutes
+const CACHE_TTL_GUIDE = 10 * 60;    // 10 minutes — Silicondust schedules
+                                    // rarely shift within a 10 min window,
+                                    // and we don't want to hammer their API.
 const HTTP_TIMEOUT_MS = 4000;
+const GUIDE_TIMEOUT_MS = 8000;      // Cloud guide is slower than LAN; give it more
 
 function baseUrl(): string | null {
   const raw = (config.hdhomerun?.url || '').trim();
@@ -116,20 +146,69 @@ async function fetchLineup(): Promise<LineupChannel[]> {
   }
 }
 
-function toLiveChannel(c: LineupChannel): LiveChannel | null {
+/**
+ * Fetch the Silicondust cloud guide for the configured device.
+ * Returns an array of channels each with a `Guide` of ~36 hours of
+ * upcoming programs. DeviceAuth is taken from the cached /discover
+ * response. Cached for 10 minutes to avoid hammering Silicondust.
+ */
+async function fetchCloudGuide(): Promise<CloudGuideChannel[]> {
+  const disc = await discover();
+  const auth = (disc?.DeviceAuth || config.hdhomerun?.deviceAuth || '').trim();
+  if (!auth) return [];
+
+  const cacheKey = `hdhr:guide:${auth}`;
+  const cached = getCached<CloudGuideChannel[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const { data } = await axios.get<CloudGuideChannel[]>(
+      'https://api.hdhomerun.com/api/guide.php',
+      { params: { DeviceAuth: auth }, timeout: GUIDE_TIMEOUT_MS },
+    );
+    if (!Array.isArray(data)) return [];
+    setCached(cacheKey, data, CACHE_TTL_GUIDE);
+    console.log(`[hdhr] cloud guide loaded — ${data.length} channels`);
+    return data;
+  } catch (err) {
+    console.warn(`[hdhr] cloud guide fetch failed: ${(err as Error).message}`);
+    return [];
+  }
+}
+
+function toLiveChannel(c: LineupChannel, guideEntry?: CloudGuideChannel): LiveChannel | null {
   if (!c.GuideNumber || !c.URL) return null;
+  // Silicondust cloud guide carries channel logos — preferred when
+  // available. Re-served through /api/artwork so clients on the LAN
+  // hit our backend (already cached + CORS-friendly) rather than
+  // Silicondust's CDN directly.
+  let logoUrl: string | undefined;
+  if (guideEntry?.ImageURL) {
+    logoUrl = `/api/artwork?url=${encodeURIComponent(guideEntry.ImageURL)}&w=360`;
+  }
   return {
     id: `hdhr-${c.GuideNumber}`,
     source: 'hdhr',
     name: c.GuideName || c.GuideNumber,
     number: c.GuideNumber,
     callSign: c.GuideName,
+    logoUrl,
     hd: c.HD === 1,
     drm: c.DRM === 1,
-    // HDHomeRun lineup doesn't include logos — clients fall back to
-    // a generic glyph or the channel name. We could fetch logos from
-    // Silicondust's cloud guide in Phase 1 week 4 (EPG) and stash
-    // them here.
+  };
+}
+
+function toLiveProgram(channelId: string, p: CloudGuideProgram): LiveProgram | null {
+  if (!p.StartTime || !p.EndTime || !p.Title) return null;
+  return {
+    channelId,
+    startMs: p.StartTime * 1000,
+    endMs: p.EndTime * 1000,
+    title: p.Title,
+    episodeTitle: p.EpisodeTitle,
+    description: p.Synopsis,
+    rating: undefined, // Silicondust guide doesn't surface TV ratings reliably
+    thumbUrl: p.ImageURL,
   };
 }
 
@@ -147,10 +226,21 @@ export const hdhomerunSource: LiveSource = {
 
   async getChannels(): Promise<LiveChannel[]> {
     if (!baseUrl()) return [];
-    const lineup = await fetchLineup();
+    // Fetch lineup + cloud guide in parallel. Guide gives us channel
+    // logos for free, but its failure mustn't kill the channel list —
+    // we degrade to the lineup-only data when the guide doesn't
+    // respond.
+    const [lineup, guide] = await Promise.all([
+      fetchLineup(),
+      fetchCloudGuide().catch(() => [] as CloudGuideChannel[]),
+    ]);
+    const guideByNumber = new Map<string, CloudGuideChannel>();
+    for (const g of guide) {
+      if (g.GuideNumber) guideByNumber.set(g.GuideNumber, g);
+    }
     const out: LiveChannel[] = [];
     for (const c of lineup) {
-      const lc = toLiveChannel(c);
+      const lc = toLiveChannel(c, c.GuideNumber ? guideByNumber.get(c.GuideNumber) : undefined);
       // Drop DRM channels — we can't actually stream them anyway
       if (lc && !lc.drm) out.push(lc);
     }
@@ -183,6 +273,29 @@ export const hdhomerunSource: LiveSource = {
       format: 'mpeg-ts',
       channel,
     };
+  },
+
+  async getProgramsForChannel(channelId: string, lookaheadHours: number = 6): Promise<LiveProgram[]> {
+    if (!channelId.startsWith('hdhr-')) return [];
+    const guideNumber = channelId.slice('hdhr-'.length);
+    const guide = await fetchCloudGuide();
+    const entry = guide.find((g) => g.GuideNumber === guideNumber);
+    if (!entry?.Guide) return [];
+
+    const nowMs = Date.now();
+    const horizonMs = nowMs + lookaheadHours * 3600 * 1000;
+    const programs: LiveProgram[] = [];
+    for (const p of entry.Guide) {
+      const lp = toLiveProgram(channelId, p);
+      if (!lp) continue;
+      // Drop already-finished items (endMs in the past) and anything
+      // after the horizon. Keep currently-airing even if it started
+      // before now — that's what populates "Now: …" on the cards.
+      if (lp.endMs <= nowMs) continue;
+      if (lp.startMs > horizonMs) continue;
+      programs.push(lp);
+    }
+    return programs;
   },
 };
 
