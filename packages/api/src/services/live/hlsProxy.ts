@@ -98,13 +98,27 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
   // veryfast preset keeps CPU manageable for realtime; crf 23 gives
   // ~3-5 Mbps for 1080i broadcasts. -ac 2 forces stereo so we don't
   // hand Roku a 5.1 stream that might still cause downmix issues.
+  //
+  // -map 0:v:0? -map 0:a:0? — explicit first-video + first-audio
+  // selection. The `?` makes it optional so ffmpeg doesn't error if
+  // a track is missing (some test channels have video-only).
+  //
+  // -profile:a aac_low + -ar 48000 — Roku HLS spec wants AAC-LC at
+  // a fixed sample rate. The default ffmpeg AAC encoder usually picks
+  // these but pinning them avoids edge cases like 32kHz fallbacks.
+  //
+  // -loglevel info raised from warning so the input-stream listing
+  // ("Stream #0:0: Video: mpeg2video..." / "Stream #0:1: Audio: ac3...")
+  // lands in the backend log on every startup — makes diagnostics
+  // possible without re-shipping.
   const args = [
-    '-hide_banner', '-loglevel', 'warning',
+    '-hide_banner', '-loglevel', 'info',
     '-fflags', '+genpts+discardcorrupt',
     '-i', sourceUrl,
+    '-map', '0:v:0?', '-map', '0:a:0?',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
     '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k', '-ac', '2',
+    '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '192k', '-ac', '2', '-ar', '48000',
     '-f', 'hls',
     '-hls_time', '4',
     '-hls_list_size', '6',
@@ -113,11 +127,17 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
     playlistPath,
   ];
 
+  console.log(`[hls ${id}] starting ffmpeg for ${channelId}, source=${sourceUrl}`);
   const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stderr.on('data', (chunk) => {
-    // Surface only warnings/errors to the log so it doesn't spam.
-    const line = chunk.toString().trim();
-    if (line) console.warn(`[hls ${id}] ${line.slice(0, 200)}`);
+    // ffmpeg writes both info AND warnings/errors to stderr. We log
+    // everything (truncated) so the input-stream listing is captured
+    // on every session start — invaluable for "no audio" diagnosis.
+    const text = chunk.toString();
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed) console.log(`[hls ${id}] ${trimmed.slice(0, 240)}`);
+    }
   });
   proc.on('exit', (code, signal) => {
     console.log(`[hls ${id}] ffmpeg exited code=${code} signal=${signal}`);
