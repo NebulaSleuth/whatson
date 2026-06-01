@@ -65,19 +65,28 @@
              bottom-border focus indicator). Roku's built-in Button
              only supports inline icons and a rectangular focus
              bitmap, so the mobile look requires this custom node. -->
+        <!-- 8 tabs now (added Live TV). Default 220px buttons + 8px
+             gaps + 80px left = 1896px right edge, which overlaps the
+             clock at x=1700. Tightened to buttonWidth=180, spacing=2,
+             left=40 → right edge ~1494, clock has 200+px of breathing
+             room. -->
         <LayoutGroup
             id="tabBar"
-            translation="[80, 6]"
+            translation="[40, 6]"
             layoutDirection="horiz"
-            itemSpacings="[8]">
-            <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" focusable="true" />
-            <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" focusable="true" />
-            <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" focusable="true" />
-            <TabButton id="tabLiveTv" label="Live TV" iconFocused="⊚" iconUnfocused="⊙" focusable="true" />
-            <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" focusable="true" />
-            <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" focusable="true" />
-            <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" focusable="true" />
-            <TabButton id="tabSettings" label="Settings" iconFocused="⚙" iconUnfocused="⚙" iconFontUri="pkg:/fonts/NotoSansSymbols.ttf" iconYOffset="-6" focusable="true" />
+            itemSpacings="[2]">
+            <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" buttonWidth="180" focusable="true" />
+            <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" buttonWidth="180" focusable="true" />
+            <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" buttonWidth="180" focusable="true" />
+            <!-- ◐ / ◯ from Geometric Shapes (same block as Home's icons) —
+                 Math Operators chars like ⊚/⊙ aren't in Roku's default
+                 font, so the focused state used to render as a tofu
+                 rectangle. -->
+            <TabButton id="tabLiveTv" label="Live TV" iconFocused="◐" iconUnfocused="◯" buttonWidth="180" focusable="true" />
+            <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" buttonWidth="180" focusable="true" />
+            <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" buttonWidth="180" focusable="true" />
+            <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" buttonWidth="180" focusable="true" />
+            <TabButton id="tabSettings" label="Settings" iconFocused="⚙" iconUnfocused="⚙" iconFontUri="pkg:/fonts/NotoSansSymbols.ttf" iconYOffset="-6" buttonWidth="180" focusable="true" />
         </LayoutGroup>
 
         <!-- ─── Home view: status + RowList of shelves ─── -->
