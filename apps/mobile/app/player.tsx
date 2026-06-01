@@ -264,8 +264,14 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
 // ── Main Player Screen ──
 export default function PlayerScreen() {
   const queryClient = useQueryClient();
-  const { ratingKey, source: sourceParam, fromStart } = useLocalSearchParams<{ ratingKey: string; source?: string; fromStart?: string }>();
+  const { ratingKey, source: sourceParam, fromStart, liveChannelId } = useLocalSearchParams<{
+    ratingKey?: string;
+    source?: string;
+    fromStart?: string;
+    liveChannelId?: string;
+  }>();
   const startFromZero = fromStart === '1';
+  const isLive = !!liveChannelId;
   const source = sourceParam || 'plex';
 
   // Suppress WebSocket updates while playing — prevents stale data overwriting play position
@@ -447,17 +453,41 @@ export default function PlayerScreen() {
 
   // Load playback
   useEffect(() => {
-    if (!ratingKey) return;
+    if (!ratingKey && !isLive) return;
     let cancelled = false;
 
     async function startPlayback() {
       try {
         setLoading(true);
         setError(null);
+
+        // ── Live TV branch ──
+        // Tuner streams have no duration, no resume, no progress —
+        // we just fetch the URL from /live/stream/:channelId and feed
+        // it to expo-video. Skip the progress-reporting interval and
+        // the resume-seek logic entirely.
+        if (isLive && liveChannelId) {
+          const info = await api.getLiveStreamInfo(liveChannelId);
+          if (cancelled) return;
+          setPlaybackInfo({
+            sessionId: info.sessionId || '',
+            title: info.channel.name + (info.channel.number ? ` · ${info.channel.number}` : ''),
+            duration: 0,
+            viewOffset: 0,
+            clientSeekMs: 0,
+            serverUrl: '',
+            subtitles: [], audioTracks: [], markers: [],
+          });
+          setStreamUrl(info.url);
+          setLoading(false);
+          resetControlsTimer();
+          return;
+        }
+
         // fromStart=1 means the user picked "Start from beginning" at
         // the detail sheet. Force offset=0 so the backend rebuilds the
         // stream from t=0 instead of resuming from saved progress.
-        const info = await api.getPlaybackInfo(ratingKey, {
+        const info = await api.getPlaybackInfo(ratingKey!, {
           source,
           ...(startFromZero ? { offset: 0 } : {}),
         });
@@ -497,7 +527,7 @@ export default function PlayerScreen() {
         resetControlsTimer();
 
         progressInterval.current = setInterval(async () => {
-          await api.reportProgress(ratingKey, currentPositionRef.current, info.duration, 'playing', info.sessionId, source).catch(() => {});
+          await api.reportProgress(ratingKey!, currentPositionRef.current, info.duration, 'playing', info.sessionId, source).catch(() => {});
         }, 10000);
       } catch (e) {
         if (!cancelled) { setError((e as Error).message); setLoading(false); }
@@ -511,7 +541,10 @@ export default function PlayerScreen() {
   // Exit player — always exits, used by auto-close on video end
   const exitPlayer = useCallback(async () => {
     try { player.current?.pause(); } catch {}
-    if (playbackInfo) {
+    // Live tuner playback has no session to clean up (HDHomeRun reaps
+    // on client disconnect) and no progress to report. Skip the
+    // playback/progress + playback/stop POSTs entirely.
+    if (playbackInfo && !isLive) {
       await api.reportProgress(ratingKey!, currentPositionRef.current, playbackInfo.duration, 'stopped', playbackInfo.sessionId, source).catch(() => {});
       // Pass the final position + raw sourceId so the backend can seed
       // lastProgress and write UserData (Jellyfin) / scrobble (Plex)

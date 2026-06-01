@@ -16,6 +16,7 @@ const ICONS: Record<string, [string, string]> = {
   Home: ['◉', '○'],
   'TV Shows': ['▣', '□'],
   Movies: ['▶', '▷'],
+  'Live TV': ['📡', '📡'],
   Sports: ['◆', '◇'],
   Library: ['▤', '▤'],
   Search: ['⦿', '◎'],
@@ -135,6 +136,13 @@ export default function TabLayout() {
         options={{
           title: 'Movies',
           tabBarIcon: ({ focused }) => <TabIcon name="Movies" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="live-tv"
+        options={{
+          title: 'Live TV',
+          tabBarIcon: ({ focused }) => <TabIcon name="Live TV" focused={focused} />,
         }}
       />
       <Tabs.Screen

@@ -128,6 +128,12 @@ export const api = {
   getTvUpcoming: (days = 7) => fetchApi<ContentItem[]>(`/tv/upcoming?days=${days}`),
   getTvRecent: () => fetchApi<ContentItem[]>('/tv/recent'),
   getTvRecentlyDownloaded: () => fetchApi<ContentItem[]>('/tv/recently-downloaded'),
+
+  // Live TV (tuner-source endpoints from LiveTV.md Phase 1)
+  getLiveTunerChannels: (source: string = 'all') =>
+    fetchApi<import('@whatson/shared').LiveChannel[]>(`/live/tuner-channels?source=${source}`),
+  getLiveStreamInfo: (channelId: string) =>
+    fetchApi<import('@whatson/shared').LiveStreamInfo>(`/live/stream/${encodeURIComponent(channelId)}`),
   getTvDownloading: () => fetchApi<ContentItem[]>('/tv/downloading'),
 
   // Movies
