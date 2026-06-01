@@ -9,7 +9,7 @@ import {
   getConfiguredLiveSources,
   getLiveSourceForChannel,
 } from '../services/live/registry.js';
-import { ensureHlsSession, getSession, touchSession } from '../services/live/hlsProxy.js';
+import { ensureHlsSession, getSession, touchSession, isFfmpegAvailable } from '../services/live/hlsProxy.js';
 
 export const liveRouter = Router();
 
@@ -83,7 +83,13 @@ liveRouter.get('/live/sources', async (_req, res) => {
       return { kind: s.kind, configured, connected, channelCount };
     }),
   );
-  res.json({ success: true, data });
+  // Surface ffmpeg health too — the HLS proxy depends on it for
+  // Roku + web playback. /setup uses this to render a status dot.
+  const ffmpeg = {
+    available: isFfmpegAvailable(),
+    path: (process.env.FFMPEG_PATH || '').trim(),
+  };
+  res.json({ success: true, data: { sources: data, ffmpeg } });
 });
 
 /**

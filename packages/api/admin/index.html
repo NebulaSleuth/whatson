@@ -697,6 +697,28 @@
       </div>
 
       <div id="hdhomerun-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+
+      <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">
+        ffmpeg
+        <span style="margin-left:8px"><span class="status-dot unconfigured" id="ffmpeg-status"></span><span class="status-label" id="ffmpeg-status-label">checking…</span></span>
+      </h3>
+      <p style="color:#888;font-size:13px;margin-bottom:12px">
+        Used to transmux HDHomeRun's MPEG-TS streams into HLS with AAC
+        audio (Roku doesn't reliably decode AC-3 from raw OTA, and
+        browsers can't play MPEG-TS at all). The backend looks for
+        ffmpeg in your PATH first; if the Windows service runs as a
+        non-interactive account that can't see your WinGet shim, set
+        the full path here.
+      </p>
+      <div class="field">
+        <label>ffmpeg executable path (optional)</label>
+        <input type="text" id="ffmpeg-path" placeholder="C:\Program Files\ffmpeg\bin\ffmpeg.exe" />
+        <div class="hint">Leave blank to let the backend auto-detect. Common Windows location: <code style="color:#ccc">C:\ProgramData\chocolatey\bin\ffmpeg.exe</code> if installed via Chocolatey at machine scope.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveFfmpeg()">Save ffmpeg path</button>
+      </div>
+      <div id="ffmpeg-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
     </div>
     </section>
 
@@ -1050,14 +1072,63 @@
      * inline status line under the HDHomeRun section heading AND the
      * sidebar nav dot.
      */
+    async function saveFfmpeg() {
+      const msg = document.getElementById('ffmpeg-msg');
+      msg.textContent = 'Saving…';
+      const p = document.getElementById('ffmpeg-path').value.trim();
+      try {
+        const r = await fetch(API + '/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ffmpeg: { path: p } }),
+        }).then((r) => r.json());
+        if (r.success) {
+          msg.textContent = 'Saved. Test by tuning a live channel.';
+          showToast('ffmpeg path saved');
+          refreshFfmpegStatus().catch(() => {});
+        } else {
+          msg.textContent = r.error || 'Save failed';
+        }
+      } catch (e) {
+        msg.textContent = 'Save failed: ' + e.message;
+      }
+    }
+
+    async function refreshFfmpegStatus() {
+      try {
+        const r = await fetch(API + '/live/sources').then((r) => r.json());
+        if (!r.success) return;
+        const ff = r.data?.ffmpeg;
+        const dot = document.getElementById('ffmpeg-status');
+        const label = document.getElementById('ffmpeg-status-label');
+        const pathInput = document.getElementById('ffmpeg-path');
+        if (!ff) return;
+        if (ff.path && pathInput && !pathInput.value) pathInput.value = ff.path;
+        if (ff.available) {
+          dot.className = 'status-dot connected';
+          label.textContent = ff.path ? `found at ${ff.path}` : 'available on PATH';
+        } else {
+          dot.className = 'status-dot error';
+          label.textContent = 'not found — set the path or install ffmpeg';
+        }
+      } catch {}
+    }
+
     async function refreshHdHomeRunStatus() {
       const dot = document.getElementById('hdhomerun-status');
       const navDot = document.getElementById('nav-status-hdhomerun');
       const label = document.getElementById('hdhomerun-status-label');
       try {
         const r = await fetch(API + '/live/sources').then((r) => r.json());
-        if (!r.success || !Array.isArray(r.data)) return;
-        const hdhr = r.data.find((s) => s.kind === 'hdhr');
+        if (!r.success) return;
+        // Response shape: { sources: [...], ffmpeg: {...} }. Support
+        // both new and the older array-only response from v0.1.106
+        // backends still floating around.
+        const list = Array.isArray(r.data) ? r.data : r.data?.sources;
+        if (!Array.isArray(list)) return;
+        const hdhr = list.find((s) => s.kind === 'hdhr');
+        // Also refresh ffmpeg pill while we're here
+        refreshFfmpegStatus().catch(() => {});
         let cls = 'status-dot unconfigured';
         let txt = 'not configured';
         if (hdhr && hdhr.configured) {

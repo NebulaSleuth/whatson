@@ -207,6 +207,11 @@ configRouter.post('/config/save', async (req, res) => {
         values.HDHOMERUN_DEVICE_AUTH = hdhrCfg.deviceAuth;
       }
     }
+    if (req.body.ffmpeg) {
+      if ('path' in req.body.ffmpeg) {
+        values.FFMPEG_PATH = req.body.ffmpeg.path || '';
+      }
+    }
     if (sonarrCfg) {
       if ('url' in sonarrCfg) values.SONARR_URL = sonarrCfg.url || '';
       if ('apiKey' in sonarrCfg) values.SONARR_API_KEY = sonarrCfg.apiKey || '';

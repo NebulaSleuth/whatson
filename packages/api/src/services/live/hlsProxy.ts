@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -43,12 +43,94 @@ const IDLE_TIMEOUT_MS = 2 * 60 * 1000;  // 2 min — typical user tab close grac
 const STARTUP_WAIT_MS = 8 * 1000;       // wait up to 8s for first .ts segment
 
 let baseDir: string | null = null;
+let resolvedFfmpegPath: string | null = null;
 const sessions = new Map<string, HlsSession>();
 
 // Per-channel session reuse — if a session already exists for the
 // same channel and it's still ready, hand back the same playlist URL
 // instead of spawning a duplicate ffmpeg.
 const byChannel = new Map<string, string>(); // channelId → sessionId
+
+/**
+ * Resolve ffmpeg's absolute path. NSSM services run as a
+ * non-interactive account whose PATH usually doesn't include
+ * WinGet / Chocolatey shims — so `spawn('ffmpeg', ...)` that works
+ * from a dev shell can silently fail under the service. Try:
+ *   1. FFMPEG_PATH env var
+ *   2. PATH lookup (where/which, via execFile to avoid shell parsing)
+ *   3. Common install dirs (WinGet, Chocolatey, Program Files, brew)
+ *   4. Bare 'ffmpeg' (last-resort, will fail loudly if not on PATH)
+ * Cached for process lifetime.
+ */
+function resolveFfmpegPath(): string {
+  if (resolvedFfmpegPath) return resolvedFfmpegPath;
+
+  const env = (process.env.FFMPEG_PATH || '').trim();
+  if (env && fs.existsSync(env)) {
+    console.log(`[hls] using ffmpeg from FFMPEG_PATH=${env}`);
+    resolvedFfmpegPath = env;
+    return env;
+  }
+
+  // PATH lookup via where/which. execFileSync — no shell parsing,
+  // no user input — finds the resolved binary path on stdout.
+  try {
+    const tool = process.platform === 'win32' ? 'where' : 'which';
+    const out = execFileSync(tool, ['ffmpeg'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const first = out.split(/\r?\n/)[0]?.trim();
+    if (first && fs.existsSync(first)) {
+      console.log(`[hls] using ffmpeg from PATH: ${first}`);
+      resolvedFfmpegPath = first;
+      return first;
+    }
+  } catch {}
+
+  // Common install dirs
+  const candidates: string[] = [];
+  if (process.platform === 'win32') {
+    const programData = process.env.ProgramData || 'C:\\ProgramData';
+    const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    candidates.push(
+      path.join(programData, 'WhatsOn', 'ffmpeg.exe'),
+      path.join(programData, 'chocolatey', 'bin', 'ffmpeg.exe'),
+      path.join(programFiles, 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      path.join(programFiles, 'gyan.dev', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      path.join(programFilesX86, 'ffmpeg', 'bin', 'ffmpeg.exe'),
+    );
+    const userLocal = process.env.LOCALAPPDATA;
+    if (userLocal) {
+      candidates.push(path.join(userLocal, 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'));
+    }
+  } else {
+    candidates.push('/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
+  }
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      console.log(`[hls] using ffmpeg from known install dir: ${p}`);
+      resolvedFfmpegPath = p;
+      return p;
+    }
+  }
+
+  console.warn('[hls] ffmpeg not found in FFMPEG_PATH, PATH, or known install dirs — falling back to bare "ffmpeg"');
+  resolvedFfmpegPath = 'ffmpeg';
+  return 'ffmpeg';
+}
+
+/** True if ffmpeg can be located + responds to -version. */
+export function isFfmpegAvailable(): boolean {
+  try {
+    const p = resolveFfmpegPath();
+    execFileSync(p, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function getBaseDir(): string {
   if (baseDir) return baseDir;
@@ -127,8 +209,20 @@ export async function ensureHlsSession(channelId: string, sourceUrl: string): Pr
     playlistPath,
   ];
 
-  console.log(`[hls ${id}] starting ffmpeg for ${channelId}, source=${sourceUrl}`);
-  const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ffmpegBin = resolveFfmpegPath();
+  console.log(`[hls ${id}] starting ${ffmpegBin} for ${channelId}, source=${sourceUrl}`);
+  const proc = spawn(ffmpegBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  // Without an 'error' listener, a spawn failure (ENOENT etc.)
+  // becomes an uncaughtException. Catch + log instead so the failure
+  // mode is "channel didn't tune, error in /api/logs" rather than
+  // "process died".
+  proc.on('error', (err) => {
+    console.error(`[hls ${id}] ffmpeg spawn error: ${err.message} — is ffmpeg on PATH for the service account?`);
+    sessions.delete(id);
+    if (byChannel.get(channelId) === id) byChannel.delete(channelId);
+  });
+
   proc.stderr.on('data', (chunk) => {
     // ffmpeg writes both info AND warnings/errors to stderr. We log
     // everything (truncated) so the input-stream listing is captured
