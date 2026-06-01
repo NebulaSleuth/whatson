@@ -63,14 +63,17 @@ const byChannel = new Map<string, string>(); // channelId → sessionId
  * Cached for process lifetime.
  */
 function resolveFfmpegPath(): string {
-  if (resolvedFfmpegPath) return resolvedFfmpegPath;
-
+  // FFMPEG_PATH env var ALWAYS wins and is NOT cached — when the
+  // admin saves a new path under /setup → Tuners → ffmpeg, the
+  // resolver picks it up on the very next call. Caching would mean
+  // staying with the previous "not found" verdict until restart.
   const env = (process.env.FFMPEG_PATH || '').trim();
-  if (env && fs.existsSync(env)) {
-    console.log(`[hls] using ffmpeg from FFMPEG_PATH=${env}`);
-    resolvedFfmpegPath = env;
-    return env;
+  if (env) {
+    if (fs.existsSync(env)) return env;
+    console.warn(`[hls] FFMPEG_PATH=${env} doesn't point at a file that exists`);
   }
+
+  if (resolvedFfmpegPath) return resolvedFfmpegPath;
 
   // PATH lookup via where/which. execFileSync — no shell parsing,
   // no user input — finds the resolved binary path on stdout.
@@ -123,11 +126,13 @@ function resolveFfmpegPath(): string {
 
 /** True if ffmpeg can be located + responds to -version. */
 export function isFfmpegAvailable(): boolean {
+  let p = 'ffmpeg';
   try {
-    const p = resolveFfmpegPath();
+    p = resolveFfmpegPath();
     execFileSync(p, ['-version'], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 3000 });
     return true;
-  } catch {
+  } catch (e) {
+    console.warn(`[hls] isFfmpegAvailable check failed for "${p}": ${(e as Error).message}`);
     return false;
   }
 }
