@@ -3082,10 +3082,12 @@ function onKeyEvent(key as string, press as boolean) as boolean
 
     if key = "back"
         if m.currentView = "player"
+            print "[back/player] enter: isLive="; m.isLive; " liveChannelId="; m.liveChannelId; " tuneErrorVisible="; m.liveTuneError.visible; " tuningOverlayVisible="; m.liveTuningOverlay.visible; " tracksOpen="; m.tracksOpen; " activeMarker="; (m.activeMarker <> invalid); " lastPlayerKeyAt="; m.lastPlayerKeyAt
             ' Back while the live-tune error overlay is shown: dismiss
             ' the error + return to the channel grid. Same path as a
             ' successful playback exit, just without a session to stop.
             if m.liveTuneError <> invalid and m.liveTuneError.visible
+                print "[back/player] branch: tune-error -> tunerLive"
                 m.isLive = false
                 m.liveChannelId = invalid
                 hideLiveTuningOverlay()
@@ -3096,6 +3098,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
             ' not yet playing) — abort the in-flight tune attempt and
             ' bail to the grid.
             if m.liveTuningOverlay <> invalid and m.liveTuningOverlay.visible
+                print "[back/player] branch: tuning-in-progress -> abort + tunerLive"
                 cancelInFlightLiveTune()
                 m.isLive = false
                 m.liveChannelId = invalid
@@ -3106,6 +3109,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
             ' Back while the Tracks overlay is open: cancel without
             ' applying any pending selections, keep playing.
             if m.tracksOpen = true
+                print "[back/player] branch: tracks-open -> cancelTracksView"
                 cancelTracksView()
                 return true
             end if
@@ -3114,6 +3118,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
             ' doesn't immediately re-show on the next position tick),
             ' return focus to the Video. Doesn't exit playback.
             if m.activeMarker <> invalid and m.skipButton.visible = true
+                print "[back/player] branch: skipButton -> dismiss"
                 m.dismissedUntilMs = m.activeMarker.endMs
                 m.skipButton.visible = false
                 m.activeMarker = invalid
@@ -3129,19 +3134,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
             ' activity, overlay is hidden, Back exits".
             if m.lastPlayerKeyAt <> invalid and m.lastPlayerKeyAt > 0
                 elapsed = Uptime(0) - m.lastPlayerKeyAt
+                print "[back/player] transport-overlay-check: elapsed="; elapsed
                 if elapsed < 5
+                    print "[back/player] branch: absorb-transport-overlay (first Back)"
                     m.lastPlayerKeyAt = 0
                     return true
                 end if
             end if
+            print "[back/player] branch: stopPlayback + route. isLive="; m.isLive
             stopPlayback()
             if m.isLive = true
                 ' Live channels don't have a detail view to fall back
                 ' to — go straight back to the Live TV grid.
+                print "[back/player] -> showView(tunerLive); clearing isLive"
                 m.isLive = false
                 m.liveChannelId = invalid
                 showView("tunerLive")
             else
+                print "[back/player] -> showView(detail)"
                 showView("detail")
             end if
             return true
@@ -3216,7 +3226,7 @@ sub jumpHomeToTop()
 end sub
 
 sub showView(name as string)
-    print "[HomeScene] showView -> "; name
+    print "[showView] -> "; name; "  (was: "; m.currentView; ")"
     m.currentView = name
     m.homeView.visible = (name = "home")
     m.tvView.visible = (name = "tv")
@@ -3919,12 +3929,16 @@ sub onVideoStateChanged()
     end if
 
     if state = "finished" or state = "stopped" or state = "error"
+        print "[videoState/stop] currentView="; m.currentView; " isLive="; m.isLive; " swapping="; m.swapping; " playbackInfo="; (m.playbackInfo <> invalid); " selectedItem="; (m.selectedItem <> invalid); " tuneErrorVisible="; m.liveTuneError.visible
         ' Mid-swap — Video.control="stop" is part of a quality/track
         ' switch, NOT the user backing out. Skip the detail-return so
         ' the new playback can take over once the API call returns.
         ' onPlaybackResponse clears m.swapping after the new stream
         ' starts.
-        if m.swapping = true then return
+        if m.swapping = true
+            print "[videoState/stop] mid-swap, returning"
+            return
+        end if
 
         ' If the user already navigated away from the player view
         ' (Back handler routed them synchronously, view-swap timer
@@ -3932,7 +3946,10 @@ sub onVideoStateChanged()
         ' decide. They're already where they want to be. Without
         ' this guard we used to flip them BACK to a stale detail
         ' page after they'd already landed on the channel grid.
-        if m.currentView <> "player" then return
+        if m.currentView <> "player"
+            print "[videoState/stop] already off player view, returning"
+            return
+        end if
 
         ' Live tuner playback has no session to scrobble — HDHomeRun
         ' / Plex / Jellyfin / Emby live sources don't track progress
@@ -3941,6 +3958,7 @@ sub onVideoStateChanged()
         ' of the (empty) detail view. Don't return early if the live
         ' tune-error overlay is active — let the user Back out of it.
         if m.isLive = true and not m.liveTuneError.visible
+            print "[videoState/stop] live mode -> showView(tunerLive)"
             m.isLive = false
             m.liveChannelId = invalid
             hideLiveTuningOverlay()
@@ -3952,7 +3970,11 @@ sub onVideoStateChanged()
         ' path on an actual VOD session existing. Reachable only if
         ' currentView is still "player" but neither live nor VOD is
         ' fully set up (rare — startup races).
-        if m.playbackInfo = invalid or m.selectedItem = invalid then return
+        if m.playbackInfo = invalid or m.selectedItem = invalid
+            print "[videoState/stop] no VOD session — returning without showView"
+            return
+        end if
+        print "[videoState/stop] VOD path -> reportProgress + showView(detail)"
 
         ' Real stop — save final position + tell Plex we're done.
         reportProgress(true)
