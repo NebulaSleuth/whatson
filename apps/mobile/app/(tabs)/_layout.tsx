@@ -16,7 +16,7 @@ const ICONS: Record<string, [string, string]> = {
   Home: ['◉', '○'],
   'TV Shows': ['▣', '□'],
   Movies: ['▶', '▷'],
-  'Live TV': ['📡', '📡'],
+  'Live TV': ['⊚', '⊙'],
   Sports: ['◆', '◇'],
   Library: ['▤', '▤'],
   Search: ['⦿', '◎'],
