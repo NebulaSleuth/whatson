@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Cell renderer for the Live TV channel grid. HDHomeRun's lineup
+  doesn't include channel logos (Phase 1 limitation — Phase 4 EPG
+  fetch from Silicondust's cloud guide will add them), so each card
+  shows the channel number in large gold text and the call sign
+  below. Logos light up later when a source actually provides them.
+
+  Cell size: 280 × 200 — wider than poster cells, room for HD badge.
+
+  Reads via itemContent (ContentNode populated by HomeScene.brs):
+    - itemChannelId       source-prefixed id (`hdhr-5.1`)
+    - itemChannelNumber   string (`5.1`)
+    - itemChannelName     display name (`WCBS-DT`)
+    - itemChannelCallSign (often same as name)
+    - itemChannelLogoUrl  optional artwork URL (empty for HDHomeRun)
+    - itemChannelHd       boolean — show HD chip in top-right
+-->
+<component name="LiveChannelItem" extends="Group">
+    <script type="text/brightscript" uri="LiveChannelItem.brs" />
+
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChanged" />
+        <field id="focusPercent" type="float" onChange="onFocusChanged" />
+        <field id="rowFocusPercent" type="float" onChange="onFocusChanged" />
+    </interface>
+
+    <children>
+        <!-- Cell background; darkens when focused. -->
+        <Rectangle id="cellBg" width="280" height="200" color="0x1a1a1aff" />
+
+        <!-- Logo poster — visible when itemChannelLogoUrl is set.
+             Hidden when empty (HDHomeRun lineup case). -->
+        <Poster
+            id="logo"
+            translation="[12, 12]"
+            width="256"
+            height="156"
+            loadDisplayMode="scaleToFit"
+            visible="false" />
+
+        <!-- Fallback when no logo: big channel number centred, call
+             sign beneath. -->
+        <Label
+            id="channelNumber"
+            translation="[0, 32]"
+            width="280"
+            horizAlign="center"
+            color="0xffffffff"
+            font="font:LargeBoldSystemFont" />
+        <Label
+            id="channelCallSign"
+            translation="[0, 122]"
+            width="280"
+            horizAlign="center"
+            color="0xb0b0b0ff"
+            font="font:MediumBoldSystemFont" />
+
+        <!-- HD chip — small gold rectangle in the top-right corner,
+             only visible when the source flags the channel as HD. -->
+        <Rectangle
+            id="hdChipBg"
+            translation="[228, 12]"
+            width="40"
+            height="20"
+            color="0xe5a00dff"
+            visible="false" />
+        <Label
+            id="hdChipLabel"
+            translation="[228, 12]"
+            width="40"
+            height="20"
+            horizAlign="center"
+            vertAlign="center"
+            color="0x000000ff"
+            font="font:SmallBoldSystemFont"
+            text="HD"
+            visible="false" />
+
+        <!-- Channel name strip at the bottom — always visible, gives
+             extra context next to the number. -->
+        <Label
+            id="channelName"
+            translation="[12, 170]"
+            width="256"
+            height="24"
+            horizAlign="center"
+            color="0xccccccff"
+            font="font:SmallSystemFont"
+            wrap="false"
+            maxLines="1" />
+
+        <!-- Focus ring (4 pale-gold strips, same pattern as PosterItem). -->
+        <Rectangle id="focusRingTop" width="280" height="3" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingBottom" translation="[0, 197]" width="280" height="3" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingLeft" width="3" height="200" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingRight" translation="[277, 0]" width="3" height="200" color="0xf5d87aff" visible="false" />
+    </children>
+</component>

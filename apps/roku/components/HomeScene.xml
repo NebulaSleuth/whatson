@@ -73,6 +73,7 @@
             <TabButton id="tabHome" label="Home" iconFocused="◉" iconUnfocused="○" focusable="true" />
             <TabButton id="tabTv" label="TV Shows" iconFocused="▣" iconUnfocused="□" focusable="true" />
             <TabButton id="tabMovies" label="Movies" iconFocused="▶" iconUnfocused="▷" focusable="true" />
+            <TabButton id="tabLiveTv" label="Live TV" iconFocused="⊚" iconUnfocused="⊙" focusable="true" />
             <TabButton id="tabSports" label="Sports" iconFocused="◆" iconUnfocused="◇" focusable="true" />
             <TabButton id="tabLibrary" label="Library" iconFocused="▤" iconUnfocused="▤" focusable="true" />
             <TabButton id="tabSearch" label="Search" iconFocused="⦿" iconUnfocused="◎" focusable="true" />
@@ -709,6 +710,33 @@
                 translation="[80, 970]"
                 width="1700"
                 color="0x707070ff" />
+        </Group>
+
+        <!-- ─── Live TV view (tuner-source channel grid) ─────────────
+             Reached from the new "Live TV" top tab. Shows channels
+             from every configured live source (HDHomeRun direct in
+             Phase 1; Plex/Jellyfin/Emby Live TV in Phase 2). OK on a
+             channel tunes to it — playback uses the existing video
+             flow with m.isLive = true to skip resume / progress /
+             stop semantics. -->
+        <Group id="tunerLiveView" visible="false">
+            <Label
+                id="tunerLiveStatus"
+                text="Loading channels…"
+                translation="[80, 120]"
+                width="1700"
+                color="0xb0b0b0ff" />
+            <MarkupGrid
+                id="tunerLiveGrid"
+                itemComponentName="LiveChannelItem"
+                translation="[80, 120]"
+                itemSize="[280, 200]"
+                itemSpacing="[16, 16]"
+                numRows="4"
+                numColumns="6"
+                vertFocusAnimationStyle="floatingFocus"
+                focusable="true"
+                visible="false" />
         </Group>
 
         <!-- ─── Detail view: hero + metadata + actions ─── -->

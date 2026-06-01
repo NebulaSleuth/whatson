@@ -76,11 +76,15 @@ sub init()
         m.top.findNode("tabHome"),
         m.top.findNode("tabTv"),
         m.top.findNode("tabMovies"),
+        m.top.findNode("tabLiveTv"),
         m.top.findNode("tabSports"),
         m.top.findNode("tabLibrary"),
         m.top.findNode("tabSearch"),
         m.top.findNode("tabSettings")
     ]
+    m.tunerLiveView = m.top.findNode("tunerLiveView")
+    m.tunerLiveGrid = m.top.findNode("tunerLiveGrid")
+    m.tunerLiveStatus = m.top.findNode("tunerLiveStatus")
     m.activeTabIndex = 0
     m.tvView = m.top.findNode("tvView")
     m.tvStatus = m.top.findNode("tvStatus")
@@ -512,6 +516,7 @@ sub init()
     m.libraryTypeShow.nextFocusRight = m.libraryTypeMovie
     m.libraryTypeMovie.nextFocusLeft = m.libraryTypeShow
     m.libraryGrid.observeField("itemSelected", "onLibraryItemSelected")
+    m.tunerLiveGrid.observeField("itemSelected", "onTunerLiveChannelSelected")
     m.searchInputButton.observeField("buttonSelected", "onSearchInputPressed")
     ' Each TabButton in the mode + filter toggles fires its own
     ' buttonSelected. Observe all of them with a shared handler that
@@ -943,8 +948,8 @@ sub onTabSelected()
     ' Reset the source's buttonSelected so the next OK press notifies
     ' again (alwaysNotify only fires on transitions).
     m.tabButtons[idx].buttonSelected = false
-    ' Indices match XML order: 0=Home, 1=TV, 2=Movies, 3=Sports,
-    ' 4=Library, 5=Search, 6=Settings.
+    ' Indices match XML order: 0=Home, 1=TV, 2=Movies, 3=LiveTV,
+    ' 4=Sports, 5=Library, 6=Search, 7=Settings.
     if idx = 0
         showView("home")
     else if idx = 1
@@ -952,12 +957,14 @@ sub onTabSelected()
     else if idx = 2
         showView("movies")
     else if idx = 3
-        showView("sports")
+        showView("tunerLive")
     else if idx = 4
-        showView("library")
+        showView("sports")
     else if idx = 5
-        showView("search")
+        showView("library")
     else if idx = 6
+        showView("search")
+    else if idx = 7
         showView("settings")
     end if
 end sub
@@ -1014,14 +1021,17 @@ end sub
 ' Mark the active tab on the strip so its TabButton paints the gold
 ' "selected" treatment even when focus has moved to the content area.
 sub updateTabSelection(viewName as string)
+    ' Local var only — the body below was written for the OLD tab
+    ' index space and is updated to include LiveTV at index 3.
     idx = -1
     if viewName = "home" then idx = 0
     if viewName = "tv" then idx = 1
     if viewName = "movies" then idx = 2
-    if viewName = "sports" then idx = 3
-    if viewName = "library" then idx = 4
-    if viewName = "search" then idx = 5
-    if viewName = "settings" then idx = 6
+    if viewName = "tunerLive" then idx = 3
+    if viewName = "sports" then idx = 4
+    if viewName = "library" then idx = 5
+    if viewName = "search" then idx = 6
+    if viewName = "settings" then idx = 7
     if idx < 0 then return
     m.activeTabIndex = idx
     for i = 0 to m.tabButtons.Count() - 1
@@ -2871,6 +2881,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 focusActiveTab()
                 return true
             end if
+        else if m.currentView = "tunerLive"
+            ' Live TV grid → tab bar at the top row of the grid.
+            if m.tunerLiveGrid.isInFocusChain()
+                idx = m.tunerLiveGrid.itemFocused
+                cols = m.tunerLiveGrid.numColumns
+                if cols = invalid or cols <= 0 then cols = 6
+                if idx = invalid or idx < cols
+                    focusActiveTab()
+                    return true
+                end if
+            end if
         else if m.currentView = "library"
             ' Library up chain: grid → source toggle → type toggle → tabBar
             if m.libraryTypeToggle.isInFocusChain()
@@ -2955,6 +2976,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
             else if m.currentView = "movies"
                 m.moviesRowList.setFocus(true)
                 return true
+            else if m.currentView = "tunerLive"
+                if m.tunerLiveGrid.visible and m.tunerLiveGrid.content <> invalid and m.tunerLiveGrid.content.getChildCount() > 0
+                    m.tunerLiveGrid.setFocus(true)
+                    return true
+                end if
             else if m.currentView = "library"
                 focusActiveLibraryType()
                 return true
@@ -3063,7 +3089,15 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 end if
             end if
             stopPlayback()
-            showView("detail")
+            if m.isLive = true
+                ' Live channels don't have a detail view to fall back
+                ' to — go straight back to the Live TV grid.
+                m.isLive = false
+                m.liveChannelId = invalid
+                showView("tunerLive")
+            else
+                showView("detail")
+            end if
             return true
         end if
         if m.currentView = "detail"
@@ -3149,12 +3183,13 @@ sub showView(name as string)
     m.pairView.visible = (name = "pair")
     m.liveTvView.visible = (name = "liveTv")
     m.sportsSettingsView.visible = (name = "sportsSettings")
+    m.tunerLiveView.visible = (name = "tunerLive")
     m.detailView.visible = (name = "detail")
     m.showDetailView.visible = (name = "showDetail")
     m.playerView.visible = (name = "player")
     ' Tab bar + brand mark are top-level chrome — visible on the tab
     ' surfaces, hidden during fullscreen detail / player / userPicker / pair views.
-    showChrome = (name = "home" or name = "tv" or name = "movies" or name = "library" or name = "search" or name = "sports" or name = "settings")
+    showChrome = (name = "home" or name = "tv" or name = "movies" or name = "tunerLive" or name = "library" or name = "search" or name = "sports" or name = "settings")
     m.tabBar.visible = showChrome
     m.titleLabel.visible = false
     ' Surface strip + bottom border follow tab-bar visibility.
@@ -3200,6 +3235,9 @@ sub showView(name as string)
     end if
     if name = "liveTv"
         ensureChannelsLoaded()
+    end if
+    if name = "tunerLive"
+        ensureTunerLiveLoaded()
     end if
     if name = "sportsSettings"
         ensureSportsSettingsLoaded()
@@ -3259,6 +3297,14 @@ sub applyDeferredFocus()
         ' the /api/live/channels call returns the list is still hidden,
         ' so there's nothing to focus — eat the deferred focus.
         if m.channelList.visible then m.channelList.setFocus(true)
+    else if m.currentView = "tunerLive"
+        ' Live TV grid: land on the first channel if the fetch has
+        ' completed and rendered, otherwise hold focus at the tab bar.
+        if m.tunerLiveGrid.visible and m.tunerLiveGrid.content <> invalid and m.tunerLiveGrid.content.getChildCount() > 0
+            m.tunerLiveGrid.setFocus(true)
+        else
+            focusActiveTab()
+        end if
     else if m.currentView = "sportsSettings"
         if m.sportsLeagueList.visible then m.sportsLeagueList.setFocus(true)
     else if m.currentView = "detail"
@@ -3818,6 +3864,18 @@ sub onVideoStateChanged()
         ' starts.
         if m.swapping = true then return
 
+        ' Live tuner playback has no session to scrobble — HDHomeRun
+        ' / Plex / Jellyfin / Emby live sources don't track progress
+        ' for live streams the same way VOD does. Skip the progress +
+        ' stop POSTs and return to the Live TV channel grid instead
+        ' of the (empty) detail view.
+        if m.isLive = true
+            m.isLive = false
+            m.liveChannelId = invalid
+            showView("tunerLive")
+            return
+        end if
+
         ' Real stop — save final position + tell Plex we're done.
         reportProgress(true)
         sendStop()
@@ -3838,6 +3896,10 @@ end sub
 sub onVideoPosition()
     posSeconds = m.video.position
     if posSeconds = invalid then return
+
+    ' Live streams: no progress reporting (no session to scrobble) and
+    ' no skip-intro markers. Bail before we spam the backend.
+    if m.isLive = true then return
 
     ' Throttle to one POST /playback/progress every ~10s while playing.
     if (posSeconds - m.lastReportedPositionTime) >= 10
@@ -4657,6 +4719,169 @@ end sub
 sub onConfigureChannelsPressed()
     showView("liveTv")
 end sub
+
+' ─── Live TV (tuner-source) — channel grid + tune-to-channel ──────
+'
+' Reached via the new Live TV top tab. Fetches /api/live/tuner-channels
+' which unions across every configured live source (HDHomeRun direct
+' today; Plex/Jellyfin/Emby Live TV later). On OK, calls
+' /api/live/stream/:id to get the playable URL and hands it to the
+' existing Video node with content.streamFormat = "mpeg-ts" for
+' HDHomeRun (Plex/Jellyfin/Emby will be "hls").
+
+sub ensureTunerLiveLoaded()
+    if m.tunerLiveCache <> invalid
+        renderTunerLiveChannels(m.tunerLiveCache)
+        return
+    end if
+    fetchTunerLiveChannels()
+end sub
+
+sub fetchTunerLiveChannels()
+    m.tunerLiveStatus.visible = true
+    m.tunerLiveStatus.text = "Loading channels…"
+    m.tunerLiveGrid.visible = false
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onTunerLiveChannelsResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/live/tuner-channels?source=all"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.tunerLiveChannelsTask = task
+end sub
+
+sub onTunerLiveChannelsResponse()
+    if m.tunerLiveChannelsTask = invalid then return
+    resp = m.tunerLiveChannelsTask.response
+    m.tunerLiveChannelsTask = invalid
+
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        msg = "Couldn't load channels."
+        if resp <> invalid and resp.error <> invalid then msg = resp.error
+        m.tunerLiveStatus.text = msg
+        m.tunerLiveStatus.visible = true
+        m.tunerLiveGrid.visible = false
+        return
+    end if
+
+    channels = resp.data
+    if channels.Count() = 0
+        m.tunerLiveStatus.text = "No live channels. Configure a tuner under /setup -> Tuners on your backend."
+        m.tunerLiveStatus.visible = true
+        m.tunerLiveGrid.visible = false
+        return
+    end if
+
+    m.tunerLiveCache = channels
+    renderTunerLiveChannels(channels)
+end sub
+
+sub renderTunerLiveChannels(channels as object)
+    root = CreateObject("roSGNode", "ContentNode")
+    for each ch in channels
+        cell = root.createChild("ContentNode")
+        cell.AddField("itemChannelId", "string", false)
+        cell.AddField("itemChannelNumber", "string", false)
+        cell.AddField("itemChannelName", "string", false)
+        cell.AddField("itemChannelCallSign", "string", false)
+        cell.AddField("itemChannelLogoUrl", "string", false)
+        cell.AddField("itemChannelHd", "boolean", false)
+        cell.itemChannelId = stringField(ch, "id")
+        cell.itemChannelNumber = stringField(ch, "number")
+        cell.itemChannelName = stringField(ch, "name")
+        cell.itemChannelCallSign = stringField(ch, "callSign")
+        ' Logos go through the artwork proxy when present. HDHomeRun's
+        ' lineup doesn't include them; LiveChannelItem falls back to a
+        ' large channel number when empty.
+        logo = stringField(ch, "logoUrl")
+        if logo <> ""
+            if Left(logo, 4) = "http"
+                cell.itemChannelLogoUrl = proxiedArtworkUrl(logo, 360)
+            else if Left(logo, 1) = "/"
+                cell.itemChannelLogoUrl = withAuthQuery(m.apiUrl + logo + "&w=360")
+            else
+                cell.itemChannelLogoUrl = logo
+            end if
+        end if
+        if ch.hd = true then cell.itemChannelHd = true
+    end for
+    m.tunerLiveGrid.content = root
+    m.tunerLiveGrid.visible = true
+    m.tunerLiveStatus.visible = false
+end sub
+
+sub onTunerLiveChannelSelected()
+    idx = m.tunerLiveGrid.itemSelected
+    root = m.tunerLiveGrid.content
+    if root = invalid then return
+    node = root.getChild(idx)
+    if node = invalid or node.itemChannelId = invalid or node.itemChannelId = ""
+        return
+    end if
+    print "[HomeScene] tuner channel selected: "; node.itemChannelId
+    startLivePlayback(node.itemChannelId)
+end sub
+
+sub startLivePlayback(channelId as string)
+    m.isLive = true
+    m.liveChannelId = channelId
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onLiveStreamResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/live/stream/" + channelId
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.liveStreamTask = task
+end sub
+
+sub onLiveStreamResponse()
+    if m.liveStreamTask = invalid then return
+    resp = m.liveStreamTask.response
+    m.liveStreamTask = invalid
+
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        msg = "Couldn't tune to channel."
+        if resp <> invalid and resp.error <> invalid then msg = resp.error
+        print "[HomeScene] live stream failed: "; msg
+        m.isLive = false
+        return
+    end if
+
+    info = resp.data
+    streamUrl = info.url
+    if streamUrl = invalid or streamUrl = ""
+        print "[HomeScene] live stream missing URL"
+        m.isLive = false
+        return
+    end if
+
+    content = CreateObject("roSGNode", "ContentNode")
+    ' Format from the backend — "mpeg-ts" for HDHomeRun direct,
+    ' "hls" for media-server-sourced (Plex / Jellyfin / Emby live).
+    format = "mpeg-ts"
+    if info.format <> invalid and info.format <> "" then format = info.format
+    content.streamFormat = format
+    content.url = streamUrl
+    content.contentType = "movie"
+
+    title = "Live TV"
+    if info.channel <> invalid
+        if info.channel.name <> invalid then title = info.channel.name
+        if info.channel.number <> invalid
+            title = title + " . " + info.channel.number
+        end if
+    end if
+    content.title = title
+
+    ' No duration / no playStart — live streams have no resume.
+    m.video.content = content
+    m.video.control = "play"
+    m.lastPlayerKeyAt = Uptime(0)
+    showView("player")
+end sub
+
+' ─── Existing TVmaze channel picker (Settings -> Configure Channels) ───
 
 sub ensureChannelsLoaded()
     if m.liveTvAvailable <> invalid
