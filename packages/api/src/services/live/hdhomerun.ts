@@ -238,8 +238,14 @@ export const hdhomerunSource: LiveSource = {
     for (const g of guide) {
       if (g.GuideNumber) guideByNumber.set(g.GuideNumber, g);
     }
+    // GuideNumbers the admin explicitly hid in /setup → Tuners.
+    // Filtered out here so they don't appear in the channel grid OR
+    // EPG lookups. Empty list (default) means show everything from
+    // the lineup.
+    const disabled = new Set((config.hdhomerun?.disabledChannels || []).map((s) => s.trim()));
     const out: LiveChannel[] = [];
     for (const c of lineup) {
+      if (c.GuideNumber && disabled.has(c.GuideNumber)) continue;
       const lc = toLiveChannel(c, c.GuideNumber ? guideByNumber.get(c.GuideNumber) : undefined);
       // Drop DRM channels — we can't actually stream them anyway
       if (lc && !lc.drm) out.push(lc);
@@ -298,6 +304,39 @@ export const hdhomerunSource: LiveSource = {
     return programs;
   },
 };
+
+/**
+ * Admin-only: list every channel in the lineup (including disabled
+ * ones) with an `enabled` flag. Used by /setup → Tuners → Channels
+ * to render the toggle UI.
+ */
+export async function getAllChannelsWithEnabled(): Promise<
+  Array<LiveChannel & { enabled: boolean }>
+> {
+  if (!baseUrl()) return [];
+  const [lineup, guide] = await Promise.all([
+    fetchLineup(),
+    fetchCloudGuide().catch(() => [] as CloudGuideChannel[]),
+  ]);
+  const guideByNumber = new Map<string, CloudGuideChannel>();
+  for (const g of guide) {
+    if (g.GuideNumber) guideByNumber.set(g.GuideNumber, g);
+  }
+  const disabled = new Set((config.hdhomerun?.disabledChannels || []).map((s) => s.trim()));
+  const out: Array<LiveChannel & { enabled: boolean }> = [];
+  for (const c of lineup) {
+    const lc = toLiveChannel(c, c.GuideNumber ? guideByNumber.get(c.GuideNumber) : undefined);
+    if (!lc || lc.drm) continue;
+    out.push({ ...lc, enabled: !(c.GuideNumber && disabled.has(c.GuideNumber)) });
+  }
+  out.sort((a, b) => {
+    const aN = parseFloat(a.number || '0');
+    const bN = parseFloat(b.number || '0');
+    if (aN === bN) return (a.name || '').localeCompare(b.name || '');
+    return aN - bN;
+  });
+  return out;
+}
 
 /**
  * Resets the in-memory discover/lineup caches. Called after the user

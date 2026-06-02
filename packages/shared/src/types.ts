@@ -235,6 +235,13 @@ export interface AuthConfig {
 export interface HdHomeRunConfig {
   url: string;
   deviceAuth: string;
+  /**
+   * GuideNumbers the admin has explicitly hidden — comma-separated
+   * in .env, parsed to an array here. Filtered out by getChannels()
+   * so they don't appear on the Live TV grid. Per-device admin
+   * preference; no per-user override yet.
+   */
+  disabledChannels: string[];
 }
 
 export interface ServerConfig {

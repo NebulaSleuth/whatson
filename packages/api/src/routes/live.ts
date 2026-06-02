@@ -10,6 +10,7 @@ import {
   getLiveSourceForChannel,
 } from '../services/live/registry.js';
 import { ensureHlsSession, getSession, touchSession, isFfmpegAvailable } from '../services/live/hlsProxy.js';
+import { getAllChannelsWithEnabled } from '../services/live/hdhomerun.js';
 
 export const liveRouter = Router();
 
@@ -162,6 +163,25 @@ liveRouter.get('/live/stream/:channelId', async (req, res) => {
 
     const response: ApiResponse<LiveStreamInfo> = { success: true, data: info };
     res.json(response);
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * Admin-only: full channel list with enabled/disabled flags. Used by
+ * /setup → Tuners → Channels to render the toggle UI. Returns
+ * everything in the HDHomeRun lineup including channels the admin
+ * has already hidden, so the user can re-enable them.
+ *
+ * Phase 1: HDHomeRun only. Future Plex / Jellyfin / Emby Live TV
+ * sources can be folded in by extending getAllChannelsWithEnabled
+ * to iterate the registry.
+ */
+liveRouter.get('/live/all-channels', async (_req, res) => {
+  try {
+    const channels = await getAllChannelsWithEnabled();
+    res.json({ success: true, data: channels });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }

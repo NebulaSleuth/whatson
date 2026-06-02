@@ -735,18 +735,21 @@
                 translation="[80, 120]"
                 width="1700"
                 color="0xb0b0b0ff" />
-            <!-- itemSize bumped from [280, 200] to [280, 220] when
-                 EPG lines were added; numRows still 4 (4 × 220 + 3 × 16
-                 = 928, fits under the 1080 - 120 = 960 px below the
-                 tab bar). -->
+            <!-- Double-wide horizontal cells (560 × 240) — logo
+                 on the left, info column on the right. 3 cols × 3
+                 rows = 9 channels visible per page; user scrolls
+                 vertically for more. Grid is 3 × 560 + 2 × 16 = 1712
+                 wide (margin from left=80 → right edge 1792, well
+                 within 1920) and 3 × 240 + 2 × 16 = 752 tall (fits
+                 inside 960 px below tab bar). -->
             <MarkupGrid
                 id="tunerLiveGrid"
                 itemComponentName="LiveChannelItem"
                 translation="[80, 120]"
-                itemSize="[280, 220]"
+                itemSize="[560, 240]"
                 itemSpacing="[16, 16]"
-                numRows="4"
-                numColumns="6"
+                numRows="3"
+                numColumns="3"
                 vertFocusAnimationStyle="floatingFocus"
                 focusable="true"
                 visible="false" />

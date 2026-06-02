@@ -6,7 +6,8 @@ sub init()
     m.logo = m.top.findNode("logo")
     m.channelNumber = m.top.findNode("channelNumber")
     m.channelCallSign = m.top.findNode("channelCallSign")
-    m.channelName = m.top.findNode("channelName")
+    m.rightChannelNumber = m.top.findNode("rightChannelNumber")
+    m.rightChannelName = m.top.findNode("rightChannelName")
     m.hdChipBg = m.top.findNode("hdChipBg")
     m.hdChipLabel = m.top.findNode("hdChipLabel")
     m.nowProgram = m.top.findNode("nowProgram")
@@ -33,7 +34,9 @@ sub onContentChanged()
 
     m.channelNumber.text = number
     m.channelCallSign.text = callSign
-    m.channelName.text = name
+    ' Right-column header pairs the channel number with the name.
+    m.rightChannelNumber.text = number
+    m.rightChannelName.text = name
 
     logoUrl = ""
     if content.itemChannelLogoUrl <> invalid and content.itemChannelLogoUrl <> ""

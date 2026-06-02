@@ -31,6 +31,7 @@ configRouter.get('/config', async (_req, res) => {
         ? '••••' + config.hdhomerun.deviceAuth.slice(-4)
         : '',
       configured: Boolean(config.hdhomerun?.url),
+      disabledChannels: config.hdhomerun?.disabledChannels || [],
     },
     sonarr: {
       url: config.sonarr.url,
@@ -162,7 +163,7 @@ configRouter.post('/config/test', async (req, res) => {
       // temporarily overriding config, then restore.
       const { resetHdHomeRunCache, hdhomerunSource } = await import('../services/live/hdhomerun.js');
       const orig = { ...config.hdhomerun };
-      if (!config.hdhomerun) config.hdhomerun = { url: '', deviceAuth: '' };
+      if (!config.hdhomerun) config.hdhomerun = { url: '', deviceAuth: '', disabledChannels: [] };
       config.hdhomerun.url = url;
       resetHdHomeRunCache();
       connected = await hdhomerunSource.testConnection();
@@ -205,6 +206,15 @@ configRouter.post('/config/save', async (req, res) => {
       // but allow manual override here too.
       if ('deviceAuth' in hdhrCfg && hdhrCfg.deviceAuth) {
         values.HDHOMERUN_DEVICE_AUTH = hdhrCfg.deviceAuth;
+      }
+      if ('disabledChannels' in hdhrCfg) {
+        const list = Array.isArray(hdhrCfg.disabledChannels)
+          ? hdhrCfg.disabledChannels
+          : String(hdhrCfg.disabledChannels || '').split(',');
+        values.HDHOMERUN_DISABLED_CHANNELS = list
+          .map((s: any) => String(s).trim())
+          .filter(Boolean)
+          .join(',');
       }
     }
     if (req.body.ffmpeg) {

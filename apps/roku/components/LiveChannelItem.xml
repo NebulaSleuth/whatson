@@ -1,27 +1,24 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!--
-  Cell renderer for the Live TV channel grid. Layout:
+  Cell renderer for the Live TV channel grid. Wide horizontal layout:
 
-    Cell 280 × 220 wide
-      ┌────────────────────────┐
-      │      [channel logo]    │  ← visible when itemChannelLogoUrl
-      │   or 5.1 (big number)  │     is set; otherwise the fallback
-      │                        │     number + callSign occupies the
-      │       WCBS-DT          │     same vertical band.
-      ├────────────────────────┤
-      │       WCBS-DT          │  ← always visible, single line
-      │  Now: 60 Minutes       │  ← from Silicondust cloud guide
-      │  Next: NFL Football    │  ← if EPG returned the next slot
-      └────────────────────────┘
-      HD chip in the top-right corner when applicable.
+    Cell 560 × 240
+      ┌─────────────────┬──────────────────────────┐
+      │                 │ 5.1  WCBS-DT       [HD]  │
+      │   [logo PNG]    │                          │
+      │                 │ Now: 60 Minutes          │
+      │                 │ Next: NFL Football       │
+      └─────────────────┴──────────────────────────┘
+
+  When no logo is available the left side renders the channel number
+  + callSign in the same band so the right column doesn't shift.
 
   Reads via itemContent (ContentNode populated by HomeScene.brs):
     - itemChannelId       source-prefixed id (`hdhr-5.1`)
     - itemChannelNumber   string (`5.1`)
     - itemChannelName     display name (`WCBS-DT`)
     - itemChannelCallSign (often same as name)
-    - itemChannelLogoUrl  optional artwork URL (Silicondust guide
-                          provides them; HDHomeRun lineup alone does not)
+    - itemChannelLogoUrl  optional artwork URL (Silicondust guide)
     - itemChannelHd       boolean — show HD chip in top-right
     - itemNowProgram      "60 Minutes" (current program title)
     - itemNextProgram     "NFL Football" (next program title)
@@ -37,99 +34,114 @@
 
     <children>
         <!-- Cell background; darkens when focused. -->
-        <Rectangle id="cellBg" width="280" height="220" color="0x1a1a1aff" />
+        <Rectangle id="cellBg" width="560" height="240" color="0x1a1a1aff" />
 
-        <!-- Logo poster — visible when itemChannelLogoUrl is set.
-             Hidden when empty (forced fallback to text below). -->
+        <!-- Subtle vertical divider between logo and info halves. -->
+        <Rectangle translation="[230, 24]" width="1" height="192" color="0x2a2a2aff" />
+
+        <!-- ─── Left half: logo OR fallback channel number ─── -->
         <Poster
             id="logo"
-            translation="[12, 8]"
-            width="256"
-            height="108"
+            translation="[16, 24]"
+            width="200"
+            height="192"
             loadDisplayMode="scaleToFit"
             visible="false" />
-
-        <!-- Fallback when no logo: big channel number centred, call
-             sign beneath. -->
+        <!-- Fallback when no logo: large channel number + callsign
+             stacked in the left half so the right info column stays
+             at a fixed x. -->
         <Label
             id="channelNumber"
-            translation="[0, 18]"
-            width="280"
+            translation="[16, 70]"
+            width="200"
             horizAlign="center"
             color="0xffffffff"
             font="font:LargeBoldSystemFont" />
         <Label
             id="channelCallSign"
-            translation="[0, 86]"
-            width="280"
+            translation="[16, 140]"
+            width="200"
             horizAlign="center"
             color="0xb0b0b0ff"
             font="font:MediumBoldSystemFont" />
 
-        <!-- HD chip — small gold rectangle in the top-right corner,
-             only visible when the source flags the channel as HD. -->
+        <!-- ─── Right half: channel name + EPG + HD chip ─── -->
+        <!-- Channel number + name pair at the top of the info column.
+             Slightly larger font for the name; number sits to its
+             left in dim gold for scannability. -->
+        <Label
+            id="rightChannelNumber"
+            translation="[252, 24]"
+            width="56"
+            height="28"
+            vertAlign="center"
+            color="0xf5d87aff"
+            font="font:MediumBoldSystemFont" />
+        <Label
+            id="rightChannelName"
+            translation="[316, 24]"
+            width="180"
+            height="28"
+            vertAlign="center"
+            color="0xffffffff"
+            font="font:MediumBoldSystemFont"
+            wrap="false"
+            maxLines="1" />
+
+        <!-- HD chip — smaller font, slightly taller box so the "HD"
+             glyph isn't cropped. Pinned to the top-right of the
+             info column. -->
         <Rectangle
             id="hdChipBg"
-            translation="[228, 8]"
+            translation="[504, 26]"
             width="40"
-            height="20"
+            height="24"
             color="0xe5a00dff"
             visible="false" />
         <Label
             id="hdChipLabel"
-            translation="[228, 8]"
+            translation="[504, 26]"
             width="40"
-            height="20"
+            height="24"
             horizAlign="center"
             vertAlign="center"
             color="0x000000ff"
-            font="font:SmallBoldSystemFont"
             text="HD"
-            visible="false" />
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="16" />
+        </Label>
 
-        <!-- Channel name strip. Always visible; provides callsign
-             context even when the logo dominates the top half. -->
-        <Label
-            id="channelName"
-            translation="[12, 122]"
-            width="256"
-            height="22"
-            horizAlign="center"
-            color="0xccccccff"
-            font="font:SmallBoldSystemFont"
-            wrap="false"
-            maxLines="1" />
-
-        <!-- EPG: now-playing + next-up. Hidden when no EPG data is
-             available (HDHomeRun without DeviceAuth, or non-EPG
-             source). Text drawn in pale-gold so it visually links
-             to the focused state without competing with the
-             channel name above. -->
+        <!-- EPG: now-playing + next-up. Visible only when the source
+             returned EPG data. Pale gold for "now" reads as the
+             accent; "next" stays dim grey so the eye picks the
+             current program first. -->
         <Label
             id="nowProgram"
-            translation="[10, 156]"
-            width="260"
-            height="22"
+            translation="[252, 100]"
+            width="290"
+            height="60"
             color="0xf5d87aff"
-            font="font:SmallSystemFont"
-            wrap="false"
-            maxLines="1"
-            visible="false" />
+            wrap="true"
+            maxLines="2"
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="20" />
+        </Label>
         <Label
             id="nextProgram"
-            translation="[10, 184]"
-            width="260"
-            height="22"
+            translation="[252, 180]"
+            width="290"
+            height="32"
             color="0x808080ff"
-            font="font:SmallSystemFont"
             wrap="false"
             maxLines="1"
-            visible="false" />
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="18" />
+        </Label>
 
         <!-- Focus ring (4 pale-gold strips, same pattern as PosterItem). -->
-        <Rectangle id="focusRingTop" width="280" height="3" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingBottom" translation="[0, 217]" width="280" height="3" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingLeft" width="3" height="220" color="0xf5d87aff" visible="false" />
-        <Rectangle id="focusRingRight" translation="[277, 0]" width="3" height="220" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingTop" width="560" height="3" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingBottom" translation="[0, 237]" width="560" height="3" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingLeft" width="3" height="240" color="0xf5d87aff" visible="false" />
+        <Rectangle id="focusRingRight" translation="[557, 0]" width="3" height="240" color="0xf5d87aff" visible="false" />
     </children>
 </component>

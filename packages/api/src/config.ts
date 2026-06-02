@@ -72,6 +72,10 @@ function loadConfig(): AppConfig {
     hdhomerun: {
       url: trimUrl(process.env.HDHOMERUN_URL),
       deviceAuth: (process.env.HDHOMERUN_DEVICE_AUTH || '').trim(),
+      disabledChannels: (process.env.HDHOMERUN_DISABLED_CHANNELS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
     },
   };
 }

@@ -698,6 +698,20 @@
 
       <div id="hdhomerun-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
 
+      <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">Channels</h3>
+      <p style="color:#888;font-size:13px;margin-bottom:12px">
+        Uncheck channels you don't want surfaced in the Live TV grid.
+        Saves the list as HDHOMERUN_DISABLED_CHANNELS in .env.
+      </p>
+      <div id="hdhomerun-channels" style="max-height:380px;overflow-y:auto;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;padding:8px;font-size:13px;color:#ccc">
+        Loading channels…
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="refreshChannelList()">Reload</button>
+        <button class="btn btn-primary" onclick="saveChannelToggles()">Save channel list</button>
+      </div>
+      <div id="hdhomerun-channels-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+
       <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">
         ffmpeg
         <span style="margin-left:8px"><span class="status-dot unconfigured" id="ffmpeg-status"></span><span class="status-label" id="ffmpeg-status-label">checking…</span></span>
@@ -1072,6 +1086,94 @@
      * inline status line under the HDHomeRun section heading AND the
      * sidebar nav dot.
      */
+    /**
+     * Build the HDHomeRun channels checkbox list under
+     * /setup → Tuners → Channels. Hits /api/live/all-channels which
+     * returns the full lineup including currently-hidden entries.
+     */
+    async function refreshChannelList() {
+      const host = document.getElementById('hdhomerun-channels');
+      if (!host) return;
+      host.textContent = 'Loading channels…';
+      try {
+        const r = await fetch(API + '/live/all-channels').then((r) => r.json());
+        if (!r.success || !Array.isArray(r.data)) {
+          host.textContent = r.error || 'Could not load channels.';
+          return;
+        }
+        if (r.data.length === 0) {
+          host.textContent = 'No channels — configure HDHomeRun above first.';
+          return;
+        }
+        // textContent for everything from the channel lineup — names
+        // could in theory contain HTML if the upstream lineup carries
+        // weird data; play safe by never interpolating into innerHTML.
+        host.textContent = '';
+        for (const ch of r.data) {
+          const row = document.createElement('label');
+          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 4px;cursor:pointer';
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.setAttribute('data-channel-number', ch.number || '');
+          cb.checked = !!ch.enabled;
+          cb.style.cssText = 'width:16px;height:16px';
+          row.appendChild(cb);
+
+          const num = document.createElement('span');
+          num.style.cssText = 'display:inline-block;width:54px;color:#f5d87a;font-weight:600';
+          num.textContent = ch.number || '';
+          row.appendChild(num);
+
+          const name = document.createElement('span');
+          name.textContent = ch.name || '';
+          row.appendChild(name);
+
+          if (ch.hd) {
+            const hd = document.createElement('span');
+            hd.style.cssText = 'background:#e5a00d;color:#000;font-size:10px;font-weight:800;padding:1px 6px;border-radius:3px';
+            hd.textContent = 'HD';
+            row.appendChild(hd);
+          }
+
+          host.appendChild(row);
+        }
+      } catch (e) {
+        host.textContent = 'Could not load channels: ' + e.message;
+      }
+    }
+
+    async function saveChannelToggles() {
+      const host = document.getElementById('hdhomerun-channels');
+      const msg = document.getElementById('hdhomerun-channels-msg');
+      if (!host) return;
+      const checkboxes = host.querySelectorAll('input[type=checkbox][data-channel-number]');
+      const disabled = [];
+      for (const cb of checkboxes) {
+        if (!cb.checked) {
+          const num = cb.getAttribute('data-channel-number');
+          if (num) disabled.push(num);
+        }
+      }
+      msg.textContent = 'Saving…';
+      try {
+        const r = await fetch(API + '/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hdhomerun: { disabledChannels: disabled } }),
+        }).then((r) => r.json());
+        if (r.success) {
+          msg.textContent = `Saved. ${disabled.length} channel${disabled.length === 1 ? '' : 's'} hidden.`;
+          showToast('Channel list saved');
+          refreshHdHomeRunStatus().catch(() => {});
+        } else {
+          msg.textContent = r.error || 'Save failed';
+        }
+      } catch (e) {
+        msg.textContent = 'Save failed: ' + e.message;
+      }
+    }
+
     async function saveFfmpeg() {
       const msg = document.getElementById('ffmpeg-msg');
       msg.textContent = 'Saving…';
@@ -1127,8 +1229,11 @@
         const list = Array.isArray(r.data) ? r.data : r.data?.sources;
         if (!Array.isArray(list)) return;
         const hdhr = list.find((s) => s.kind === 'hdhr');
-        // Also refresh ffmpeg pill while we're here
+        // Also refresh ffmpeg pill + channel toggle list while we're here
         refreshFfmpegStatus().catch(() => {});
+        if (hdhr && hdhr.configured && hdhr.connected) {
+          refreshChannelList().catch(() => {});
+        }
         let cls = 'status-dot unconfigured';
         let txt = 'not configured';
         if (hdhr && hdhr.configured) {
