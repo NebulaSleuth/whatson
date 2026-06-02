@@ -10,7 +10,9 @@ sub init()
     m.rightChannelName = m.top.findNode("rightChannelName")
     m.hdChipBg = m.top.findNode("hdChipBg")
     m.hdChipLabel = m.top.findNode("hdChipLabel")
+    m.nowLabel = m.top.findNode("nowLabel")
     m.nowProgram = m.top.findNode("nowProgram")
+    m.nextLabel = m.top.findNode("nextLabel")
     m.nextProgram = m.top.findNode("nextProgram")
     m.focusRingTop = m.top.findNode("focusRingTop")
     m.focusRingBottom = m.top.findNode("focusRingBottom")
@@ -59,31 +61,24 @@ sub onContentChanged()
     m.hdChipBg.visible = hd
     m.hdChipLabel.visible = hd
 
-    ' EPG lines. Show "Now: title" in pale gold; "Next: title" in
-    ' dim grey beneath. Both hidden when the source didn't provide
-    ' EPG data for this channel (HDHomeRun cloud guide can be
-    ' patchy for low-power / specialty stations).
-    nowText = ""
+    ' EPG block — two label / title pairs. The static NOW / NEXT
+    ' labels are toggled together with their respective titles so
+    ' channels without EPG data don't show floating labels.
+    nowTitle = ""
     if content.itemNowProgram <> invalid and content.itemNowProgram <> ""
-        nowText = "Now: " + content.itemNowProgram
+        nowTitle = content.itemNowProgram
     end if
-    if nowText <> ""
-        m.nowProgram.text = nowText
-        m.nowProgram.visible = true
-    else
-        m.nowProgram.visible = false
-    end if
+    m.nowProgram.text = nowTitle
+    m.nowProgram.visible = nowTitle <> ""
+    m.nowLabel.visible = nowTitle <> ""
 
-    nextText = ""
+    nextTitle = ""
     if content.itemNextProgram <> invalid and content.itemNextProgram <> ""
-        nextText = "Next: " + content.itemNextProgram
+        nextTitle = content.itemNextProgram
     end if
-    if nextText <> ""
-        m.nextProgram.text = nextText
-        m.nextProgram.visible = true
-    else
-        m.nextProgram.visible = false
-    end if
+    m.nextProgram.text = nextTitle
+    m.nextProgram.visible = nextTitle <> ""
+    m.nextLabel.visible = nextTitle <> ""
 end sub
 
 sub onFocusChanged()

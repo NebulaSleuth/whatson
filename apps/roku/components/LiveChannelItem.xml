@@ -111,31 +111,52 @@
             <Font role="font" uri="font:SystemFontFile" size="16" />
         </Label>
 
-        <!-- EPG: now-playing + next-up. Visible only when the source
-             returned EPG data. Pale gold for "now" reads as the
-             accent; "next" stays dim grey so the eye picks the
-             current program first. -->
+        <!-- EPG block — two NOW + NEXT pairs. Small all-caps label,
+             larger program title below. Labels + titles stay
+             visually grouped via tight vertical spacing. Pale gold
+             for now-playing, dim grey for next. Everything hidden
+             when EPG data isn't available for this channel. -->
+        <Label
+            id="nowLabel"
+            translation="[252, 68]"
+            width="290"
+            height="22"
+            color="0xb0b0b0ff"
+            text="NOW"
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="20" />
+        </Label>
         <Label
             id="nowProgram"
-            translation="[252, 100]"
+            translation="[252, 92]"
             width="290"
             height="60"
             color="0xf5d87aff"
             wrap="true"
             maxLines="2"
             visible="false">
-            <Font role="font" uri="font:SystemFontFile" size="20" />
+            <Font role="font" uri="font:SystemFontFile" size="24" />
+        </Label>
+        <Label
+            id="nextLabel"
+            translation="[252, 158]"
+            width="290"
+            height="20"
+            color="0x808080ff"
+            text="NEXT"
+            visible="false">
+            <Font role="font" uri="font:SystemFontFile" size="18" />
         </Label>
         <Label
             id="nextProgram"
             translation="[252, 180]"
             width="290"
             height="32"
-            color="0x808080ff"
+            color="0xccccccff"
             wrap="false"
             maxLines="1"
             visible="false">
-            <Font role="font" uri="font:SystemFontFile" size="18" />
+            <Font role="font" uri="font:SystemFontFile" size="22" />
         </Label>
 
         <!-- Focus ring (4 pale-gold strips, same pattern as PosterItem). -->
