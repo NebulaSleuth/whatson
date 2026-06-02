@@ -66,25 +66,27 @@
             font="font:MediumBoldSystemFont" />
 
         <!-- ─── Right half: channel name + EPG + HD chip ─── -->
-        <!-- Channel number + name pair at the top of the info column.
-             Slightly larger font for the name; number sits to its
-             left in dim gold for scannability. -->
+        <!-- Top header line — channel number (gold accent) +
+             call sign / name. SmallBoldSystemFont keeps both
+             readable while leaving room for longer numbers
+             like "104.1" or "999.9" that don't fit at the
+             larger Medium weight. -->
         <Label
             id="rightChannelNumber"
             translation="[252, 24]"
-            width="56"
-            height="28"
+            width="80"
+            height="26"
             vertAlign="center"
             color="0xf5d87aff"
-            font="font:MediumBoldSystemFont" />
+            font="font:SmallBoldSystemFont" />
         <Label
             id="rightChannelName"
-            translation="[316, 24]"
-            width="180"
-            height="28"
+            translation="[336, 24]"
+            width="160"
+            height="26"
             vertAlign="center"
             color="0xffffffff"
-            font="font:MediumBoldSystemFont"
+            font="font:SmallBoldSystemFont"
             wrap="false"
             maxLines="1" />
 
