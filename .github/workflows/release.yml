@@ -1,0 +1,225 @@
+name: Release
+
+# Tag-triggered release build. Pushes the resulting installers and
+# mobile artifacts to the GitHub release for that tag. Also runs on
+# manual dispatch (no upload to release in that mode — used to smoke
+# the matrix without cutting a release).
+#
+# Required repository secrets for full builds:
+#   ANDROID_KEYSTORE_BASE64    base64-encoded upload keystore (.jks)
+#   ANDROID_KEYSTORE_ALIAS     keystore alias
+#   ANDROID_KEYSTORE_PASSWORD  keystore + key password (same value)
+#
+# Without those secrets the Android jobs still build but with the
+# debug keystore — useful for smoke runs, not for distribution.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ─── Backend: Windows (NSIS .exe + portable .zip) ───
+  backend-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+      - name: Build installer
+        run: npm run build:installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-windows
+          path: |
+            packages/api/installers/whatson-api-*-setup.exe
+            packages/api/installers/whatson-api-*-win32-portable.zip
+          if-no-files-found: error
+
+  # ─── Backend: Linux (.deb + .rpm + portable tar.gz) ───
+  backend-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install fpm + rpm
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+      - name: Build installer
+        run: npm run build:installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-linux
+          path: |
+            packages/api/installers/whatson-api-*.deb
+            packages/api/installers/whatson-api-*.rpm
+            packages/api/installers/whatson-api-*-linux-portable.tar.gz
+          if-no-files-found: error
+
+  # ─── Backend: macOS (.pkg + portable tar.gz) ───
+  # macos-latest runners are arm64. Intel Mac users would need a
+  # separate matrix job on macos-13 — left as a follow-up.
+  backend-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+      - name: Build installer
+        run: npm run build:installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-macos
+          path: |
+            packages/api/installers/whatson-api-*.pkg
+            packages/api/installers/whatson-api-*-darwin-portable.tar.gz
+          if-no-files-found: error
+
+  # ─── Mobile: Android phone + TV (single matrix job) ───
+  # Phone (WHATSON_TV=0) → com.whatson.app
+  # TV    (WHATSON_TV=1) → com.whatson.tv
+  mobile-android:
+    runs-on: ubuntu-latest
+    # Map keystore secrets up to job-level env so `if:` expressions
+    # can gate on their presence. `secrets.*` is NOT available in
+    # `if:` expressions directly; `env.*` is.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: phone
+            whatson_tv: '0'
+            artifact: mobile-android-phone
+          - variant: tv
+            whatson_tv: '1'
+            artifact: mobile-android-tv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
+      - name: Install deps
+        run: npm install --legacy-peer-deps
+      - name: Build shared
+        run: npm run build:shared
+      - name: Expo prebuild
+        working-directory: apps/mobile
+        env:
+          WHATSON_TV: ${{ matrix.whatson_tv }}
+        run: npx expo prebuild --platform android --no-install
+      # Signing — only wire upload keystore when secrets are present.
+      # Without it, gradle falls back to debug.keystore which is fine
+      # for smoke runs but not for distribution.
+      - name: Decode keystore
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > apps/mobile/android/android-keystore.jks
+      - name: Configure release signing
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: |
+          pushd apps/mobile/android
+          echo "WHATSON_UPLOAD_STORE_FILE=$(pwd)/android-keystore.jks" >> gradle.properties
+          echo "WHATSON_UPLOAD_KEY_ALIAS=$ANDROID_KEYSTORE_ALIAS" >> gradle.properties
+          echo "WHATSON_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> gradle.properties
+          echo "WHATSON_UPLOAD_KEY_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> gradle.properties
+          popd
+          python3 scripts/patch-signing.py apps/mobile/android/app/build.gradle
+      - name: Build AAB + APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew app:bundleRelease app:assembleRelease -x lint -x test --no-daemon
+      # Rename outputs so the artifact upload distinguishes phone vs TV.
+      - name: Rename outputs
+        run: |
+          mkdir -p mobile-out
+          cp apps/mobile/android/app/build/outputs/bundle/release/*.aab \
+             mobile-out/whatson-${{ matrix.variant }}.aab
+          cp apps/mobile/android/app/build/outputs/apk/release/*.apk \
+             mobile-out/whatson-${{ matrix.variant }}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: mobile-out/*
+          if-no-files-found: error
+
+  # ─── Mobile: Roku channel ZIP ───
+  # Sideload-ready channel package. Not a "store" build — the Roku
+  # channel ships through the developer dashboard manually.
+  mobile-roku:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package channel
+        run: |
+          cd apps/roku
+          mkdir -p ../../roku-out
+          zip -r ../../roku-out/whatson-roku-channel.zip . \
+            -x 'PLAN.md' '*.md' 'node_modules/*' '.git*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-roku
+          path: roku-out/*
+
+  # ─── Release: upload all artifacts to the GitHub release ───
+  # Only runs on tag pushes — `workflow_dispatch` runs build everything
+  # but skip this step so manual smoke runs don't try to publish.
+  release:
+    needs: [backend-windows, backend-linux, backend-macos, mobile-android, mobile-roku]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          ls -la release-files
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-files/*
+          fail_on_unmatched_files: false
+          # Auto-generated notes kick in only when the release does
+          # NOT already exist. The existing `gh release create v0.1.X
+          # --notes "..."` flow keeps working: that creates the
+          # release with curated notes first, and this step just
+          # appends the platform artifacts. Pushing a tag without
+          # pre-creating a release also works — you get a release
+          # with default notes that you can edit afterwards.
+          generate_release_notes: true
