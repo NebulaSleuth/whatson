@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as liveTv from '../services/liveTv.js';
@@ -17,6 +17,67 @@ export const liveRouter = Router();
 function parseChannels(raw: unknown): string[] {
   if (typeof raw !== 'string' || !raw) return [];
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * RFC1918 + link-local + loopback + IPv6 ULA/link-local. Tailscale's
+ * 100.64.0.0/10 deliberately falls OUTSIDE this set — Tailscale
+ * clients can't reach the tuner's LAN IP directly, so they should
+ * get the HLS proxy.
+ */
+function isLocalNetworkIp(ip: string | undefined): boolean {
+  if (!ip) return false;
+  const addr = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (addr === '::1') return true;
+  if (addr.startsWith('127.')) return true;
+  if (addr.startsWith('10.')) return true;
+  if (addr.startsWith('192.168.')) return true;
+  if (addr.startsWith('169.254.')) return true;
+  if (addr.startsWith('172.')) {
+    const second = parseInt(addr.split('.')[1] ?? '', 10);
+    if (second >= 16 && second <= 31) return true;
+  }
+  const lower = addr.toLowerCase();
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // IPv6 ULA
+  if (lower.startsWith('fe80:')) return true;                         // IPv6 link-local
+  return false;
+}
+
+/**
+ * Decide whether to deliver the raw tuner URL or wrap it in HLS via
+ * ffmpeg. Direct MPEG-TS is lower latency and zero backend CPU but
+ * only works when the client can reach the tuner's LAN IP. Order:
+ *   1. ?format=hls            → force HLS (Roku, browsers, manual)
+ *   2. ?format=direct|mpeg-ts → force direct (manual override)
+ *   3. X-Plex-Connection      → 'remote' → HLS, 'local' → direct
+ *   4. Auto-detect by client IP — RFC1918 → direct, else HLS
+ *
+ * If the upstream is already HLS (Plex/Jellyfin/Emby Live TV later),
+ * there's nothing to choose — we hand the URL back as-is.
+ */
+function pickStreamFormat(
+  req: Request,
+  sourceFormat: 'mpeg-ts' | 'hls',
+): { format: 'mpeg-ts' | 'hls'; reason: string } {
+  if (sourceFormat === 'hls') return { format: 'hls', reason: 'source already hls' };
+
+  const q = (req.query.format as string) || '';
+  if (q === 'hls') return { format: 'hls', reason: 'explicit ?format=hls' };
+  if (q === 'direct' || q === 'mpeg-ts') {
+    return { format: 'mpeg-ts', reason: `explicit ?format=${q}` };
+  }
+
+  const hdr = req.headers['x-plex-connection'];
+  const conn = (Array.isArray(hdr) ? hdr[0] : hdr) as string | undefined;
+  if (conn === 'remote') return { format: 'hls', reason: 'X-Plex-Connection: remote' };
+  if (conn === 'local') return { format: 'mpeg-ts', reason: 'X-Plex-Connection: local' };
+
+  const ip = req.ip || req.socket.remoteAddress || '';
+  const local = isLocalNetworkIp(ip);
+  return {
+    format: local ? 'mpeg-ts' : 'hls',
+    reason: `auto: client ip ${ip || '?'} ${local ? 'is local' : 'is not local'}`,
+  };
 }
 
 liveRouter.get('/live/channels', async (req, res) => {
@@ -118,29 +179,26 @@ liveRouter.get('/live/tuner-channels', async (req, res) => {
 });
 
 /**
- * Playable stream URL for a channel. Dispatches by ID prefix. Phase 1
- * returns the raw MPEG-TS URL for HDHomeRun — clients that play
- * MPEG-TS natively (Roku, iOS, Android) use it directly. The browser
- * client will get an HLS-proxied URL once the transmux is wired up in
- * Phase 1 week 3.
+ * Playable stream URL for a channel. Dispatches by ID prefix. Picks
+ * direct MPEG-TS vs ffmpeg HLS via pickStreamFormat() — see the doc
+ * comment on that helper for the decision tree. Clients that can't
+ * play raw MPEG-TS (Roku, browsers) still pass `?format=hls`
+ * explicitly so the decision is deterministic; everyone else gets
+ * the auto-picked format based on header + IP heuristic.
  */
 liveRouter.get('/live/stream/:channelId', async (req, res) => {
   try {
     const channelId = req.params.channelId;
-    const format = (req.query.format as string) || '';
     const source = getLiveSourceForChannel(channelId);
     if (!source) {
       res.status(404).json({ success: false, error: `No live source for channel id "${channelId}"` });
       return;
     }
     const info = await source.getStreamInfo(channelId, req.plexUserToken);
+    const decision = pickStreamFormat(req, info.format);
+    console.log(`[live.stream] channel=${channelId} → ${decision.format} (${decision.reason})`);
 
-    // ?format=hls — caller wants the stream wrapped in HLS via ffmpeg
-    // (Roku for AC-3 audio, browsers because they can't play MPEG-TS).
-    // Only meaningful when the source is mpeg-ts; for already-HLS
-    // sources (Plex / Jellyfin / Emby live in Phase 2) we hand the
-    // original URL back unchanged.
-    if (format === 'hls' && info.format === 'mpeg-ts') {
+    if (decision.format === 'hls' && info.format === 'mpeg-ts') {
       const session = await ensureHlsSession(channelId, info.url);
       // Build an absolute URL relative to the request so clients on
       // the LAN reach the right host without depending on the proxy
