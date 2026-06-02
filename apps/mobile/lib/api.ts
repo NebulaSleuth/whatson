@@ -133,7 +133,11 @@ export const api = {
   getLiveTunerChannels: (source: string = 'all') =>
     fetchApi<import('@whatson/shared').LiveChannel[]>(`/live/tuner-channels?source=${source}`),
   getLiveStreamInfo: (channelId: string) =>
-    fetchApi<import('@whatson/shared').LiveStreamInfo>(`/live/stream/${encodeURIComponent(channelId)}`),
+    // Force HLS — ExoPlayer (Android) and AVPlayer (iOS via expo-video)
+    // can't reliably decode raw MPEG-TS with AC-3 audio, and the LAN
+    // tuner IP returned by direct mode is unreachable when remote.
+    // Matches what Roku and web already do.
+    fetchApi<import('@whatson/shared').LiveStreamInfo>(`/live/stream/${encodeURIComponent(channelId)}?format=hls`),
   getLiveEpg: (channelIds: string[], hours: number = 4) =>
     fetchApi<import('@whatson/shared').LiveProgram[]>(
       `/live/epg?hours=${hours}&channelIds=${channelIds.map(encodeURIComponent).join(',')}`,

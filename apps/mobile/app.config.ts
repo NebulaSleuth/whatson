@@ -1,4 +1,21 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
+import { withAndroidManifest } from 'expo/config-plugins';
+
+/**
+ * Tiny inline config plugin: adds android:usesCleartextTraffic="true"
+ * to the <application> tag. The user's backend is on the LAN at
+ * http://192.168.x.x:3001 (no TLS); Android 9+ blocks cleartext by
+ * default, which would otherwise prevent the pair-code flow from
+ * reaching the server. The top-level `android.usesCleartextTraffic`
+ * key on ExpoConfig is silently ignored in modern Expo SDKs — this
+ * mod is what actually writes the attribute into the manifest.
+ */
+const withCleartextTraffic = (cfg: ExpoConfig) =>
+  withAndroidManifest(cfg, (mod) => {
+    const app = mod.modResults.manifest.application?.[0];
+    if (app) (app.$ as Record<string, string>)['android:usesCleartextTraffic'] = 'true';
+    return mod;
+  });
 
 /**
  * Dynamic Expo config that supports separate phone and TV builds.
@@ -14,7 +31,7 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isTV = process.env.WHATSON_TV === '1';
 
-  return {
+  const base: ExpoConfig = {
     ...config,
     name: isTV ? 'Whats On TV' : 'Whats On',
     slug: 'whatson',
@@ -43,7 +60,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#0F0F0F',
       },
       package: isTV ? 'com.whatson.tv' : 'com.whatson.app',
-      usesCleartextTraffic: true,
     },
     plugins: [
       ['expo-router', { root: './app' }],
@@ -75,4 +91,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       isTV,
     },
   } as ExpoConfig;
+
+  return withCleartextTraffic(base);
 };

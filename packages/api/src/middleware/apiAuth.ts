@@ -29,6 +29,19 @@ const PUBLIC_PATHS = new Set<string>([
   '/update/check',
 ]);
 
+/**
+ * Path prefixes that are public. Same idea as PUBLIC_PATHS but matches
+ * any path starting with the prefix — used for endpoints that have
+ * dynamic segments AND carry their own access token.
+ *
+ * `/live/hls/`: the URL embeds a hard-to-guess sessionId UUID that
+ * IS the access token. HLS players (ExoPlayer in particular) don't
+ * forward query strings from the playlist to the relative segment
+ * URLs, so we can't rely on `?auth=KEY` for segment fetches. Same
+ * pattern Plex uses for its HLS sessions.
+ */
+const PUBLIC_PATH_PREFIXES: string[] = ['/live/hls/'];
+
 export async function apiAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!config.auth.adminPasswordHash) {
     next();
@@ -41,6 +54,12 @@ export async function apiAuth(req: Request, res: Response, next: NextFunction): 
   if (PUBLIC_PATHS.has(path)) {
     next();
     return;
+  }
+  for (const prefix of PUBLIC_PATH_PREFIXES) {
+    if (path.startsWith(prefix)) {
+      next();
+      return;
+    }
   }
 
   // Admin sessions (cookie set by POST /api/auth/login) bypass the
