@@ -3,6 +3,9 @@ import type {
   ContentItem,
   SportsEvent,
   SportsPrefs,
+  LiveChannel,
+  LiveStreamInfo,
+  LiveProgram,
 } from '@whatson/shared';
 
 // API base — when served from the backend at /, requests stay relative.
@@ -264,6 +267,14 @@ export const api = {
 
   // Live TV
   getLiveChannels: () => fetchApi<string[]>('/api/live/channels'),
+  getLiveTunerChannels: (source: string = 'all') =>
+    fetchApi<LiveChannel[]>(`/api/live/tuner-channels?source=${source}`),
+  getLiveStreamInfo: (channelId: string) =>
+    fetchApi<LiveStreamInfo>(`/api/live/stream/${encodeURIComponent(channelId)}?format=hls`),
+  getLiveEpg: (channelIds: string[], hours: number = 4) =>
+    fetchApi<LiveProgram[]>(
+      `/api/live/epg?hours=${hours}&channelIds=${channelIds.map(encodeURIComponent).join(',')}`,
+    ),
 };
 
 /** Rewrite a relative /api/artwork URL to an absolute one — the SPA

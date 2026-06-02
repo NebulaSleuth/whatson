@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import TV from './pages/TV';
 import Movies from './pages/Movies';
 import Sports from './pages/Sports';
+import LiveTV from './pages/LiveTV';
 import Library from './pages/Library';
 import Search from './pages/Search';
 import Settings from './pages/Settings';
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/tv" element={<TV />} />
           <Route path="/movies" element={<Movies />} />
           <Route path="/sports" element={<Sports />} />
+          <Route path="/live-tv" element={<LiveTV />} />
           <Route path="/library" element={<Library />} />
           <Route path="/show/:source/:ratingKey" element={<ShowDetail />} />
           <Route path="/search" element={<Search />} />

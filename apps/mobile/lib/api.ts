@@ -134,6 +134,10 @@ export const api = {
     fetchApi<import('@whatson/shared').LiveChannel[]>(`/live/tuner-channels?source=${source}`),
   getLiveStreamInfo: (channelId: string) =>
     fetchApi<import('@whatson/shared').LiveStreamInfo>(`/live/stream/${encodeURIComponent(channelId)}`),
+  getLiveEpg: (channelIds: string[], hours: number = 4) =>
+    fetchApi<import('@whatson/shared').LiveProgram[]>(
+      `/live/epg?hours=${hours}&channelIds=${channelIds.map(encodeURIComponent).join(',')}`,
+    ),
   getTvDownloading: () => fetchApi<ContentItem[]>('/tv/downloading'),
 
   // Movies

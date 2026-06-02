@@ -5,6 +5,7 @@ const TABS = [
   { to: '/tv', label: 'TV Shows' },
   { to: '/movies', label: 'Movies' },
   { to: '/sports', label: 'Sports' },
+  { to: '/live-tv', label: 'Live TV' },
   { to: '/library', label: 'Library' },
   { to: '/search', label: 'Search' },
   { to: '/settings', label: 'Settings' },
