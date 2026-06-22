@@ -20,6 +20,7 @@ import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { isTV } from '@/lib/tv';
 import { suppressRealtimeUpdates } from '@/lib/useRealtimeUpdates';
+import { getSubtitlePref, setSubtitlePref } from '@/lib/storage';
 
 // Import TV event handler if available
 let useTVEventHandler: any = null;
@@ -487,9 +488,13 @@ export default function PlayerScreen() {
         // fromStart=1 means the user picked "Start from beginning" at
         // the detail sheet. Force offset=0 so the backend rebuilds the
         // stream from t=0 instead of resuming from saved progress.
+        // If the user picked a subtitle for this video before, restore it
+        // (0 means "off" — user explicitly turned subs off).
+        const savedSub = await getSubtitlePref(ratingKey!);
         const info = await api.getPlaybackInfo(ratingKey!, {
           source,
           ...(startFromZero ? { offset: 0 } : {}),
+          ...(savedSub !== null ? { subtitleStreamID: savedSub } : {}),
         });
         if (cancelled) return;
 
@@ -502,9 +507,13 @@ export default function PlayerScreen() {
           markers: info.markers || [],
         });
 
-        // Set initial selections from Plex defaults
-        const defaultSub = info.subtitles?.find((s: TrackInfo) => s.selected);
-        if (defaultSub) setSelectedSubtitleId(defaultSub.id);
+        // Set initial selections — saved pref wins over Plex default
+        if (savedSub !== null) {
+          setSelectedSubtitleId(savedSub === 0 ? null : savedSub);
+        } else {
+          const defaultSub = info.subtitles?.find((s: TrackInfo) => s.selected);
+          if (defaultSub) setSelectedSubtitleId(defaultSub.id);
+        }
         const defaultAudio = info.audioTracks?.find((a: TrackInfo) => a.selected);
         if (defaultAudio) setSelectedAudioId(defaultAudio.id);
 
@@ -606,21 +615,55 @@ export default function PlayerScreen() {
     setShowControls(false);
   }, [activeMarker]);
 
-  // Play/Pause
-  const handlePlayPause = useCallback(() => {
+  // Play/Pause — on resume after a long pause we refresh the transcoder
+  // session, because Plex tears down idle sessions (~30s) and resuming the
+  // stale URL plays the buffered segments then 404s on the next chunk.
+  const pauseStartedAtRef = useRef<number | null>(null);
+  const PAUSE_REFRESH_THRESHOLD_MS = 20_000;
+  const handlePlayPause = useCallback(async () => {
     resetControlsTimer();
     try {
       if (isPlaying) {
         player.current?.pause();
         setIsPlaying(false);
-      } else {
-        player.current?.play();
-        setIsPlaying(true);
+        pauseStartedAtRef.current = Date.now();
+        return;
       }
+      const pausedFor = pauseStartedAtRef.current ? Date.now() - pauseStartedAtRef.current : 0;
+      pauseStartedAtRef.current = null;
+      if (pausedFor > PAUSE_REFRESH_THRESHOLD_MS && playbackInfo && ratingKey) {
+        console.log('[Player] long pause (' + Math.round(pausedFor / 1000) + 's) — refreshing session');
+        const currentTime = player.current?.currentTime || 0;
+        currentPositionRef.current = Math.floor(currentTime * 1000);
+        await api.stopPlayback(playbackInfo.sessionId, source).catch(() => {});
+        const resolution = selectedBitrate <= 2000 ? '720x480' : selectedBitrate <= 4000 ? '1280x720' : '1920x1080';
+        const isOriginal = selectedBitrate === 0;
+        const newInfo = await api.getPlaybackInfo(ratingKey, {
+          source,
+          offset: currentPositionRef.current,
+          maxBitrate: isOriginal ? undefined : selectedBitrate,
+          resolution: isOriginal ? undefined : resolution,
+          subtitleStreamID: selectedSubtitleId === null ? undefined : selectedSubtitleId,
+          audioStreamID: selectedAudioId ?? undefined,
+        });
+        console.log('[Player] refresh got sessionId=' + newInfo.sessionId + ' clientSeekMs=' + (newInfo.clientSeekMs ?? 0));
+        setPlaybackInfo((prev) =>
+          prev ? { ...prev, sessionId: newInfo.sessionId, clientSeekMs: newInfo.clientSeekMs ?? 0 } : prev,
+        );
+        currentPositionRef.current = newInfo.clientSeekMs && newInfo.clientSeekMs > 0
+          ? newInfo.clientSeekMs
+          : currentPositionRef.current;
+        setStreamUrl(newInfo.streamUrl);
+        setPlayerKey((k) => k + 1);
+        setIsPlaying(true);
+        return;
+      }
+      player.current?.play();
+      setIsPlaying(true);
     } catch (e) {
       console.error('[Player] Play/pause error:', e);
     }
-  }, [isPlaying, resetControlsTimer, player]);
+  }, [isPlaying, resetControlsTimer, player, playbackInfo, ratingKey, source, selectedBitrate, selectedSubtitleId, selectedAudioId]);
 
   // Seek (from control buttons)
   const handleSeek = useCallback((deltaSeconds: number) => {
@@ -685,8 +728,11 @@ export default function PlayerScreen() {
   const handleTrackChange = useCallback(async (type: 'subtitle' | 'audio', trackId: number | null) => {
     if (!playbackInfo || !ratingKey) return;
     console.log('[Player] handleTrackChange: type=' + type + ', trackId=' + trackId);
-    if (type === 'subtitle') setSelectedSubtitleId(trackId);
-    else setSelectedAudioId(trackId);
+    if (type === 'subtitle') {
+      setSelectedSubtitleId(trackId);
+      // Persist for next time. trackId === null means "off" — store 0.
+      setSubtitlePref(ratingKey, trackId === null ? 0 : trackId).catch(() => {});
+    } else setSelectedAudioId(trackId);
     setShowSettings(false);
     resetControlsTimer();
 
@@ -875,18 +921,13 @@ export default function PlayerScreen() {
       </View>
   );
 
-  // On TV, wrap in a focusable Pressable that captures D-pad when controls are hidden.
-  // When controls show, the control buttons steal focus. When they hide, focus returns here.
+  // On TV, the outer wrapper needs to be focusable so Android routes key events
+  // to the activity (and thus to useTVEventHandler) while controls are hidden.
+  // A plain View isn't a focus host, so OK/up/down would do nothing in that state.
+  // Use focusable View instead of Pressable — no onPress means no click processing,
+  // so we avoid the double-fire that an outer Pressable caused.
   if (isTV) return (
-    <Pressable
-      style={styles.container}
-      focusable={true}
-      onPress={() => {
-        if (!showControls) resetControlsTimer();
-      }}
-    >
-      {playerContent}
-    </Pressable>
+    <View style={styles.container} focusable={true}>{playerContent}</View>
   );
   return (
     <TouchableWithoutFeedback onPress={handleScreenPress}>

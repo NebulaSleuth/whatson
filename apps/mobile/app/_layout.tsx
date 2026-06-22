@@ -7,8 +7,9 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
 import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey } from '@/lib/storage';
-import { isTV, isTVOS } from '@/lib/tv';
+import { isTV, isTVOS, isAndroidTV } from '@/lib/tv';
 import { api } from '@/lib/api';
+import { TVClickSound } from '@/lib/useTVClickSound';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -195,6 +196,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppInitializer>
+        {isAndroidTV && <TVClickSound />}
         <StatusBar style="light" />
         <Stack
           screenOptions={{

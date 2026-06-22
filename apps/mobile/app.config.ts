@@ -33,7 +33,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   const base: ExpoConfig = {
     ...config,
-    name: isTV ? 'Whats On TV' : 'Whats On',
+    name: 'Whats On TV',
     slug: 'whatson',
     version: '0.1.0',
     orientation: 'default',

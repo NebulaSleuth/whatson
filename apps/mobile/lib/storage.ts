@@ -16,6 +16,7 @@ const KEYS = {
   DISABLE_TOUCH_SURFACE: 'whatson_disableTouchSurface',
   SHOW_BECAUSE_YOU_WATCHED: 'whatson_showBecauseYouWatched',
   LIVE_TV_CHANNELS: 'whatson_liveTvChannels',
+  SUBTITLE_PREFS: 'whatson_subtitlePrefs',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -161,6 +162,38 @@ export async function getLiveTvChannels(): Promise<string[]> {
 
 export async function setLiveTvChannels(channels: string[]): Promise<void> {
   try { await SecureStore.setItemAsync(KEYS.LIVE_TV_CHANNELS, JSON.stringify(channels)); } catch {}
+}
+
+// ── Subtitle Preferences (per ratingKey) ──
+//
+// Stored as a single JSON map of ratingKey → subtitleId so we don't burn
+// a SecureStore slot per video. id === 0 means "off" (explicit user pick);
+// null/undefined means "no preference saved", and the player falls back to
+// the Plex-default subtitle on next playback.
+
+type SubtitlePrefMap = Record<string, number>;
+
+async function readSubtitlePrefs(): Promise<SubtitlePrefMap> {
+  try {
+    const json = await SecureStore.getItemAsync(KEYS.SUBTITLE_PREFS);
+    return json ? JSON.parse(json) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function getSubtitlePref(ratingKey: string): Promise<number | null> {
+  const map = await readSubtitlePrefs();
+  return ratingKey in map ? map[ratingKey] : null;
+}
+
+export async function setSubtitlePref(ratingKey: string, subtitleId: number | null): Promise<void> {
+  try {
+    const map = await readSubtitlePrefs();
+    if (subtitleId === null) delete map[ratingKey];
+    else map[ratingKey] = subtitleId;
+    await SecureStore.setItemAsync(KEYS.SUBTITLE_PREFS, JSON.stringify(map));
+  } catch {}
 }
 
 // ── Arr Preferences ──
