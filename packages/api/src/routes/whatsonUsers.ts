@@ -41,18 +41,75 @@ whatsonUsersRouter.get('/whatson-users', (_req, res) => {
   res.json({ success: true, data: users });
 });
 
-whatsonUsersRouter.post('/whatson-users', (req, res) => {
+/**
+ * Derive a server-specific Plex token for a Home user. Returns the
+ * token on success, or throws with a user-friendly message. Called
+ * synchronously by the create/update routes when the admin provides
+ * a plexPin (or selects a Plex Home user that doesn't require one).
+ */
+async function derivePlexToken(plexUserId: number, plexPin: string | undefined): Promise<string> {
   try {
-    const created = wo.create(req.body || {});
+    return await plexUsers.selectUser(plexUserId, plexPin);
+  } catch (e) {
+    const msg = (e as Error).message || '';
+    if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
+      throw new Error('Incorrect Plex PIN for that Home user.');
+    }
+    throw new Error('Failed to derive Plex token: ' + msg);
+  }
+}
+
+whatsonUsersRouter.post('/whatson-users', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const plexPin: string | undefined = body.plexPin;
+    delete body.plexPin;
+    // If a Plex mapping was supplied, derive the per-user token now so
+    // we don't depend on the in-memory cache (which is empty after every
+    // backend restart). If derivation fails — wrong PIN, Plex not
+    // configured — surface the error before the user is persisted.
+    if (body.plexUserId != null) {
+      body.plexUserToken = await derivePlexToken(Number(body.plexUserId), plexPin);
+    } else {
+      body.plexUserToken = null;
+    }
+    const created = wo.create(body);
     res.json({ success: true, data: wo.toPublic(created) });
   } catch (e) {
     res.status(400).json({ success: false, error: (e as Error).message });
   }
 });
 
-whatsonUsersRouter.patch('/whatson-users/:id', (req, res) => {
+whatsonUsersRouter.patch('/whatson-users/:id', async (req, res) => {
   try {
-    const updated = wo.update(req.params.id, req.body || {});
+    const body = req.body || {};
+    const plexPin: string | undefined = body.plexPin;
+    delete body.plexPin;
+    // Token derivation policy on PATCH:
+    //   - Mapping unchanged + no PIN supplied → leave plexUserToken alone
+    //     (avoids forcing the admin to re-enter a PIN just to rename).
+    //   - Mapping changed to null → clear token.
+    //   - Mapping changed to a different user → derive fresh token.
+    //   - Same mapping but admin supplied a new PIN → refresh token.
+    const existing = wo.findById(req.params.id);
+    if (existing && body.plexUserId !== undefined) {
+      const newId = body.plexUserId === null ? null : Number(body.plexUserId);
+      const mappingChanged = newId !== existing.plexUserId;
+      if (newId === null) {
+        body.plexUserToken = null;
+      } else if (mappingChanged) {
+        body.plexUserToken = await derivePlexToken(newId, plexPin);
+      } else if (plexPin) {
+        // Same mapping, refreshing PIN.
+        body.plexUserToken = await derivePlexToken(newId, plexPin);
+      } else {
+        // Same mapping, no PIN. Don't touch the stored token.
+        delete body.plexUserToken;
+      }
+    } else if (existing && plexPin && existing.plexUserId != null) {
+      body.plexUserToken = await derivePlexToken(existing.plexUserId, plexPin);
+    }
+    const updated = wo.update(req.params.id, body);
     if (!updated) { res.status(404).json({ success: false, error: 'user not found' }); return; }
     res.json({ success: true, data: wo.toPublic(updated) });
   } catch (e) {
@@ -73,9 +130,17 @@ whatsonUsersRouter.post('/whatson-users/:id/select', async (req, res) => {
     res.status(401).json({ success: false, error: 'Incorrect PIN' });
     return;
   }
+  // Seed the in-memory Plex per-user token cache so subsequent /api/*
+  // calls with X-Whatson-User=<id> resolve instantly. Prefer the stored
+  // token (set at mapping time and persists across backend restarts);
+  // fall back to a fresh switch only for non-PIN-protected users.
   if (user.plexUserId !== null) {
-    try { await plexUsers.selectUser(user.plexUserId); }
-    catch (e) { console.warn('[wo] plex token warm-up failed:', (e as Error).message); }
+    if (user.plexUserToken) {
+      plexUsers.seedUserToken(user.plexUserId, user.plexUserToken);
+    } else {
+      try { await plexUsers.selectUser(user.plexUserId); }
+      catch (e) { console.warn('[wo] plex token warm-up failed:', (e as Error).message); }
+    }
   }
   res.json({ success: true, data: wo.toPublic(user) });
 });
@@ -85,7 +150,15 @@ whatsonUsersRouter.get('/whatson-users/source/plex', async (_req, res) => {
     const list = await plexUsers.listUsers();
     res.json({
       success: true,
-      data: list.map((u) => ({ id: u.id, title: u.title, thumb: u.thumb, admin: u.admin })),
+      data: list.map((u) => ({
+        id: u.id,
+        title: u.title,
+        thumb: u.thumb,
+        admin: u.admin,
+        // Whether this Home user has a PIN. Drives whether the admin
+        // UI prompts for a Plex PIN when mapping.
+        hasPassword: u.hasPassword,
+      })),
     });
   } catch (e) {
     res.json({ success: true, data: [], error: (e as Error).message });

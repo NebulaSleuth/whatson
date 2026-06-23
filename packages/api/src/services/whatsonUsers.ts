@@ -27,6 +27,14 @@ export interface WhatsOnUser {
   pinHash: string | null;
   /** Plex Home user id (numeric). null = this user has no Plex content. */
   plexUserId: number | null;
+  /**
+   * Server-specific Plex token for the mapped Plex Home user, derived
+   * once at mapping time. Required for PIN-protected Home users
+   * (otherwise the runtime token cache can't switch into them without
+   * the PIN). Not the user's PIN — that's used once to fetch this and
+   * then discarded.
+   */
+  plexUserToken: string | null;
   /** Jellyfin user GUID. null = no Jellyfin content. */
   jellyfinUserId: string | null;
   /** Emby user GUID. null = no Emby content. */
@@ -101,6 +109,7 @@ export interface CreateUserInput {
   avatar: string;
   pin?: string | null;
   plexUserId?: number | null;
+  plexUserToken?: string | null;
   jellyfinUserId?: string | null;
   embyUserId?: string | null;
 }
@@ -115,6 +124,7 @@ export function create(input: CreateUserInput): WhatsOnUser {
     avatar: input.avatar || 'default',
     pinHash: input.pin ? sha256(input.pin) : null,
     plexUserId: input.plexUserId ?? null,
+    plexUserToken: input.plexUserToken ?? null,
     jellyfinUserId: input.jellyfinUserId ?? null,
     embyUserId: input.embyUserId ?? null,
   };
@@ -129,6 +139,7 @@ export interface UpdateUserInput {
   /** null clears the PIN, undefined leaves it unchanged, string sets a new one. */
   pin?: string | null;
   plexUserId?: number | null;
+  plexUserToken?: string | null;
   jellyfinUserId?: string | null;
   embyUserId?: string | null;
 }
@@ -145,7 +156,14 @@ export function update(id: string, input: UpdateUserInput): WhatsOnUser | null {
   }
   if (input.avatar !== undefined) u.avatar = input.avatar;
   if (input.pin !== undefined) u.pinHash = input.pin === null ? null : sha256(input.pin);
-  if (input.plexUserId !== undefined) u.plexUserId = input.plexUserId;
+  if (input.plexUserId !== undefined) {
+    // Clearing or remapping the Plex user invalidates any stored
+    // per-user token. The route layer will derive a fresh one if
+    // a new mapping (and PIN, if required) was supplied.
+    if (input.plexUserId !== u.plexUserId) u.plexUserToken = null;
+    u.plexUserId = input.plexUserId;
+  }
+  if (input.plexUserToken !== undefined) u.plexUserToken = input.plexUserToken;
   if (input.jellyfinUserId !== undefined) u.jellyfinUserId = input.jellyfinUserId;
   if (input.embyUserId !== undefined) u.embyUserId = input.embyUserId;
   state.users[idx] = u;
@@ -172,11 +190,19 @@ export function verifyPin(user: WhatsOnUser, pin: string | undefined | null): bo
 }
 
 /**
- * Public-safe projection of a user — strips the PIN hash. Adds a
- * `hasPin` boolean so clients can render PIN-entry UI without seeing
- * the hash itself.
+ * Public-safe projection of a user — strips the PIN hash and the
+ * derived Plex token. Adds `hasPin` so clients can render PIN-entry
+ * UI, and `hasPlexToken` so the admin UI can show whether a
+ * PIN-protected Plex Home user has been resolved.
  */
-export function toPublic(user: WhatsOnUser): Omit<WhatsOnUser, 'pinHash'> & { hasPin: boolean } {
-  const { pinHash, ...rest } = user;
-  return { ...rest, hasPin: pinHash !== null };
+export function toPublic(user: WhatsOnUser): Omit<WhatsOnUser, 'pinHash' | 'plexUserToken'> & {
+  hasPin: boolean;
+  hasPlexToken: boolean;
+} {
+  const { pinHash, plexUserToken, ...rest } = user;
+  return {
+    ...rest,
+    hasPin: pinHash != null,
+    hasPlexToken: plexUserToken != null,
+  };
 }

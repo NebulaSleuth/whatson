@@ -811,7 +811,12 @@
         </div>
         <div class="field">
           <label>Plex user</label>
-          <select id="wo-plex-user"><option value="">(none)</option></select>
+          <select id="wo-plex-user" onchange="onWoPlexUserChange()"><option value="">(none)</option></select>
+        </div>
+        <div class="field" id="wo-plex-pin-field" style="display:none">
+          <label>Plex Home PIN</label>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="wo-plex-pin" placeholder="Required — this Plex user has a PIN" autocomplete="off" />
+          <div class="hint" id="wo-plex-pin-hint">Used once to derive this Whats On user's Plex token; the PIN itself is not stored.</div>
         </div>
         <div class="field">
           <label>Jellyfin user</label>
@@ -1738,8 +1743,51 @@
     function fillSourceDropdown(selectId, list, idField) {
       const sel = document.getElementById(selectId);
       setHtml(sel, '<option value="">(none)</option>' + list.map((u) =>
-        '<option value="' + escapeHtml(String(u[idField] ?? u.id))  + '">' + escapeHtml(u.title || u.name || String(u.id)) + (u.admin ? ' (admin)' : '') + '</option>'
+        '<option value="' + escapeHtml(String(u[idField] ?? u.id))  + '">' + escapeHtml(u.title || u.name || String(u.id)) + (u.admin ? ' (admin)' : '') + (u.hasPassword ? ' · PIN' : '') + '</option>'
       ).join(''));
+    }
+
+    // When the user picks a Plex Home user, reveal the PIN field iff
+    // that user is PIN-protected. Token derivation happens server-side
+    // on save — we just need the PIN value to pass through.
+    function onWoPlexUserChange() {
+      const sel = document.getElementById('wo-plex-user');
+      const id = sel.value;
+      const field = document.getElementById('wo-plex-pin-field');
+      const pinInput = document.getElementById('wo-plex-pin');
+      const hint = document.getElementById('wo-plex-pin-hint');
+      if (!id) {
+        field.style.display = 'none';
+        pinInput.value = '';
+        return;
+      }
+      const u = woPlexUsers.find((x) => String(x.id) === id);
+      if (u && u.hasPassword) {
+        field.style.display = '';
+        // On edit, if this user is already mapped + has a derived token,
+        // PIN is optional (only needed to refresh).
+        const editingId = document.getElementById('wo-edit-id').value;
+        if (editingId) {
+          // Look up the current state — we already loaded the full user
+          // in editWoUser, but the easiest way is to refetch quickly.
+          fetch(API + '/whatson-users', { credentials: 'same-origin' }).then(r => r.json()).then((r) => {
+            const cur = (r.data || []).find((x) => x.id === editingId);
+            if (cur && cur.plexUserId != null && String(cur.plexUserId) === id && cur.hasPlexToken) {
+              pinInput.placeholder = '(unchanged — leave blank to keep)';
+              hint.textContent = 'PIN already verified for this user. Enter a new PIN only to refresh the token.';
+            } else {
+              pinInput.placeholder = 'Required — this Plex user has a PIN';
+              hint.textContent = 'Used once to derive this Whats On user’s Plex token; the PIN itself is not stored.';
+            }
+          }).catch(() => {});
+        } else {
+          pinInput.placeholder = 'Required — this Plex user has a PIN';
+          hint.textContent = 'Used once to derive this Whats On user’s Plex token; the PIN itself is not stored.';
+        }
+      } else {
+        field.style.display = 'none';
+        pinInput.value = '';
+      }
     }
 
     function renderWoAvatarPicker(selected) {
@@ -1774,6 +1822,8 @@
       document.getElementById('wo-plex-user').value = '';
       document.getElementById('wo-jellyfin-user').value = '';
       document.getElementById('wo-emby-user').value = '';
+      document.getElementById('wo-plex-pin').value = '';
+      document.getElementById('wo-plex-pin-field').style.display = 'none';
       renderWoAvatarPicker('');
       document.getElementById('wo-modal').style.display = 'flex';
     }
@@ -1801,6 +1851,9 @@
       document.getElementById('wo-plex-user').value = user.plexUserId != null ? String(user.plexUserId) : '';
       document.getElementById('wo-jellyfin-user').value = user.jellyfinUserId || '';
       document.getElementById('wo-emby-user').value = user.embyUserId || '';
+      document.getElementById('wo-plex-pin').value = '';
+      // Sync the PIN-field visibility to the now-selected Plex user.
+      onWoPlexUserChange();
       renderWoAvatarPicker(user.avatar);
       document.getElementById('wo-modal').style.display = 'flex';
     }
@@ -1820,6 +1873,7 @@
       msg.textContent = '';
       if (!name) { msg.textContent = 'Name is required.'; return; }
 
+      const plexPin = document.getElementById('wo-plex-pin').value.trim();
       const body = {
         name,
         avatar: woSelectedAvatar,
@@ -1831,6 +1885,10 @@
       // with a PIN already set = leave unchanged (don't include the field).
       // Blank on edit of a user without a PIN = no change (also omit).
       if (pin) body.pin = pin;
+      // Plex PIN is only relevant when a PIN-protected Plex Home user is
+      // selected. Blank = "don't change the token" on edit of an existing
+      // mapping; required on create when the selected user has a PIN.
+      if (plexPin) body.plexPin = plexPin;
 
       try {
         const url = id ? API + '/whatson-users/' + id : API + '/whatson-users';

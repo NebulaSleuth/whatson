@@ -144,6 +144,18 @@ export function getUserToken(userId: number): string | null {
   return userTokens.get(userId) || null;
 }
 
+/**
+ * Seed the in-memory cache with a pre-derived token. Used by the
+ * WhatsOnUsers feature to skip the plex.tv switch round-trip on every
+ * backend restart: the admin entered the Plex Home PIN once at mapping
+ * time, we derived the server token, and stored it on disk in
+ * whatsonUsers.json. The middleware seeds the cache from that on the
+ * first request that resolves the WO user.
+ */
+export function seedUserToken(userId: number, token: string): void {
+  userTokens.set(userId, token);
+}
+
 /** Get the admin token (for server discovery, non-user-specific operations) */
 export function getAdminToken(): string {
   return config.plex.token;

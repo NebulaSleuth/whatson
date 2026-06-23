@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { getUserToken } from '../services/users.js';
+import { getUserToken, seedUserToken } from '../services/users.js';
 import { setRequestUserId } from '../services/tracked.js';
 import { setActiveUserScope } from '../services/adapters/registry.js';
 import * as wo from '../services/whatsonUsers.js';
@@ -60,14 +60,20 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
         jellyfinUserId: user.jellyfinUserId,
         embyUserId: user.embyUserId,
       });
-      // Populate Plex per-user token if the mapping exists. The token
-      // was warmed by POST /whatson-users/:id/select; if the cache is
-      // cold (e.g. backend restart since selection), Plex calls will
-      // transparently fall back to the admin token. selectUser() will
-      // re-warm on the next /select call.
+      // Populate the Plex per-user token. The cache is in-memory only,
+      // so after every backend restart the first request for a given WO
+      // user will miss it — seed from the on-disk plexUserToken (set
+      // at mapping time) so the very first request after restart still
+      // gets the right per-user identity.
       if (user.plexUserId !== null) {
-        req.plexUserId = String(user.plexUserId);
-        const token = getUserToken(user.plexUserId);
+        const plexId = user.plexUserId;
+        req.plexUserId = String(plexId);
+        let token = getUserToken(plexId);
+        const stored = wo.findById(user.id)?.plexUserToken;
+        if (!token && stored) {
+          seedUserToken(plexId, stored);
+          token = stored;
+        }
         if (token) req.plexUserToken = token;
       }
       res.on('finish', () => {
