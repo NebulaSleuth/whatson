@@ -216,9 +216,12 @@ sub init()
     m.liveLaterTask = invalid
 
     m.userPickerView = m.top.findNode("userPickerView")
+    m.userPickerSubtitle = m.top.findNode("userPickerSubtitle")
     m.userPickerStatus = m.top.findNode("userPickerStatus")
     m.userList = m.top.findNode("userList")
     m.usersData = invalid          ' cached /api/users response
+    m.whatsOnAvatars = invalid     ' cached /api/whatson-users/avatars
+    m.whatsOnEnabled = false
     m.initialFetchDone = false     ' have we kicked off /api/home yet?
 
     ' Pair view nodes — populated by startPair() / poll handlers.
@@ -390,18 +393,30 @@ sub init()
 
     m.apiUrl = apiUrl
 
-    ' Resolve Plex user id similarly: registry first, build-time config
-    ' fallback. If neither has it, we'll show the user picker and stay
-    ' on it until the user makes a selection (mobile's select-user.tsx
-    ' flow).
+    ' User kind + id. Whats On Users feature, when enabled, stores the
+    ' selected profile under "whatsonUserId" with userKind = "whatson".
+    ' Legacy single-Plex installs continue to use "plexUserId" + the
+    ' default userKind = "plex". On boot we trust the saved kind; the
+    ' /api/whatson-users/config check below corrects if the operator
+    ' has since toggled the feature.
     userId = ""
+    userKind = "plex"
     section2 = CreateObject("roRegistrySection", "whatson")
-    if section2 <> invalid and section2.Exists("plexUserId")
-        userId = section2.Read("plexUserId")
+    if section2 <> invalid
+        if section2.Exists("userKind")
+            saved = section2.Read("userKind")
+            if saved = "whatson" then userKind = "whatson"
+        end if
+        if userKind = "whatson" and section2.Exists("whatsonUserId")
+            userId = section2.Read("whatsonUserId")
+        else if section2.Exists("plexUserId")
+            userId = section2.Read("plexUserId")
+        end if
     end if
-    if userId = "" then userId = configPlexUserId()
+    if userId = "" and userKind = "plex" then userId = configPlexUserId()
     m.userId = userId
-    print "[HomeScene] plexUserId resolved to: "; userId
+    m.userKind = userKind
+    print "[HomeScene] userKind="; userKind; " userId="; userId
 
     ' Connection type ("local" | "remote") — sent as X-Plex-Connection
     ' on every API request so the backend picks the right Plex link
@@ -679,8 +694,67 @@ sub onAdminStatusResponse()
         return
     end if
 
-    ' Either the backend has no admin password (open mode), or this
-    ' device already holds an auth key from a previous pair. Carry on.
+    ' Past the pair gate. Before deciding which picker to show, check
+    ' whether the operator has enabled Whats On Users. When the feature
+    ' is on, that picker fully replaces the Plex Home picker.
+    checkWhatsOnConfig()
+end sub
+
+sub checkWhatsOnConfig()
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onWhatsOnConfigResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/whatson-users/config"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.whatsOnConfigTask = task
+end sub
+
+sub onWhatsOnConfigResponse()
+    if m.whatsOnConfigTask = invalid then return
+    resp = m.whatsOnConfigTask.response
+    m.whatsOnConfigTask = invalid
+
+    enabled = false
+    if resp <> invalid and resp.success = true and resp.data <> invalid
+        enabled = (resp.data.enabled = true)
+    end if
+    m.whatsOnEnabled = enabled
+    print "[HomeScene] whatsOnEnabled="; enabled
+
+    if enabled
+        ' WO is on. The saved-kind on this device might be stale; force
+        ' whatson mode and ignore any legacy plex userId we loaded.
+        if m.userKind <> "whatson"
+            m.userKind = "whatson"
+            m.userId = ""
+            section = CreateObject("roRegistrySection", "whatson")
+            if section <> invalid and section.Exists("whatsonUserId")
+                m.userId = section.Read("whatsonUserId")
+            end if
+        end if
+        if m.userId = invalid or m.userId = ""
+            showView("userPicker")
+            fetchUsers()
+        else
+            startInitialFetches()
+        end if
+        return
+    end if
+
+    ' WO is off. If the device was in whatson mode previously, fall
+    ' back to legacy plex flow.
+    if m.userKind = "whatson"
+        m.userKind = "plex"
+        plexId = ""
+        section = CreateObject("roRegistrySection", "whatson")
+        if section <> invalid and section.Exists("plexUserId")
+            plexId = section.Read("plexUserId")
+        end if
+        if plexId = "" then plexId = configPlexUserId()
+        m.userId = plexId
+    end if
+
     if m.userId = invalid or m.userId = ""
         showView("userPicker")
         fetchUsers()
@@ -5663,6 +5737,30 @@ sub fetchUsers()
     m.userPickerStatus.visible = true
     m.userList.visible = false
 
+    if m.whatsOnEnabled = true
+        m.userPickerSubtitle.text = "Choose your profile."
+        ' WO needs the avatar catalogue too — fetch in parallel so the
+        ' picker can show the avatar emoji prefix on each row.
+        m.whatsOnAvatars = invalid
+        avatarsTask = CreateObject("roSGNode", "ApiTask")
+        avatarsTask.observeField("response", "onWhatsOnAvatarsResponse")
+        avatarsTask.method = "GET"
+        avatarsTask.url = m.apiUrl + "/api/whatson-users/avatars"
+        setApiTaskAuth(avatarsTask)
+        avatarsTask.control = "RUN"
+        m.whatsOnAvatarsTask = avatarsTask
+
+        usersTask = CreateObject("roSGNode", "ApiTask")
+        usersTask.observeField("response", "onUsersResponse")
+        usersTask.method = "GET"
+        usersTask.url = m.apiUrl + "/api/whatson-users"
+        setApiTaskAuth(usersTask)
+        usersTask.control = "RUN"
+        m.usersTask = usersTask
+        return
+    end if
+
+    m.userPickerSubtitle.text = "Choose a Plex Home user."
     task = CreateObject("roSGNode", "ApiTask")
     task.observeField("response", "onUsersResponse")
     task.method = "GET"
@@ -5670,6 +5768,19 @@ sub fetchUsers()
     setApiTaskAuth(task)
     task.control = "RUN"
     m.usersTask = task
+end sub
+
+sub onWhatsOnAvatarsResponse()
+    if m.whatsOnAvatarsTask = invalid then return
+    resp = m.whatsOnAvatarsTask.response
+    m.whatsOnAvatarsTask = invalid
+    if resp <> invalid and resp.success = true and resp.data <> invalid
+        m.whatsOnAvatars = resp.data
+    else
+        m.whatsOnAvatars = []
+    end if
+    ' Render now if the user list already arrived first.
+    if m.currentView = "userPicker" and m.usersData <> invalid then renderUserPickerList()
 end sub
 
 sub onUsersResponse()
@@ -5684,17 +5795,45 @@ sub onUsersResponse()
     ' become known.
     if m.currentView = "settings" then m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
 
-    ' If we're sitting on the picker, populate it now.
+    ' In WO mode wait for the avatar catalogue before rendering so each
+    ' row can be prefixed with the right emoji.
+    if m.whatsOnEnabled = true and m.whatsOnAvatars = invalid then return
+
     if m.currentView = "userPicker" then renderUserPickerList()
 end sub
+
+function lookupWhatsOnAvatar(key as string) as object
+    if m.whatsOnAvatars = invalid then return invalid
+    for each a in m.whatsOnAvatars
+        if a.key = key then return a
+    end for
+    return invalid
+end function
 
 sub renderUserPickerList()
     rootNode = CreateObject("roSGNode", "ContentNode")
     for each user in m.usersData
         item = rootNode.createChild("ContentNode")
-        item.title = stringField(user, "title")
-        item.AddField("userId", "string", false)
-        item.userId = stringField(user, "id")
+        if m.whatsOnEnabled = true
+            name = stringField(user, "name")
+            avKey = stringField(user, "avatar")
+            av = lookupWhatsOnAvatar(avKey)
+            prefix = ""
+            if av <> invalid and av.emoji <> invalid and av.emoji <> "" then prefix = av.emoji + "  "
+            suffix = ""
+            if user.hasPin = true then suffix = "  🔒"
+            item.title = prefix + name + suffix
+            item.AddField("userId", "string", false)
+            item.userId = stringField(user, "id")
+            item.AddField("hasPin", "boolean", false)
+            item.hasPin = (user.hasPin = true)
+        else
+            item.title = stringField(user, "title")
+            item.AddField("userId", "string", false)
+            item.userId = stringField(user, "id")
+            item.AddField("hasPin", "boolean", false)
+            item.hasPin = (user.hasPassword = true)
+        end if
     end for
     m.userList.content = rootNode
     m.userPickerStatus.visible = false
@@ -5712,23 +5851,123 @@ sub onUserPicked()
     newUserId = item.userId
     if newUserId = "" then return
 
-    print "[HomeScene] user picked: "; newUserId
-    sameUser = (newUserId = m.userId)
-    m.userId = newUserId
+    if m.whatsOnEnabled = true
+        ' Whats On user. If PIN-protected, open KeyboardDialog. Otherwise
+        ' POST /select directly so the backend warms the per-service
+        ' token cache before any /api/* shelf request lands.
+        m.pendingWhatsOnUserId = newUserId
+        if item.hasPin = true
+            openWhatsOnPinDialog(item.title)
+        else
+            selectWhatsOnUser(newUserId, "")
+        end if
+        return
+    end if
 
-    ' Persist for next launch.
+    print "[HomeScene] user picked: "; newUserId
+    sameUser = (newUserId = m.userId and m.userKind = "plex")
+    m.userId = newUserId
+    m.userKind = "plex"
+
     section = CreateObject("roRegistrySection", "whatson")
     if section <> invalid
         section.Write("plexUserId", newUserId)
+        section.Write("userKind", "plex")
         section.Flush()
     end if
 
-    ' Update Settings labels in case the user lands there next.
     m.settingsUserValue.text = displayUserName(newUserId, m.usersData)
 
-    ' First-time pick: kick off home/sports fetches that were deferred
-    ' during boot. Subsequent re-pick: just invalidate caches so the
-    ' next visit to each tab reflects the new user.
+    if not m.initialFetchDone
+        startInitialFetches()
+    else if not sameUser
+        m.homeStale = true
+        m.tvStale = true
+        m.moviesStale = true
+        m.libraryCache = { show: invalid, movie: invalid }
+    end if
+
+    showView("home")
+end sub
+
+' ─── Whats On PIN entry + selection ──────────────────────────────
+
+sub openWhatsOnPinDialog(label as string)
+    dlg = CreateObject("roSGNode", "KeyboardDialog")
+    dlg.title = "Enter PIN for " + label
+    dlg.buttons = ["OK", "Cancel"]
+    dlg.observeField("buttonSelected", "onWhatsOnPinDialogClosed")
+    dlg.observeField("wasClosed", "onWhatsOnPinDialogClosed")
+    m.whatsOnPinDialog = dlg
+    m.top.dialog = dlg
+end sub
+
+sub onWhatsOnPinDialogClosed()
+    if m.whatsOnPinDialog = invalid then return
+    btn = m.whatsOnPinDialog.buttonSelected
+    text = m.whatsOnPinDialog.text
+    m.top.dialog = invalid
+    m.whatsOnPinDialog = invalid
+    if btn <> 0
+        m.pendingWhatsOnUserId = invalid
+        m.userList.setFocus(true)
+        return
+    end if
+    if text = invalid then text = ""
+    if m.pendingWhatsOnUserId = invalid or m.pendingWhatsOnUserId = ""
+        m.userList.setFocus(true)
+        return
+    end if
+    selectWhatsOnUser(m.pendingWhatsOnUserId, text)
+end sub
+
+sub selectWhatsOnUser(userId as string, pin as string)
+    m.userPickerStatus.text = "Signing in…"
+    m.userPickerStatus.visible = true
+    body = "{}"
+    if pin <> "" then body = "{""pin"":""" + pin + """}"
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onWhatsOnSelectResponse")
+    task.method = "POST"
+    task.url = m.apiUrl + "/api/whatson-users/" + userId + "/select"
+    task.body = body
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.whatsOnSelectTask = task
+end sub
+
+sub onWhatsOnSelectResponse()
+    if m.whatsOnSelectTask = invalid then return
+    resp = m.whatsOnSelectTask.response
+    m.whatsOnSelectTask = invalid
+
+    if resp = invalid or resp.success <> true
+        msg = "Sign-in failed."
+        if resp <> invalid and resp.error <> invalid and resp.error <> "" then msg = resp.error
+        m.userPickerStatus.text = msg
+        m.userPickerStatus.visible = true
+        m.pendingWhatsOnUserId = invalid
+        m.userList.setFocus(true)
+        return
+    end if
+
+    newUserId = m.pendingWhatsOnUserId
+    m.pendingWhatsOnUserId = invalid
+    if newUserId = invalid or newUserId = "" then return
+
+    sameUser = (newUserId = m.userId and m.userKind = "whatson")
+    m.userId = newUserId
+    m.userKind = "whatson"
+
+    section = CreateObject("roRegistrySection", "whatson")
+    if section <> invalid
+        section.Write("whatsonUserId", newUserId)
+        section.Write("userKind", "whatson")
+        section.Flush()
+    end if
+
+    m.settingsUserValue.text = displayUserName(newUserId, m.usersData)
+
     if not m.initialFetchDone
         startInitialFetches()
     else if not sameUser
@@ -5745,7 +5984,13 @@ function displayUserName(userId as string, users as object) as string
     if userId = invalid or userId = "" then return "(none)"
     if users <> invalid
         for each u in users
-            if stringField(u, "id") = userId then return stringField(u, "title")
+            ' Whats On rows use { id, name }; legacy Plex rows use { id, title }.
+            ' Match on either key/field so this function is mode-agnostic.
+            if stringField(u, "id") = userId
+                name = stringField(u, "title")
+                if name = "" then name = stringField(u, "name")
+                if name <> "" then return name
+            end if
         end for
     end if
     return userId
@@ -5926,6 +6171,7 @@ end function
 sub setApiTaskAuth(task as object)
     if task = invalid then return
     task.userId = m.userId
+    task.userKind = m.userKind
     task.connectionType = m.connectionType
     if m.authKey <> invalid then task.authKey = m.authKey
 end sub

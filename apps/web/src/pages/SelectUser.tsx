@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, setCurrentUserId } from '@/lib/api';
+import { api, setCurrentUserId, setCurrentUserKind } from '@/lib/api';
 
 export default function SelectUser() {
   const navigate = useNavigate();
@@ -12,6 +12,7 @@ export default function SelectUser() {
   async function pick(id: number) {
     try {
       await api.selectUser(id);
+      setCurrentUserKind('plex');
       setCurrentUserId(String(id));
       navigate('/', { replace: true });
     } catch (e) {

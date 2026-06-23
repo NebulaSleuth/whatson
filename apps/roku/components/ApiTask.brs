@@ -43,7 +43,11 @@ sub fetch()
     headers = {}
     headers["Accept"] = "application/json"
     if m.top.userId <> invalid and m.top.userId <> ""
-        headers["X-Plex-User"] = m.top.userId
+        if m.top.userKind = "whatson"
+            headers["X-Whatson-User"] = m.top.userId
+        else
+            headers["X-Plex-User"] = m.top.userId
+        end if
     end if
     if m.top.connectionType <> invalid and m.top.connectionType <> ""
         headers["X-Plex-Connection"] = m.top.connectionType

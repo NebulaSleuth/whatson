@@ -11,6 +11,7 @@ import Search from './pages/Search';
 import Settings from './pages/Settings';
 import ShowDetail from './pages/ShowDetail';
 import SelectUser from './pages/SelectUser';
+import SelectWhatsOnUser from './pages/SelectWhatsOnUser';
 import PairDevice from './pages/PairDevice';
 import { api, getAuthKey, getCurrentUserId } from './lib/api';
 
@@ -35,8 +36,21 @@ export default function App() {
         // We still let the user proceed; pages will surface their own errors.
       }
 
-      // Plex multi-user: if Plex is configured, force the user picker on
-      // first run. Single-server backends (Jellyfin / Emby) skip it.
+      // Pick the right picker. With Whats On Users enabled, the unified
+      // picker fully replaces the Plex Home picker — even when Plex isn't
+      // configured. Otherwise fall back to the legacy Plex picker (and
+      // skip entirely when Plex isn't configured either).
+      try {
+        const woCfg = await api.getWhatsOnConfig();
+        if (woCfg.enabled && !getCurrentUserId()) {
+          setBoot('needsUser');
+          navigate('/select-whatson-user', { replace: true });
+          return;
+        }
+      } catch {
+        /* swallow — old backends won't have the endpoint */
+      }
+
       try {
         const providers = await api.getAuthProviders();
         if (providers.plex && !getCurrentUserId()) {
@@ -63,7 +77,7 @@ export default function App() {
   }
 
   // Pair + select-user pages render without the top bar (full-screen flows).
-  const chromelessPaths = ['/pair', '/select-user'];
+  const chromelessPaths = ['/pair', '/select-user', '/select-whatson-user'];
   const showChrome = !chromelessPaths.includes(location.pathname);
 
   return (
@@ -81,6 +95,7 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/select-user" element={<SelectUser />} />
+          <Route path="/select-whatson-user" element={<SelectWhatsOnUser />} />
           <Route path="/pair" element={<PairDevice />} />
         </Routes>
       </main>

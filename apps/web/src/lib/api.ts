@@ -43,15 +43,37 @@ export function setCurrentUserId(id: string): void {
   setLocalStr('whatson.userId', id);
 }
 
+/**
+ * Which kind of user is currently selected. Determines whether
+ * fetchApi sends X-Plex-User (legacy Plex Home picker) or
+ * X-Whatson-User (unified Whats On Users feature). Defaults to
+ * 'plex' so existing installs upgrade without breakage.
+ */
+export type UserKind = 'plex' | 'whatson';
+
+export function getCurrentUserKind(): UserKind {
+  return getLocalStr('whatson.userKind') === 'whatson' ? 'whatson' : 'plex';
+}
+export function setCurrentUserKind(kind: UserKind): void {
+  setLocalStr('whatson.userKind', kind);
+}
+
 export function getConnectionType(): 'local' | 'remote' {
   const v = getLocalStr('whatson.connectionType');
   return v === 'remote' ? 'remote' : 'local';
 }
 
 async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const userId = getCurrentUserId();
+  const userKind = getCurrentUserKind();
+  const userHeader: Record<string, string> = userId
+    ? userKind === 'whatson'
+      ? { 'X-Whatson-User': userId }
+      : { 'X-Plex-User': userId }
+    : {};
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'X-Plex-User': getCurrentUserId(),
+    ...userHeader,
     'X-Plex-Connection': getConnectionType(),
     ...((init?.headers as Record<string, string>) || {}),
   };
@@ -106,6 +128,39 @@ export const api = {
       '/api/users/select',
       { method: 'POST', body: JSON.stringify({ userId, pin }) },
     ),
+
+  // Whats On Users (multi-service unified picker)
+  getWhatsOnConfig: () =>
+    fetchApi<{ enabled: boolean }>('/api/whatson-users/config'),
+  getWhatsOnAvatars: () =>
+    fetchApi<Array<{ key: string; label: string; bg: string; emoji: string; url: string }>>(
+      '/api/whatson-users/avatars',
+    ),
+  getWhatsOnUsers: () =>
+    fetchApi<Array<{
+      id: string;
+      name: string;
+      avatar: string;
+      hasPin: boolean;
+      hasPlexToken: boolean;
+      plexUserId: number | null;
+      jellyfinUserId: string | null;
+      embyUserId: string | null;
+    }>>('/api/whatson-users'),
+  selectWhatsOnUser: (id: string, pin?: string) =>
+    fetchApi<{
+      id: string;
+      name: string;
+      avatar: string;
+      hasPin: boolean;
+      hasPlexToken: boolean;
+      plexUserId: number | null;
+      jellyfinUserId: string | null;
+      embyUserId: string | null;
+    }>(`/api/whatson-users/${encodeURIComponent(id)}/select`, {
+      method: 'POST',
+      body: JSON.stringify(pin ? { pin } : {}),
+    }),
 
   // Home
   getHome: () => fetchApi<HomeResponse>('/api/home'),

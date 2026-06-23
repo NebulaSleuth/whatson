@@ -18,6 +18,12 @@
         <field id="method" type="string" value="GET" />
         <field id="body" type="string" />
         <field id="userId" type="string" />
+        <!--
+          Determines which user header to send. Default 'plex' preserves
+          legacy behaviour. Set to 'whatson' when the Whats On Users
+          feature is on and the selected user is a Whats On profile.
+        -->
+        <field id="userKind" type="string" value="plex" />
         <field id="connectionType" type="string" value="local" />
         <field id="authKey" type="string" />
         <field id="response" type="assocarray" />
