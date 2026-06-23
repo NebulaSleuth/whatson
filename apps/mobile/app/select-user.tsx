@@ -36,8 +36,15 @@ export default function SelectUserScreen() {
     setSelecting(true);
     try {
       await api.selectUser(user.id);
-      setCurrentUser(user);
-      if (rememberUser) await setSavedUser({ id: user.id, title: user.title, thumb: user.thumb });
+      const current = {
+        id: String(user.id),
+        kind: 'plex' as const,
+        title: user.title,
+        thumb: user.thumb,
+        hasPassword: user.hasPassword,
+      };
+      setCurrentUser(current);
+      if (rememberUser) await setSavedUser({ id: current.id, kind: 'plex', title: current.title, thumb: current.thumb });
       queryClient.clear();
       router.replace('/(tabs)');
     } catch (e) {
@@ -45,7 +52,7 @@ export default function SelectUserScreen() {
     } finally {
       setSelecting(false);
     }
-  }, [setCurrentUser, queryClient]);
+  }, [setCurrentUser, queryClient, rememberUser]);
 
   const handlePinSubmit = useCallback(async () => {
     if (!pinUserId || !pin) return;
@@ -55,8 +62,15 @@ export default function SelectUserScreen() {
       await api.selectUser(pinUserId, pin);
       const user = users?.find((u) => u.id === pinUserId);
       if (user) {
-        setCurrentUser(user);
-        if (rememberUser) await setSavedUser({ id: user.id, title: user.title, thumb: user.thumb });
+        const current = {
+          id: String(user.id),
+          kind: 'plex' as const,
+          title: user.title,
+          thumb: user.thumb,
+          hasPassword: user.hasPassword,
+        };
+        setCurrentUser(current);
+        if (rememberUser) await setSavedUser({ id: current.id, kind: 'plex', title: current.title, thumb: current.thumb });
       }
       queryClient.clear();
       setPinUserId(null);

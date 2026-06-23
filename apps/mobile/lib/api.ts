@@ -43,9 +43,14 @@ export function resolveArtworkUrl(url: string, opts?: { w?: number; h?: number }
   return resolved;
 }
 
-function getUserId(): string | undefined {
+function getUserHeader(): Record<string, string> {
   const user = useAppStore.getState().currentUser;
-  return user ? String(user.id) : undefined;
+  if (!user) return {};
+  // Whats On users send X-Whatson-User; the backend then resolves the
+  // mapped per-service identity. Legacy Plex picker keeps X-Plex-User.
+  return user.kind === 'whatson'
+    ? { 'X-Whatson-User': user.id }
+    : { 'X-Plex-User': user.id };
 }
 
 function getPlexConnectionType(): string {
@@ -57,7 +62,7 @@ type FetchApiOptions = RequestInit & { timeoutMs?: number };
 async function fetchApi<T>(path: string, options?: FetchApiOptions): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
-  const userId = getUserId();
+  const userHeaders = getUserHeader();
   const connType = getPlexConnectionType();
   const authKey = useAppStore.getState().authKey;
   const { timeoutMs, ...rest } = options || {};
@@ -73,7 +78,7 @@ async function fetchApi<T>(path: string, options?: FetchApiOptions): Promise<T> 
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(userId ? { 'X-Plex-User': userId } : {}),
+        ...userHeaders,
         'X-Plex-Connection': connType,
         ...(authKey ? { 'X-Whatson-Auth': authKey } : {}),
         ...rest.headers,
@@ -410,6 +415,40 @@ export const api = {
     fetchApi<{ userId: number; token: string; selected: boolean }>('/users/select', {
       method: 'POST',
       body: JSON.stringify({ userId, pin }),
+    }),
+
+  // Whats On Users (multi-service unified picker)
+  getWhatsOnConfig: () =>
+    fetchApi<{ enabled: boolean }>('/whatson-users/config'),
+
+  getWhatsOnAvatars: () =>
+    fetchApi<Array<{ key: string; label: string; bg: string; emoji: string; url: string }>>('/whatson-users/avatars'),
+
+  getWhatsOnUsers: () =>
+    fetchApi<Array<{
+      id: string;
+      name: string;
+      avatar: string;
+      hasPin: boolean;
+      hasPlexToken: boolean;
+      plexUserId: number | null;
+      jellyfinUserId: string | null;
+      embyUserId: string | null;
+    }>>('/whatson-users'),
+
+  selectWhatsOnUser: (id: string, pin?: string) =>
+    fetchApi<{
+      id: string;
+      name: string;
+      avatar: string;
+      hasPin: boolean;
+      hasPlexToken: boolean;
+      plexUserId: number | null;
+      jellyfinUserId: string | null;
+      embyUserId: string | null;
+    }>(`/whatson-users/${id}/select`, {
+      method: 'POST',
+      body: JSON.stringify(pin ? { pin } : {}),
     }),
 
   // Sonarr/Radarr add

@@ -1899,7 +1899,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         }).then(r => r.json());
-        if (!r.success) { msg.textContent = r.error || 'Save failed.'; return; }
+        if (!r.success) {
+          msg.textContent = r.error || 'Save failed.';
+          msg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          return;
+        }
         closeWoUserModal();
         showToast(id ? 'User updated.' : 'User added.', 'success');
         await loadWoSection();

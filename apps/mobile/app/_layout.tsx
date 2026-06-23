@@ -107,26 +107,54 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // If "remember user" is on and we have a saved user, auto-login
+      // Discover whether the operator has enabled Whats On Users. When
+      // on, this replaces the legacy Plex-only picker with a unified
+      // multi-service picker that the admin has pre-configured.
+      let whatsonEnabled = false;
+      try {
+        const woCfg = await api.getWhatsOnConfig();
+        whatsonEnabled = !!woCfg.enabled;
+      } catch {}
+
+      // If "remember user" is on and we have a saved user, auto-login.
+      // Dispatches on kind so legacy Plex saved users still work after
+      // upgrade, and new Whats On saved users route through the new API.
       let userRestored = false;
       if (rememberUser && savedUser) {
         try {
-          await api.selectUser(savedUser.id);
-          useAppStore.getState().setCurrentUser({
-            ...savedUser,
-            admin: false,
-            hasPassword: false,
-            restricted: false,
-          });
-          userRestored = true;
+          if (savedUser.kind === 'whatson') {
+            // Pre-PIN flow only — PIN-protected WO users can't auto-login.
+            const u = await api.selectWhatsOnUser(savedUser.id);
+            useAppStore.getState().setCurrentUser({
+              id: u.id,
+              kind: 'whatson',
+              title: u.name,
+              thumb: savedUser.thumb,
+              hasPassword: u.hasPin,
+            });
+            userRestored = true;
+          } else {
+            const userIdNum = Number(savedUser.id);
+            if (Number.isFinite(userIdNum)) {
+              await api.selectUser(userIdNum);
+              useAppStore.getState().setCurrentUser({
+                id: savedUser.id,
+                kind: 'plex',
+                title: savedUser.title,
+                thumb: savedUser.thumb,
+                hasPassword: false,
+              });
+              userRestored = true;
+            }
+          }
         } catch {
-          // Token expired or user removed — clear saved user
+          // Token expired, user removed, or PIN now required.
           await setSavedUser(null);
         }
       }
 
-      // Discover which server providers are configured. If Plex isn't among them,
-      // skip the user-picker flow entirely — Jellyfin/Emby are single-account.
+      // Discover which server providers are configured. Determines
+      // whether to route to the legacy Plex picker when WhatsOn is off.
       let plexConfigured = true;
       try {
         const providers = await api.getAuthProviders();
@@ -156,15 +184,20 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
       setReady(true);
 
-      // Only show the user picker when Plex is configured — it's the only
-      // source with a multi-user Home model on this backend.
-      if (!userRestored && plexConfigured) {
-        console.log('[Init] No user restored, redirecting to select-user');
-        setTimeout(() => {
-          router.replace('/select-user' as any);
-        }, 100);
-      } else if (!plexConfigured) {
-        console.log('[Init] Plex not configured — skipping user picker');
+      // Pick the right picker. With Whats On Users enabled, that flow
+      // replaces the Plex-only picker entirely — even if Plex isn't
+      // configured. Otherwise fall back to today's Plex Home picker
+      // (and skip entirely when Plex isn't configured).
+      if (!userRestored) {
+        if (whatsonEnabled) {
+          console.log('[Init] No user restored, redirecting to select-whatson-user');
+          setTimeout(() => router.replace('/select-whatson-user' as any), 100);
+        } else if (plexConfigured) {
+          console.log('[Init] No user restored, redirecting to select-user');
+          setTimeout(() => router.replace('/select-user' as any), 100);
+        } else {
+          console.log('[Init] No picker available — skipping');
+        }
       } else {
         console.log('[Init] User restored: ' + useAppStore.getState().currentUser?.title);
       }
@@ -206,6 +239,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="pair-device" options={{ animation: 'fade' }} />
           <Stack.Screen name="select-user" options={{ animation: 'fade' }} />
+          <Stack.Screen name="select-whatson-user" options={{ animation: 'fade' }} />
           <Stack.Screen name="show-detail" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen

@@ -192,7 +192,7 @@ export default function SettingsScreen() {
                   setRememberUser(val);
                   await saveRememberUser(val);
                   if (val && currentUser) {
-                    await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
+                    await setSavedUser({ id: currentUser.id, kind: currentUser.kind, title: currentUser.title, thumb: currentUser.thumb });
                   }
                 }}
               >
@@ -204,7 +204,7 @@ export default function SettingsScreen() {
                       setRememberUser(val);
                       await saveRememberUser(val);
                       if (val && currentUser) {
-                        await setSavedUser({ id: currentUser.id, title: currentUser.title, thumb: currentUser.thumb });
+                        await setSavedUser({ id: currentUser.id, kind: currentUser.kind, title: currentUser.title, thumb: currentUser.thumb });
                       }
                     }}
                     trackColor={{ false: '#333', true: colors.primary }}

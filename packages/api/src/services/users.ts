@@ -68,9 +68,14 @@ const userUuids = new Map<number, string>();
 
 /** Switch to a user and get their server-specific Plex token. PIN required if user has one. */
 export async function selectUser(userId: number, pin?: string): Promise<string> {
-  // Check if we already have this user's token cached
-  const cached = userTokens.get(userId);
-  if (cached) return cached;
+  // When a PIN is supplied, always go through Plex to verify it —
+  // returning a cached token would silently accept a wrong PIN and
+  // give no error feedback to whoever's configuring the user. PIN-less
+  // calls are still allowed to short-circuit on the cache.
+  if (!pin) {
+    const cached = userTokens.get(userId);
+    if (cached) return cached;
+  }
 
   const token = config.plex.token;
   if (!token) throw new Error('Plex not configured');

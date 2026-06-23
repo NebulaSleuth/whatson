@@ -74,16 +74,37 @@ export async function setStoredAuthKey(key: string | null): Promise<void> {
 
 // ── User Preferences ──
 
-export async function getSavedUser(): Promise<{ id: number; title: string; thumb: string } | null> {
+/**
+ * Saved auto-login user. Carries `kind` so we know whether to call
+ * api.selectUser (Plex) or api.selectWhatsOnUser (Whats On) on resume.
+ * Pre-Whats-On records lack the `kind` field; we treat those as Plex
+ * for back-compat.
+ */
+export interface SavedUser {
+  id: string;
+  kind: 'plex' | 'whatson';
+  title: string;
+  thumb: string;
+}
+
+export async function getSavedUser(): Promise<SavedUser | null> {
   try {
     const json = await SecureStore.getItemAsync(KEYS.SAVED_USER);
-    return json ? JSON.parse(json) : null;
+    if (!json) return null;
+    const parsed = JSON.parse(json);
+    if (!parsed) return null;
+    return {
+      id: String(parsed.id),
+      kind: parsed.kind === 'whatson' ? 'whatson' : 'plex',
+      title: parsed.title || '',
+      thumb: parsed.thumb || '',
+    };
   } catch {
     return null;
   }
 }
 
-export async function setSavedUser(user: { id: number; title: string; thumb: string } | null): Promise<void> {
+export async function setSavedUser(user: SavedUser | null): Promise<void> {
   try {
     if (user) {
       await SecureStore.setItemAsync(KEYS.SAVED_USER, JSON.stringify(user));

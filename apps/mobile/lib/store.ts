@@ -5,6 +5,7 @@ import { create } from 'zustand';
 // server address. For local dev, set EXPO_PUBLIC_API_URL in apps/mobile/.env.
 const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || '';
 
+/** Wire shape from /api/users (Plex Home). */
 export interface PlexUser {
   id: number;
   title: string;
@@ -14,12 +15,27 @@ export interface PlexUser {
   restricted: boolean;
 }
 
+/**
+ * Active user for the current session — works for either the legacy
+ * Plex Home picker (kind: 'plex') or a Whats On user (kind: 'whatson').
+ * `id` is a string in both cases (numeric Plex ids get stringified)
+ * so the wire header is uniform. `hasPassword` reflects whether the
+ * user-side picker should prompt for a PIN.
+ */
+export interface CurrentUser {
+  id: string;
+  kind: 'plex' | 'whatson';
+  title: string;
+  thumb: string;
+  hasPassword: boolean;
+}
+
 interface AppState {
   apiUrl: string;
   isConfigured: boolean;
   isReady: boolean;
   authKey: string | null;
-  currentUser: PlexUser | null;
+  currentUser: CurrentUser | null;
   rememberUser: boolean;
   autoSkipIntro: boolean;
   autoSkipCredits: boolean;
@@ -31,7 +47,7 @@ interface AppState {
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
   setAuthKey: (key: string | null) => void;
-  setCurrentUser: (user: PlexUser | null) => void;
+  setCurrentUser: (user: CurrentUser | null) => void;
   setRememberUser: (remember: boolean) => void;
   setAutoSkipIntro: (skip: boolean) => void;
   setAutoSkipCredits: (skip: boolean) => void;

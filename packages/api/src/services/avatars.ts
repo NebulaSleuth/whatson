@@ -9,6 +9,11 @@
 export interface AvatarEntry {
   key: string;
   label: string;
+  /** Background colour as a CSS hex string. */
+  bg: string;
+  /** Emoji character drawn over the background. */
+  emoji: string;
+  /** Server-rendered SVG, served at the avatars/<key>.svg endpoint. */
   svg: string;
 }
 
@@ -18,7 +23,7 @@ function avatar(bg: string, face: string, label: string, key: string): AvatarEnt
     `<rect width="200" height="200" rx="32" fill="${bg}"/>` +
     `<text x="100" y="140" font-size="120" text-anchor="middle" font-family="-apple-system,Segoe UI Emoji,Apple Color Emoji,Noto Color Emoji,sans-serif">${face}</text>` +
     `</svg>`;
-  return { key, label, svg };
+  return { key, label, bg, emoji: face, svg };
 }
 
 export const AVATARS: AvatarEntry[] = [
@@ -46,10 +51,12 @@ export function getAvatar(key: string): AvatarEntry {
   return AVATARS.find((a) => a.key === key) || DEFAULT_AVATAR;
 }
 
-export function listAvatars(): Array<{ key: string; label: string; url: string }> {
+export function listAvatars(): Array<{ key: string; label: string; bg: string; emoji: string; url: string }> {
   return AVATARS.map((a) => ({
     key: a.key,
     label: a.label,
+    bg: a.bg,
+    emoji: a.emoji,
     url: `/api/whatson-users/avatars/${a.key}.svg`,
   }));
 }
