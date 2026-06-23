@@ -61,6 +61,7 @@ import { playbackRouter } from './routes/playback.js';
 import { libraryRouter } from './routes/library.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 import { usersRouter } from './routes/users.js';
+import { whatsonUsersRouter } from './routes/whatsonUsers.js';
 import { liveRouter } from './routes/live.js';
 import { updateRouter } from './routes/update.js';
 import { authRouter } from './routes/auth.js';
@@ -103,6 +104,7 @@ app.use('/api', apiAuth);
 
 // Routes
 app.use('/api', usersRouter);
+app.use('/api', whatsonUsersRouter);
 app.use('/api', healthRouter);
 app.use('/api', homeRouter);
 app.use('/api', tvRouter);

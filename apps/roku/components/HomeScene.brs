@@ -3786,6 +3786,12 @@ sub startPlayback(fromStart as boolean)
     m.playFromStart = fromStart
     if fromStart then url = url + "&offset=0"
 
+    ' Per-video subtitle preference saved from a previous session.
+    ' 0 = "off" (explicit user pick), -1 = no preference (server picks
+    ' the Plex default). Mirrors apps/mobile/lib/storage.ts.
+    savedSub = readSubtitlePref(sourceId)
+    if savedSub <> -1 then url = url + "&subtitleStreamID=" + savedSub.toStr()
+
     ' Source is always one of "plex" / "jellyfin" / "emby" — no encoding
     ' needed and we can't create an roUrlTransfer here anyway (the render
     ' thread isn't allowed to allocate one; CreateObject returns invalid).
@@ -3902,6 +3908,21 @@ end sub
 sub onVideoStateChanged()
     state = m.video.state
     print "[HomeScene] video state -> "; state
+
+    ' Track pause start time so we can refresh the Plex transcoder
+    ' session if the user resumes after a long delay (otherwise the
+    ' buffered HLS segments play out then 404 on the next chunk).
+    if state = "paused"
+        m.pauseStartedAt = Uptime(0)
+    else if state = "playing" and m.pauseStartedAt <> invalid and m.pauseStartedAt > 0
+        elapsed = Uptime(0) - m.pauseStartedAt
+        m.pauseStartedAt = invalid
+        if elapsed > 20 and m.playbackInfo <> invalid and m.currentView = "player" and m.swapping <> true
+            print "[HomeScene] long pause ("; elapsed; "s) — refreshing session"
+            refreshPlaybackSession()
+            return
+        end if
+    end if
 
     ' Once the live stream is actually playing, drop the tuning
     ' overlay + cancel the timeout timer. Same path is fine for VOD
@@ -4323,7 +4344,101 @@ sub onTracksSubtitleItemSelected()
     end if
     m.pendingAudioId = m.currentAudioId
     m.pendingSubtitleId = selectedId
+    ' Persist the user's pick so it's restored next time this video
+    ' plays. 0 means "off" — that's a deliberate choice and is also
+    ' remembered.
+    if m.selectedItem <> invalid and m.selectedItem.itemSourceId <> invalid
+        writeSubtitlePref(m.selectedItem.itemSourceId, selectedId)
+    end if
     swapTracks(false, true)
+end sub
+
+' ─── Subtitle persistence ──────────────────────────────────────
+'
+' Stored as a single JSON map (sourceId → subtitleId) under the
+' registry key "subtitlePrefs". 0 = "off" (explicit user pick), -1
+' (returned from read when absent) = no preference saved. One slot for
+' all videos so we don't burn a registry key per item.
+
+function readSubtitlePref(sourceId as string) as integer
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid then return -1
+    if not section.Exists("subtitlePrefs") then return -1
+    raw = section.Read("subtitlePrefs")
+    if raw = invalid or raw = "" then return -1
+    map = ParseJson(raw)
+    if map = invalid then return -1
+    if not map.DoesExist(sourceId) then return -1
+    return Int(map[sourceId])
+end function
+
+sub writeSubtitlePref(sourceId as string, subtitleId as integer)
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid then return
+    map = {}
+    if section.Exists("subtitlePrefs")
+        raw = section.Read("subtitlePrefs")
+        if raw <> invalid and raw <> ""
+            parsed = ParseJson(raw)
+            if parsed <> invalid then map = parsed
+        end if
+    end if
+    map[sourceId] = subtitleId
+    section.Write("subtitlePrefs", FormatJson(map))
+    section.Flush()
+end sub
+
+' ─── Long-pause session refresh ────────────────────────────────
+'
+' Plex tears down idle transcoder sessions after roughly 30 seconds.
+' When the user resumes after a longer pause the buffered HLS segments
+' play out and the next chunk 404s. refreshPlaybackSession() is the
+' equivalent of swapTracks() but preserves the current quality / audio
+' / subtitle selections — we just want a fresh session at the current
+' position. Triggered from onVideoStateChanged when state goes from
+' "paused" back to "playing" after a long delay.
+
+sub refreshPlaybackSession()
+    if m.selectedItem = invalid then return
+    if m.playbackInfo = invalid then return
+    sourceId = m.selectedItem.itemSourceId
+    src = m.selectedItem.itemSource
+    if sourceId = invalid or sourceId = "" then return
+
+    resumeMs = 0
+    if m.video.position <> invalid then resumeMs = Int(m.video.position * 1000)
+    m.qualitySwapResumeMs = resumeMs
+
+    m.swapping = true
+    sendStop()
+    m.video.control = "stop"
+
+    url = m.apiUrl + "/api/playback/" + sourceId + "?source=" + src
+    ' Subtitle selection: prefer the in-picker pending/current value
+    ' (the user just changed it); fall back to the persisted pref so
+    ' we don't lose the user's choice when they pause before ever
+    ' opening the picker.
+    subToUse = -1
+    if m.currentSubtitleId <> invalid and m.currentSubtitleId >= 0
+        subToUse = m.currentSubtitleId
+    else
+        subToUse = readSubtitlePref(sourceId)
+    end if
+    if subToUse <> -1 then url = url + "&subtitleStreamID=" + subToUse.toStr()
+    if m.currentAudioId <> invalid and m.currentAudioId >= 0
+        url = url + "&audioStreamID=" + m.currentAudioId.toStr()
+    end if
+    if m.currentQualityIndex <> invalid and m.qualityPresets <> invalid and m.currentQualityIndex < m.qualityPresets.Count()
+        url = url + "&maxBitrate=" + m.qualityPresets[m.currentQualityIndex].maxBitrate.toStr()
+    end if
+    print "[HomeScene] refreshing session after long pause; url="; url; " resumeMs="; resumeMs
+
+    m.playbackTask = CreateObject("roSGNode", "ApiTask")
+    m.playbackTask.observeField("response", "onPlaybackResponse")
+    m.playbackTask.method = "GET"
+    m.playbackTask.url = url
+    setApiTaskAuth(m.playbackTask)
+    m.playbackTask.control = "RUN"
 end sub
 
 sub cancelTracksView()

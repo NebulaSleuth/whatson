@@ -40,6 +40,13 @@ export interface EmbyLikeService {
   resetClient(): void;
   testConnection(): Promise<boolean>;
   listUsers(): Promise<ServerUser[]>;
+  /**
+   * List every user on the server (admin power required — used by the
+   * /setup admin UI to populate the Whats On user mapping dropdown).
+   * Returns the same shape as listUsers() so the admin UI can re-use
+   * the same renderer.
+   */
+  listAllServerUsers(): Promise<ServerUser[]>;
   getContinueWatching(): Promise<ContentItem[]>;
   getOnDeck(): Promise<ContentItem[]>;
   getRecentlyAdded(limit: number): Promise<ContentItem[]>;
@@ -261,6 +268,28 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
         hasPassword: false,
         restricted: false,
       }];
+    }
+  };
+
+  const listAllServerUsers = async (): Promise<ServerUser[]> => {
+    const s = await ensureSession();
+    if (!s) return [];
+    const cfg = opts.getConfig();
+    try {
+      const http = clientFor(cfg.url, s.accessToken);
+      const { data } = await http.get('/Users');
+      if (!Array.isArray(data)) return [];
+      return data.map((u: any) => ({
+        id: u.Id,
+        title: u.Name || '',
+        thumb: u.PrimaryImageTag ? imageUrl(u.Id, u.PrimaryImageTag, 'Primary') : '',
+        admin: !!u.Policy?.IsAdministrator,
+        hasPassword: u.HasPassword === true,
+        restricted: false,
+      }));
+    } catch (e) {
+      console.warn(`[${opts.label}] listAllServerUsers failed:`, (e as Error).message);
+      return [];
     }
   };
 
@@ -1073,6 +1102,7 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     resetClient,
     testConnection,
     listUsers,
+    listAllServerUsers,
     getContinueWatching,
     getOnDeck,
     getRecentlyAdded,

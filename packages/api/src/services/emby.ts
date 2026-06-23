@@ -12,6 +12,7 @@ export const {
   resetClient,
   testConnection,
   listUsers,
+  listAllServerUsers,
   getContinueWatching,
   getOnDeck,
   getRecentlyAdded,

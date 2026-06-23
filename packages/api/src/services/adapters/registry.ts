@@ -29,9 +29,47 @@ export function getAdapterForSource(source: ContentSource): MediaServerAdapter |
   return undefined;
 }
 
-/** Every adapter the operator has configured, in a stable order. */
+/**
+ * Per-request Whats On user scope. Mirrors the request-global pattern
+ * tracked.ts uses for setRequestUserId. The middleware sets this on
+ * every request that resolves a WO user; cleared on response 'finish'.
+ *
+ * When set, getConfiguredAdapters() filters to only the adapters this
+ * user is mapped to. When null (default / WO feature off / legacy mode)
+ * every configured adapter is returned, matching today's behaviour.
+ */
+interface WhatsOnUserScope {
+  plexUserId: number | null;
+  jellyfinUserId: string | null;
+  embyUserId: string | null;
+}
+
+let activeScope: WhatsOnUserScope | null = null;
+
+export function setActiveUserScope(scope: WhatsOnUserScope | null): void {
+  activeScope = scope;
+}
+
+function isAdapterMappedForScope(kind: MediaServerKind, scope: WhatsOnUserScope): boolean {
+  switch (kind) {
+    case 'plex':     return scope.plexUserId !== null;
+    case 'jellyfin': return scope.jellyfinUserId !== null;
+    case 'emby':     return scope.embyUserId !== null;
+  }
+}
+
+/**
+ * Every adapter the operator has configured AND the active Whats On
+ * user (if any) is mapped to. In legacy mode (no active scope) returns
+ * every configured adapter, matching pre-WO behaviour.
+ */
 export function getConfiguredAdapters(): MediaServerAdapter[] {
-  return Object.values(adapters).filter((a) => a.isConfigured());
+  const scope = activeScope;
+  return Object.values(adapters).filter((a) => {
+    if (!a.isConfigured()) return false;
+    if (scope && !isAdapterMappedForScope(a.kind, scope)) return false;
+    return true;
+  });
 }
 
 /** Every adapter we know about, regardless of config — for admin/status UIs. */

@@ -30,6 +30,39 @@ const QUALITY_PRESETS: Array<{ label: string; maxBitrate?: number }> = [
 
 type PlaybackInfo = Awaited<ReturnType<typeof api.getPlaybackInfo>>;
 
+// Per-video subtitle preference, persisted in localStorage as a single
+// JSON map ratingKey → subtitleId. 0 means "user explicitly turned subs
+// off"; absent means "no preference" (the player falls back to the Plex
+// default). Mirrors apps/mobile/lib/storage.ts.
+const SUBTITLE_PREFS_KEY = 'whatson_subtitlePrefs';
+
+function getSubtitlePref(ratingKey: string): number | null {
+  try {
+    const raw = localStorage.getItem(SUBTITLE_PREFS_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, number>;
+    return ratingKey in map ? map[ratingKey] : null;
+  } catch {
+    return null;
+  }
+}
+
+function setSubtitlePref(ratingKey: string, subtitleId: number | null): void {
+  try {
+    const raw = localStorage.getItem(SUBTITLE_PREFS_KEY);
+    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
+    if (subtitleId === null) delete map[ratingKey];
+    else map[ratingKey] = subtitleId;
+    localStorage.setItem(SUBTITLE_PREFS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+// Plex tears down idle transcoder sessions after roughly 30 seconds.
+// When the user resumes after a longer pause, the remaining buffered
+// segments play out and the next segment 404s. Refresh the session if
+// the pause was longer than this threshold.
+const PAUSE_REFRESH_THRESHOLD_MS = 20_000;
+
 export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
   const queryClient = useQueryClient();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -94,11 +127,14 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
       // else the saved resume position. Subsequent swaps explicitly
       // pass `opts.offset` to preserve position across quality changes.
       const firstLoadOffset = fromStart ? 0 : item.progress?.currentPosition;
+      // On first load, honour any subtitle preference the user saved
+      // for this video last time. 0 means "off" (explicit user pick).
+      const savedSub = !info ? getSubtitlePref(item.sourceId) : null;
       const next = await api.getPlaybackInfo(item.sourceId, {
         source: item.source,
         offset: opts.offset ?? (info ? undefined : firstLoadOffset),
         audioStreamID: opts.audio,
-        subtitleStreamID: opts.subtitle,
+        subtitleStreamID: opts.subtitle ?? (savedSub !== null ? savedSub : undefined),
         maxBitrate: opts.bitrate,
       });
       console.log(`${tag} got playback info in`, Math.round(performance.now() - reqStart), 'ms', {
@@ -134,12 +170,17 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
         baseSecondsRef.current = 0;
       }
 
-      // Initialise selections only on the first load.
+      // Initialise selections only on the first load. Saved subtitle
+      // preference wins over the Plex default (0 = "off").
       if (!info) {
         const sel = next.audioTracks.find((t) => t.selected);
         if (sel) setAudioId(sel.id);
-        const subSel = next.subtitles.find((t) => t.selected);
-        if (subSel) setSubtitleId(subSel.id);
+        if (savedSub !== null) {
+          setSubtitleId(savedSub === 0 ? null : savedSub);
+        } else {
+          const subSel = next.subtitles.find((t) => t.selected);
+          if (subSel) setSubtitleId(subSel.id);
+        }
       }
 
       const video = videoRef.current;
@@ -409,7 +450,26 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
         lastAbsoluteMsRef.current = Math.floor(absoluteSeconds * 1000);
       }
     };
-    if (v0) v0.addEventListener('timeupdate', onTimeUpdate);
+    // Long-pause refresh. When the user pauses for more than the
+    // transcoder's idle timeout, the buffered segments play out and the
+    // next chunk 404s on resume. Track when pause started and rebuild
+    // the session via swap({}) on play if the pause was too long.
+    let pauseStartedAt: number | null = null;
+    const onPause = () => { pauseStartedAt = Date.now(); };
+    const onPlay = () => {
+      if (pauseStartedAt === null) return;
+      const elapsed = Date.now() - pauseStartedAt;
+      pauseStartedAt = null;
+      if (elapsed > PAUSE_REFRESH_THRESHOLD_MS && sessionRef.current) {
+        console.log('[player] long pause (' + Math.round(elapsed / 1000) + 's) — refreshing session');
+        swapRef.current?.({});
+      }
+    };
+    if (v0) {
+      v0.addEventListener('timeupdate', onTimeUpdate);
+      v0.addEventListener('pause', onPause);
+      v0.addEventListener('play', onPlay);
+    }
 
     const progressTimer = window.setInterval(() => {
       const v = videoRef.current;
@@ -439,7 +499,11 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
       window.clearInterval(progressTimer);
-      if (v0) v0.removeEventListener('timeupdate', onTimeUpdate);
+      if (v0) {
+        v0.removeEventListener('timeupdate', onTimeUpdate);
+        v0.removeEventListener('pause', onPause);
+        v0.removeEventListener('play', onPlay);
+      }
       // Read the final position from the ref the timeupdate listener
       // has been maintaining. Reading video.currentTime here can return
       // 0 if React has already detached the element during unmount.
@@ -492,6 +556,10 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id]);
 
+  // Ref to swap so the long-pause refresh listener registered in the
+  // mount effect can call the latest closure without re-subscribing.
+  const swapRef = useRef<((opts: { audio?: number; subtitle?: number; bitrate?: number }) => void) | null>(null);
+
   async function swap(opts: { audio?: number; subtitle?: number; bitrate?: number }) {
     const v = videoRef.current;
     const tStart = performance.now();
@@ -507,7 +575,13 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
     });
     setMenu('none');
     if (opts.audio !== undefined) setAudioId(opts.audio);
-    if (opts.subtitle !== undefined) setSubtitleId(opts.subtitle);
+    if (opts.subtitle !== undefined) {
+      setSubtitleId(opts.subtitle);
+      // Persist the user's pick so it's restored next time this video
+      // plays. opts.subtitle === 0 means "off" — that's a deliberate
+      // choice and should also be remembered.
+      setSubtitlePref(item.sourceId, opts.subtitle);
+    }
     if ('bitrate' in opts) setMaxBitrate(opts.bitrate);
 
     // CRITICAL: terminate the prior transcode session BEFORE asking
@@ -534,6 +608,7 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
       bitrate: opts.bitrate !== undefined ? opts.bitrate : maxBitrate,
     });
   }
+  swapRef.current = swap;
 
   return (
     <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center">
