@@ -1,5 +1,6 @@
 sub init()
     m.avatarBg = m.top.findNode("avatarBg")
+    m.avatarPoster = m.top.findNode("avatarPoster")
     m.initialLabel = m.top.findNode("initialLabel")
     m.nameLabel = m.top.findNode("nameLabel")
     m.pinBadgeBg = m.top.findNode("pinBadgeBg")
@@ -22,10 +23,24 @@ sub onContentChanged()
     if bgColor = "" then bgColor = "0x374151ff"
     m.avatarBg.color = bgColor
 
-    initial = stringOrEmpty(content.itemInitial)
-    if initial = "" then initial = "?"
-    m.initialLabel.text = initial
-    m.initialLabel.color = pickContrastColor(bgColor)
+    ' Twemoji PNG overlay — loaded from the channel package so there's
+    ' no network round trip and no font dependency. Falls back to the
+    ' initial Label when the key doesn't map to a bundled image.
+    avatarKey = stringOrEmpty(content.itemAvatarKey)
+    posterUri = ""
+    if avatarKey <> "" then posterUri = "pkg:/images/avatars/" + avatarKey + ".png"
+    if posterUri <> ""
+        m.avatarPoster.uri = posterUri
+        m.avatarPoster.visible = true
+        m.initialLabel.visible = false
+    else
+        initial = stringOrEmpty(content.itemInitial)
+        if initial = "" then initial = "?"
+        m.initialLabel.text = initial
+        m.initialLabel.color = pickContrastColor(bgColor)
+        m.initialLabel.visible = true
+        m.avatarPoster.visible = false
+    end if
 
     m.nameLabel.text = stringOrEmpty(content.itemName)
 

@@ -148,6 +148,7 @@ sub init()
     m.settingsApiUrlValue = m.top.findNode("settingsApiUrlValue")
     m.settingsUserValue = m.top.findNode("settingsUserValue")
     m.settingsUserAvatarBg = m.top.findNode("settingsUserAvatarBg")
+    m.settingsUserAvatarPoster = m.top.findNode("settingsUserAvatarPoster")
     m.settingsUserAvatarInitial = m.top.findNode("settingsUserAvatarInitial")
     m.switchUserButton = m.top.findNode("switchUserButton")
     m.editApiUrlButton = m.top.findNode("editApiUrlButton")
@@ -424,9 +425,14 @@ sub init()
             end if
         end if
     end if
-    if userId = "" and userKind = "plex" then userId = configPlexUserId()
+    ' The build-time bake (ROKU_PLEX_USER_ID, baked by deploy.js) is
+    ' also gated on rememberLogin. Without this gate, dev installs that
+    ' set the env var auto-resume regardless of the toggle, which is
+    ' what made the picker appear to never show.
+    if rememberLogin and userId = "" and userKind = "plex" then userId = configPlexUserId()
     m.userId = userId
     m.userKind = userKind
+    m.rememberLogin = rememberLogin
     print "[HomeScene] rememberLogin="; rememberLogin; " userKind="; userKind; " userId="; userId
 
     ' Connection type ("local" | "remote") — sent as X-Plex-Connection
@@ -737,13 +743,22 @@ sub onWhatsOnConfigResponse()
     if enabled
         ' WO is on. The saved-kind on this device might be stale; force
         ' whatson mode and ignore any legacy plex userId we loaded.
+        ' The whatsonUserId read still honours rememberLogin so the
+        ' picker shows on every cold start when the toggle is off.
         if m.userKind <> "whatson"
             m.userKind = "whatson"
             m.userId = ""
-            section = CreateObject("roRegistrySection", "whatson")
-            if section <> invalid and section.Exists("whatsonUserId")
-                m.userId = section.Read("whatsonUserId")
+            if m.rememberLogin = true
+                section = CreateObject("roRegistrySection", "whatson")
+                if section <> invalid and section.Exists("whatsonUserId")
+                    m.userId = section.Read("whatsonUserId")
+                end if
             end if
+        else if m.rememberLogin <> true
+            ' Saved kind was already whatson but rememberLogin is off —
+            ' force the picker too. (init() should have left userId
+            ' blank in this case, but defend against a stale m.userId.)
+            m.userId = ""
         end if
         if m.userId = invalid or m.userId = ""
             showView("userPicker")
@@ -5831,6 +5846,9 @@ sub onWhatsOnAvatarsResponse()
     end if
     ' Render now if the user list already arrived first.
     if m.currentView = "userPicker" and m.usersData <> invalid then renderUserPickerList()
+    ' If Settings is up (prefetch path — user opened settings before
+    ' the avatars arrived), refresh the active-user tile.
+    if m.currentView = "settings" then updateSettingsUserAvatar()
 end sub
 
 sub onUsersResponse()
@@ -5848,8 +5866,10 @@ sub onUsersResponse()
         updateSettingsUserAvatar()
     end if
 
-    ' In WO mode wait for the avatar catalogue before rendering so each
-    ' row can be prefixed with the right emoji.
+    ' In WO mode wait for the avatar catalogue before rendering picker
+    ' rows so each tile gets the right colour. The Settings avatar
+    ' refreshes via the avatars-response handler so we don't gate it on
+    ' that here.
     if m.whatsOnEnabled = true and m.whatsOnAvatars = invalid then return
 
     if m.currentView = "userPicker" then renderUserPickerList()
@@ -5889,6 +5909,8 @@ sub renderUserPickerList()
             item.itemBgColor = bg
             item.AddField("itemInitial", "string", false)
             item.itemInitial = firstInitial(name)
+            item.AddField("itemAvatarKey", "string", false)
+            item.itemAvatarKey = avKey
             item.AddField("itemName", "string", false)
             item.itemName = name
             item.AddField("itemHasPin", "boolean", false)
@@ -6073,10 +6095,11 @@ end sub
 ' single-label layout is preserved). Looks up the user's avatar key in
 ' the cached users list, then the bg colour in the cached catalogue.
 sub updateSettingsUserAvatar()
-    if m.settingsUserAvatarBg = invalid or m.settingsUserAvatarInitial = invalid then return
+    if m.settingsUserAvatarBg = invalid then return
     if m.userKind <> "whatson" or m.usersData = invalid or m.userId = "" or m.userId = invalid
         m.settingsUserAvatarBg.visible = false
-        m.settingsUserAvatarInitial.visible = false
+        if m.settingsUserAvatarPoster <> invalid then m.settingsUserAvatarPoster.visible = false
+        if m.settingsUserAvatarInitial <> invalid then m.settingsUserAvatarInitial.visible = false
         m.settingsUserValue.translation = [80, 40]
         return
     end if
@@ -6091,7 +6114,8 @@ sub updateSettingsUserAvatar()
     end for
     if name = ""
         m.settingsUserAvatarBg.visible = false
-        m.settingsUserAvatarInitial.visible = false
+        if m.settingsUserAvatarPoster <> invalid then m.settingsUserAvatarPoster.visible = false
+        if m.settingsUserAvatarInitial <> invalid then m.settingsUserAvatarInitial.visible = false
         m.settingsUserValue.translation = [80, 40]
         return
     end if
@@ -6106,11 +6130,23 @@ sub updateSettingsUserAvatar()
     end if
     m.settingsUserAvatarBg.color = bg
     m.settingsUserAvatarBg.visible = true
-    m.settingsUserAvatarInitial.text = firstInitial(name)
-    m.settingsUserAvatarInitial.color = pickContrastColor(bg)
-    m.settingsUserAvatarInitial.visible = true
-    ' Shift the name label to the right of the tile.
-    m.settingsUserValue.translation = [148, 50]
+    ' Prefer the bundled Twemoji PNG over the initial letter (matches
+    ' picker behaviour). Initial stays as the fallback when the key
+    ' doesn't map to a bundled image.
+    if avKey <> "" and m.settingsUserAvatarPoster <> invalid
+        m.settingsUserAvatarPoster.uri = "pkg:/images/avatars/" + avKey + ".png"
+        m.settingsUserAvatarPoster.visible = true
+        if m.settingsUserAvatarInitial <> invalid then m.settingsUserAvatarInitial.visible = false
+    else if m.settingsUserAvatarInitial <> invalid
+        m.settingsUserAvatarInitial.text = firstInitial(name)
+        m.settingsUserAvatarInitial.color = pickContrastColor(bg)
+        m.settingsUserAvatarInitial.visible = true
+        if m.settingsUserAvatarPoster <> invalid then m.settingsUserAvatarPoster.visible = false
+    end if
+    ' Shift the name label to the right of the 40px tile, vertically
+    ' centred against it.
+    m.settingsUserValue.translation = [132, 42]
+    print "[Settings] avatar tile for "; name; " bg="; bg; " avKey="; avKey
 end sub
 
 ' Local copy — UserCardItem owns the equivalent for its own scope.

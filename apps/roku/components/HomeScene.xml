@@ -363,23 +363,30 @@
                      Plex mode so the original layout is preserved. -->
                 <Rectangle
                     id="settingsUserAvatarBg"
-                    translation="[80, 30]"
-                    width="56"
-                    height="56"
+                    translation="[80, 32]"
+                    width="40"
+                    height="40"
                     color="0x374151ff"
+                    visible="false" />
+                <Poster
+                    id="settingsUserAvatarPoster"
+                    translation="[82, 34]"
+                    width="36"
+                    height="36"
+                    loadDisplayMode="scaleToFit"
                     visible="false" />
                 <Label
                     id="settingsUserAvatarInitial"
-                    translation="[80, 30]"
-                    width="56"
-                    height="56"
+                    translation="[80, 32]"
+                    width="40"
+                    height="40"
                     horizAlign="center"
                     vertAlign="center"
                     wrap="false"
                     maxLines="1"
                     color="0xffffffff"
                     visible="false">
-                    <Font role="font" uri="font:LargeBoldSystemFont" size="28" />
+                    <Font role="font" uri="font:SystemFontFile" size="22" />
                 </Label>
                 <Label
                     id="settingsUserValue"

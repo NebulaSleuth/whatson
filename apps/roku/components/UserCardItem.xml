@@ -33,18 +33,28 @@
         <!-- Cell wrapper. 200×260 to match HomeScene.xml's grid itemSize. -->
         <Group id="cellInner" translation="[10, 0]">
 
-            <!-- Coloured tile (avatar). Rounded look via two stacked
-                 rectangles isn't quite "rounded" on Roku, so we use a
-                 single Rectangle and accept hard corners — the colour
-                 + initial reads the same. -->
+            <!-- Coloured tile (avatar bg) — same colour the mobile/web
+                 picker uses for visual consistency. -->
             <Rectangle
                 id="avatarBg"
                 width="180"
                 height="180"
                 color="0x374151ff" />
 
-            <!-- Initial letter centred in the tile. Big, white-on-bg
-                 colour with auto contrast handled in BRS. -->
+            <!-- Twemoji PNG overlay loaded from the channel package
+                 (no network round trip). Transparent 72×72 source PNG
+                 scaled up to 180 with scaleToFit; falls back to the
+                 initial Label below when the avatar key is unknown. -->
+            <Poster
+                id="avatarPoster"
+                translation="[10, 10]"
+                width="160"
+                height="160"
+                loadDisplayMode="scaleToFit" />
+
+            <!-- Initial letter fallback. Shown only when the PNG
+                 isn't loaded — set visible="false" by default; BRS
+                 toggles when no avatar key matches. -->
             <Label
                 id="initialLabel"
                 translation="[0, 0]"
@@ -54,8 +64,9 @@
                 vertAlign="center"
                 wrap="false"
                 maxLines="1"
-                color="0xffffffff">
-                <Font role="font" uri="font:LargeBoldSystemFont" />
+                color="0xffffffff"
+                visible="false">
+                <Font role="font" uri="font:SystemFontFile" size="100" />
             </Label>
 
             <!-- PIN pill, top-right corner of the avatar tile. Hidden
