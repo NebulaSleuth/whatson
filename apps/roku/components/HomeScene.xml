@@ -358,6 +358,29 @@
                     translation="[80, 0]"
                     font="font:MediumBoldSystemFont"
                     color="0xe5a00dff" />
+                <!-- Colour-tinted avatar tile, 56×56. Shown when the
+                     active profile is a Whats On user; hidden in legacy
+                     Plex mode so the original layout is preserved. -->
+                <Rectangle
+                    id="settingsUserAvatarBg"
+                    translation="[80, 30]"
+                    width="56"
+                    height="56"
+                    color="0x374151ff"
+                    visible="false" />
+                <Label
+                    id="settingsUserAvatarInitial"
+                    translation="[80, 30]"
+                    width="56"
+                    height="56"
+                    horizAlign="center"
+                    vertAlign="center"
+                    wrap="false"
+                    maxLines="1"
+                    color="0xffffffff"
+                    visible="false">
+                    <Font role="font" uri="font:LargeBoldSystemFont" size="28" />
+                </Label>
                 <Label
                     id="settingsUserValue"
                     translation="[80, 40]"

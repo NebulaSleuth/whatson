@@ -147,6 +147,8 @@ sub init()
     m.settingsView = m.top.findNode("settingsView")
     m.settingsApiUrlValue = m.top.findNode("settingsApiUrlValue")
     m.settingsUserValue = m.top.findNode("settingsUserValue")
+    m.settingsUserAvatarBg = m.top.findNode("settingsUserAvatarBg")
+    m.settingsUserAvatarInitial = m.top.findNode("settingsUserAvatarInitial")
     m.switchUserButton = m.top.findNode("switchUserButton")
     m.editApiUrlButton = m.top.findNode("editApiUrlButton")
     m.settingsConnectionValue = m.top.findNode("settingsConnectionValue")
@@ -397,27 +399,35 @@ sub init()
     ' User kind + id. Whats On Users feature, when enabled, stores the
     ' selected profile under "whatsonUserId" with userKind = "whatson".
     ' Legacy single-Plex installs continue to use "plexUserId" + the
-    ' default userKind = "plex". On boot we trust the saved kind; the
-    ' /api/whatson-users/config check below corrects if the operator
-    ' has since toggled the feature.
+    ' default userKind = "plex".
+    '
+    ' rememberLogin gates the registry-restore: when it's off, force a
+    ' blank userId so the picker shows on every cold start, mirroring
+    ' the mobile auto-login flow. configPlexUserId() (build-time bake
+    ' from npm run roku:deploy) still wins so dev installs can skip the
+    ' picker without flipping the toggle.
     userId = ""
     userKind = "plex"
+    rememberLogin = false
     section2 = CreateObject("roRegistrySection", "whatson")
     if section2 <> invalid
-        if section2.Exists("userKind")
-            saved = section2.Read("userKind")
-            if saved = "whatson" then userKind = "whatson"
-        end if
-        if userKind = "whatson" and section2.Exists("whatsonUserId")
-            userId = section2.Read("whatsonUserId")
-        else if section2.Exists("plexUserId")
-            userId = section2.Read("plexUserId")
+        rememberLogin = readRegistryBool(section2, "rememberLogin", false)
+        if rememberLogin
+            if section2.Exists("userKind")
+                saved = section2.Read("userKind")
+                if saved = "whatson" then userKind = "whatson"
+            end if
+            if userKind = "whatson" and section2.Exists("whatsonUserId")
+                userId = section2.Read("whatsonUserId")
+            else if section2.Exists("plexUserId")
+                userId = section2.Read("plexUserId")
+            end if
         end if
     end if
     if userId = "" and userKind = "plex" then userId = configPlexUserId()
     m.userId = userId
     m.userKind = userKind
-    print "[HomeScene] userKind="; userKind; " userId="; userId
+    print "[HomeScene] rememberLogin="; rememberLogin; " userKind="; userKind; " userId="; userId
 
     ' Connection type ("local" | "remote") — sent as X-Plex-Connection
     ' on every API request so the backend picks the right Plex link
@@ -739,6 +749,10 @@ sub onWhatsOnConfigResponse()
             showView("userPicker")
             fetchUsers()
         else
+            ' Auto-resumed — kick off the home fetches AND a quiet
+            ' prefetch of the WO users/avatars so the Settings avatar
+            ' tile can render without the user ever visiting the picker.
+            prefetchWhatsOnCatalog()
             startInitialFetches()
         end if
         return
@@ -3322,6 +3336,14 @@ sub showView(name as string)
     m.searchView.visible = (name = "search")
     m.sportsView.visible = (name = "sports")
     m.settingsView.visible = (name = "settings")
+    ' When entering the settings panel, refresh the active-user display
+    ' (name + avatar tile) so a switch performed since last visit is
+    ' reflected. The tile reads from m.usersData + m.whatsOnAvatars
+    ' which are cached after the picker fetches them.
+    if name = "settings"
+        m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
+        updateSettingsUserAvatar()
+    end if
     m.userPickerView.visible = (name = "userPicker")
     m.pairView.visible = (name = "pair")
     m.liveTvView.visible = (name = "liveTv")
@@ -4635,6 +4657,7 @@ end sub
 sub populateSettings()
     m.settingsApiUrlValue.text = m.apiUrl
     m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
+    updateSettingsUserAvatar()
     m.settingsConnectionValue.text = connectionDisplayName(m.connectionType)
     updateLiveTvSettingsLabel()
     if m.usersData = invalid then fetchUsers()
@@ -5773,6 +5796,30 @@ sub fetchUsers()
     m.usersTask = task
 end sub
 
+' Fire the WO users + avatars requests without touching the picker UI.
+' Used at boot when we already have a saved user and don't need to
+' show the picker, so the Settings panel can still render the avatar
+' tile next to the active user's name.
+sub prefetchWhatsOnCatalog()
+    if m.usersData <> invalid and m.whatsOnAvatars <> invalid then return
+
+    avatarsTask = CreateObject("roSGNode", "ApiTask")
+    avatarsTask.observeField("response", "onWhatsOnAvatarsResponse")
+    avatarsTask.method = "GET"
+    avatarsTask.url = m.apiUrl + "/api/whatson-users/avatars"
+    setApiTaskAuth(avatarsTask)
+    avatarsTask.control = "RUN"
+    m.whatsOnAvatarsTask = avatarsTask
+
+    usersTask = CreateObject("roSGNode", "ApiTask")
+    usersTask.observeField("response", "onUsersResponse")
+    usersTask.method = "GET"
+    usersTask.url = m.apiUrl + "/api/whatson-users"
+    setApiTaskAuth(usersTask)
+    usersTask.control = "RUN"
+    m.usersTask = usersTask
+end sub
+
 sub onWhatsOnAvatarsResponse()
     if m.whatsOnAvatarsTask = invalid then return
     resp = m.whatsOnAvatarsTask.response
@@ -5796,7 +5843,10 @@ sub onUsersResponse()
 
     ' Refresh Settings label if visible — display name may have just
     ' become known.
-    if m.currentView = "settings" then m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
+    if m.currentView = "settings"
+        m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
+        updateSettingsUserAvatar()
+    end if
 
     ' In WO mode wait for the avatar catalogue before rendering so each
     ' row can be prefixed with the right emoji.
@@ -5913,6 +5963,7 @@ sub onUserPicked()
     end if
 
     m.settingsUserValue.text = displayUserName(newUserId, m.usersData)
+    updateSettingsUserAvatar()
 
     if not m.initialFetchDone
         startInitialFetches()
@@ -6003,6 +6054,7 @@ sub onWhatsOnSelectResponse()
     end if
 
     m.settingsUserValue.text = displayUserName(newUserId, m.usersData)
+    updateSettingsUserAvatar()
 
     if not m.initialFetchDone
         startInitialFetches()
@@ -6015,6 +6067,77 @@ sub onWhatsOnSelectResponse()
 
     showView("home")
 end sub
+
+' Render the Settings avatar tile next to the username when the active
+' profile is a Whats On user. Hidden in legacy Plex mode (the original
+' single-label layout is preserved). Looks up the user's avatar key in
+' the cached users list, then the bg colour in the cached catalogue.
+sub updateSettingsUserAvatar()
+    if m.settingsUserAvatarBg = invalid or m.settingsUserAvatarInitial = invalid then return
+    if m.userKind <> "whatson" or m.usersData = invalid or m.userId = "" or m.userId = invalid
+        m.settingsUserAvatarBg.visible = false
+        m.settingsUserAvatarInitial.visible = false
+        m.settingsUserValue.translation = [80, 40]
+        return
+    end if
+    name = ""
+    avKey = ""
+    for each u in m.usersData
+        if stringField(u, "id") = m.userId
+            name = stringField(u, "name")
+            avKey = stringField(u, "avatar")
+            exit for
+        end if
+    end for
+    if name = ""
+        m.settingsUserAvatarBg.visible = false
+        m.settingsUserAvatarInitial.visible = false
+        m.settingsUserValue.translation = [80, 40]
+        return
+    end if
+    bg = "0x374151ff"
+    if m.whatsOnAvatars <> invalid
+        for each a in m.whatsOnAvatars
+            if a.key = avKey
+                bg = webHexToRokuColor(stringField(a, "bg"))
+                exit for
+            end if
+        end for
+    end if
+    m.settingsUserAvatarBg.color = bg
+    m.settingsUserAvatarBg.visible = true
+    m.settingsUserAvatarInitial.text = firstInitial(name)
+    m.settingsUserAvatarInitial.color = pickContrastColor(bg)
+    m.settingsUserAvatarInitial.visible = true
+    ' Shift the name label to the right of the tile.
+    m.settingsUserValue.translation = [148, 50]
+end sub
+
+' Local copy — UserCardItem owns the equivalent for its own scope.
+function pickContrastColor(hex as string) as string
+    if hex = invalid or Len(hex) < 8 then return "0xffffffff"
+    r = hexToInt2(Mid(hex, 3, 2))
+    g = hexToInt2(Mid(hex, 5, 2))
+    b = hexToInt2(Mid(hex, 7, 2))
+    lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+    if lum >= 0.65 then return "0x111111ff"
+    return "0xffffffff"
+end function
+
+function hexToInt2(s as string) as integer
+    out = 0
+    for i = 1 to Len(s)
+        c = ucase(Mid(s, i, 1))
+        d = 0
+        if c >= "0" and c <= "9"
+            d = Asc(c) - Asc("0")
+        else if c >= "A" and c <= "F"
+            d = 10 + Asc(c) - Asc("A")
+        end if
+        out = out * 16 + d
+    end for
+    return out
+end function
 
 function displayUserName(userId as string, users as object) as string
     if userId = invalid or userId = "" then return "(none)"
