@@ -29,6 +29,26 @@ function setLocalStr(key: string, value: string): void {
   }
 }
 
+function removeLocalStr(key: string): void {
+  try { window.localStorage.removeItem(key); } catch {}
+}
+
+function getSessionStr(key: string): string {
+  try {
+    return window.sessionStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function setSessionStr(key: string, value: string): void {
+  try { window.sessionStorage.setItem(key, value); } catch {}
+}
+
+function removeSessionStr(key: string): void {
+  try { window.sessionStorage.removeItem(key); } catch {}
+}
+
 export function getAuthKey(): string {
   return getLocalStr('whatson.authKey');
 }
@@ -36,11 +56,30 @@ export function setAuthKey(key: string): void {
   setLocalStr('whatson.authKey', key);
 }
 
+/**
+ * Active-session user. sessionStorage covers tab-reloads while
+ * leaving the picker behind on a new tab / cold start when
+ * "Remember me" is off. localStorage is the persistent path that
+ * "Remember me" writes to in addition.
+ */
+const USER_ID_KEY = 'whatson.userId';
+const USER_KIND_KEY = 'whatson.userKind';
+const REMEMBER_KEY = 'whatson.rememberUser';
+
 export function getCurrentUserId(): string {
-  return getLocalStr('whatson.userId');
+  return getSessionStr(USER_ID_KEY) || getLocalStr(USER_ID_KEY);
 }
-export function setCurrentUserId(id: string): void {
-  setLocalStr('whatson.userId', id);
+
+/** Set the user for the current session. Also persists when `remember` is true. */
+export function setCurrentUserId(id: string, remember: boolean = false): void {
+  if (!id) {
+    removeSessionStr(USER_ID_KEY);
+    removeLocalStr(USER_ID_KEY);
+    return;
+  }
+  setSessionStr(USER_ID_KEY, id);
+  if (remember) setLocalStr(USER_ID_KEY, id);
+  else removeLocalStr(USER_ID_KEY);
 }
 
 /**
@@ -52,10 +91,29 @@ export function setCurrentUserId(id: string): void {
 export type UserKind = 'plex' | 'whatson';
 
 export function getCurrentUserKind(): UserKind {
-  return getLocalStr('whatson.userKind') === 'whatson' ? 'whatson' : 'plex';
+  const v = getSessionStr(USER_KIND_KEY) || getLocalStr(USER_KIND_KEY);
+  return v === 'whatson' ? 'whatson' : 'plex';
 }
-export function setCurrentUserKind(kind: UserKind): void {
-  setLocalStr('whatson.userKind', kind);
+
+export function setCurrentUserKind(kind: UserKind, remember: boolean = false): void {
+  setSessionStr(USER_KIND_KEY, kind);
+  if (remember) setLocalStr(USER_KIND_KEY, kind);
+  else removeLocalStr(USER_KIND_KEY);
+}
+
+/** "Remember me" preference. Persists in localStorage. */
+export function getRememberUser(): boolean {
+  return getLocalStr(REMEMBER_KEY) === 'true';
+}
+export function setRememberUser(v: boolean): void {
+  setLocalStr(REMEMBER_KEY, String(v));
+  if (!v) {
+    // Disabling Remember Me drops any persisted user identity so the
+    // next cold start lands on the picker. The current tab keeps the
+    // session user via sessionStorage.
+    removeLocalStr(USER_ID_KEY);
+    removeLocalStr(USER_KIND_KEY);
+  }
 }
 
 export function getConnectionType(): 'local' | 'remote' {

@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, setAuthKey, setCurrentUserId } from '@/lib/api';
+import {
+  api, getCurrentUserKind, getRememberUser, setAuthKey,
+  setCurrentUserId, setCurrentUserKind, setRememberUser,
+} from '@/lib/api';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -9,6 +13,23 @@ export default function Settings() {
   const health = useQuery({ queryKey: ['health'], queryFn: api.getHealth });
   const update = useQuery({ queryKey: ['update', 'status'], queryFn: api.getUpdateStatus });
   const config = useQuery({ queryKey: ['config'], queryFn: api.getConfig });
+  const [remember, setRemember] = useState<boolean>(getRememberUser());
+
+  function toggleRemember(next: boolean) {
+    setRemember(next);
+    setRememberUser(next);
+    // Flipping ON re-persists the current session so the choice takes
+    // effect immediately — without this, the user has to log out and
+    // back in for "Remember me" to start covering them.
+    if (next) {
+      const id = sessionStorage.getItem('whatson.userId') || '';
+      const kind = getCurrentUserKind();
+      if (id) {
+        setCurrentUserKind(kind, true);
+        setCurrentUserId(id, true);
+      }
+    }
+  }
 
   async function checkForUpdates() {
     try {
@@ -34,18 +55,33 @@ export default function Settings() {
     navigate('/pair', { replace: true });
   }
   function switchUser() {
+    // Clear both session + persisted user so the picker shows next.
+    // Route to the WO picker if that's the active mode, else the
+    // legacy Plex picker.
+    const kind = getCurrentUserKind();
     setCurrentUserId('');
     queryClient.clear();
-    navigate('/select-user', { replace: true });
+    navigate(kind === 'whatson' ? '/select-whatson-user' : '/select-user', { replace: true });
   }
 
   return (
     <div className="px-6 py-6 max-w-3xl space-y-8">
       {/* User */}
       <Section title="User">
-        <button onClick={switchUser} className="bg-primary text-black px-4 py-2 rounded font-semibold hover:bg-primary/90">
-          Switch User
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <button onClick={switchUser} className="bg-primary text-black px-4 py-2 rounded font-semibold hover:bg-primary/90">
+            Switch User
+          </button>
+          <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => toggleRemember(e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            Remember me on this browser
+          </label>
+        </div>
       </Section>
 
       {/* Service Status */}

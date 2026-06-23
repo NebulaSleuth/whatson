@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, setCurrentUserId, setCurrentUserKind } from '@/lib/api';
+import {
+  api, getRememberUser, setCurrentUserId, setCurrentUserKind, setRememberUser,
+} from '@/lib/api';
 
 interface WhatsOnUserCard {
   id: string;
@@ -24,6 +26,7 @@ export default function SelectWhatsOnUser() {
   const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [remember, setRemember] = useState<boolean>(getRememberUser());
 
   const usersQ = useQuery({ queryKey: ['whatson-users'], queryFn: api.getWhatsOnUsers });
   const avatarsQ = useQuery({
@@ -38,8 +41,9 @@ export default function SelectWhatsOnUser() {
   }
 
   async function completeLogin(user: WhatsOnUserCard) {
-    setCurrentUserKind('whatson');
-    setCurrentUserId(user.id);
+    setRememberUser(remember);
+    setCurrentUserKind('whatson', remember);
+    setCurrentUserId(user.id, remember);
     navigate('/', { replace: true });
   }
 
@@ -99,30 +103,41 @@ export default function SelectWhatsOnUser() {
         )}
 
         {usersQ.data && usersQ.data.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {usersQ.data.map((u) => {
-              const av = resolveAvatar(u.avatar);
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => pick(u)}
-                  disabled={submitting}
-                  className="bg-surface hover:bg-surface-hover border border-card-border rounded-lg p-4 flex flex-col items-center gap-3 transition-colors focus:outline-none focus:border-primary disabled:opacity-60"
-                >
-                  <div
-                    className="w-20 h-20 rounded-full flex items-center justify-center text-4xl"
-                    style={{ backgroundColor: av.bg }}
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {usersQ.data.map((u) => {
+                const av = resolveAvatar(u.avatar);
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => pick(u)}
+                    disabled={submitting}
+                    className="bg-surface hover:bg-surface-hover border border-card-border rounded-lg p-4 flex flex-col items-center gap-3 transition-colors focus:outline-none focus:border-primary disabled:opacity-60"
                   >
-                    {av.emoji}
-                  </div>
-                  <span className="font-semibold flex items-center gap-1">
-                    {u.name}
-                    {u.hasPin && <span aria-label="PIN required">🔒</span>}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    <div
+                      className="w-20 h-20 rounded-full flex items-center justify-center text-4xl"
+                      style={{ backgroundColor: av.bg }}
+                    >
+                      {av.emoji}
+                    </div>
+                    <span className="font-semibold flex items-center gap-1">
+                      {u.name}
+                      {u.hasPin && <span aria-label="PIN required">🔒</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <label className="mt-6 flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              Remember me on this browser
+            </label>
+          </>
         )}
       </div>
 
