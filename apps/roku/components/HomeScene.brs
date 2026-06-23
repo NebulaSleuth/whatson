@@ -219,6 +219,7 @@ sub init()
     m.userPickerSubtitle = m.top.findNode("userPickerSubtitle")
     m.userPickerStatus = m.top.findNode("userPickerStatus")
     m.userList = m.top.findNode("userList")
+    m.userGrid = m.top.findNode("userGrid")
     m.usersData = invalid          ' cached /api/users response
     m.whatsOnAvatars = invalid     ' cached /api/whatson-users/avatars
     m.whatsOnEnabled = false
@@ -638,6 +639,7 @@ sub init()
     m.configureChannelsButton.observeField("buttonSelected", "onConfigureChannelsPressed")
     m.channelList.observeField("itemSelected", "onChannelToggled")
     m.userList.observeField("itemSelected", "onUserPicked")
+    m.userGrid.observeField("itemSelected", "onUserPicked")
     m.video.observeField("state", "onVideoStateChanged")
     m.video.observeField("position", "onVideoPosition")
     m.skipButton.observeField("actionSelected", "onSkipPressed")
@@ -5736,6 +5738,7 @@ sub fetchUsers()
     m.userPickerStatus.text = "Loading users…"
     m.userPickerStatus.visible = true
     m.userList.visible = false
+    m.userGrid.visible = false
 
     if m.whatsOnEnabled = true
         m.userPickerSubtitle.text = "Choose your profile."
@@ -5810,6 +5813,18 @@ function lookupWhatsOnAvatar(key as string) as object
     return invalid
 end function
 
+' Convert a "#RRGGBB" colour from the avatar catalogue into Roku's
+' "0xRRGGBBAA" form. Fallback for non-hex input keeps the picker safe.
+function webHexToRokuColor(hex as string) as string
+    if hex = invalid or Len(hex) < 7 or Left(hex, 1) <> "#" then return "0x374151ff"
+    return "0x" + ucase(Mid(hex, 2, 6)) + "ff"
+end function
+
+function firstInitial(name as string) as string
+    if name = invalid or name = "" then return "?"
+    return ucase(Left(name, 1))
+end function
+
 sub renderUserPickerList()
     rootNode = CreateObject("roSGNode", "ContentNode")
     for each user in m.usersData
@@ -5818,11 +5833,16 @@ sub renderUserPickerList()
             name = stringField(user, "name")
             avKey = stringField(user, "avatar")
             av = lookupWhatsOnAvatar(avKey)
-            prefix = ""
-            if av <> invalid and av.emoji <> invalid and av.emoji <> "" then prefix = av.emoji + "  "
-            suffix = ""
-            if user.hasPin = true then suffix = "  🔒"
-            item.title = prefix + name + suffix
+            bg = "0x374151ff"
+            if av <> invalid then bg = webHexToRokuColor(stringField(av, "bg"))
+            item.AddField("itemBgColor", "string", false)
+            item.itemBgColor = bg
+            item.AddField("itemInitial", "string", false)
+            item.itemInitial = firstInitial(name)
+            item.AddField("itemName", "string", false)
+            item.itemName = name
+            item.AddField("itemHasPin", "boolean", false)
+            item.itemHasPin = (user.hasPin = true)
             item.AddField("userId", "string", false)
             item.userId = stringField(user, "id")
             item.AddField("hasPin", "boolean", false)
@@ -5835,15 +5855,31 @@ sub renderUserPickerList()
             item.hasPin = (user.hasPassword = true)
         end if
     end for
-    m.userList.content = rootNode
+
     m.userPickerStatus.visible = false
-    m.userList.visible = true
-    m.userList.setFocus(true)
+    if m.whatsOnEnabled = true
+        m.userGrid.content = rootNode
+        m.userGrid.visible = true
+        m.userList.visible = false
+        m.userGrid.setFocus(true)
+    else
+        m.userList.content = rootNode
+        m.userList.visible = true
+        m.userGrid.visible = false
+        m.userList.setFocus(true)
+    end if
 end sub
 
 sub onUserPicked()
-    idx = m.userList.itemSelected
-    rootNode = m.userList.content
+    ' Whichever list/grid fired the itemSelected event — both observe
+    ' the same callback so the picker variant is transparent here.
+    if m.whatsOnEnabled = true
+        idx = m.userGrid.itemSelected
+        rootNode = m.userGrid.content
+    else
+        idx = m.userList.itemSelected
+        rootNode = m.userList.content
+    end if
     if rootNode = invalid then return
     item = rootNode.getChild(idx)
     if item = invalid then return
@@ -5910,12 +5946,12 @@ sub onWhatsOnPinDialogClosed()
     m.whatsOnPinDialog = invalid
     if btn <> 0
         m.pendingWhatsOnUserId = invalid
-        m.userList.setFocus(true)
+        m.userGrid.setFocus(true)
         return
     end if
     if text = invalid then text = ""
     if m.pendingWhatsOnUserId = invalid or m.pendingWhatsOnUserId = ""
-        m.userList.setFocus(true)
+        m.userGrid.setFocus(true)
         return
     end if
     selectWhatsOnUser(m.pendingWhatsOnUserId, text)
@@ -5947,7 +5983,7 @@ sub onWhatsOnSelectResponse()
         m.userPickerStatus.text = msg
         m.userPickerStatus.visible = true
         m.pendingWhatsOnUserId = invalid
-        m.userList.setFocus(true)
+        m.userGrid.setFocus(true)
         return
     end if
 

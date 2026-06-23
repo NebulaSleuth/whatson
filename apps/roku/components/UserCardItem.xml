@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Cell renderer for the Whats On Users picker MarkupGrid.
+
+  Layout:
+    - Coloured rounded square at top (140×140), centred in the cell.
+      The square's colour comes from the avatar catalogue (bg field)
+      and the user's first initial sits centred inside it. This
+      reliably renders across Roku models that don't ship emoji
+      glyphs, while still matching the mobile/web identity (same bg
+      colour).
+    - Name label below, full cell width.
+    - 🔒 marker in the top-right corner of the square when the user
+      has a PIN. Rendered as a Latin "PIN" pill so it draws on every
+      Roku model regardless of emoji support.
+
+  Reads:
+    - itemBgColor       string  "0xRRGGBBAA"
+    - itemInitial       string  single character
+    - itemName          string  display name
+    - itemHasPin        boolean
+-->
+<component name="UserCardItem" extends="Group">
+    <script type="text/brightscript" uri="UserCardItem.brs" />
+
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChanged" />
+        <field id="focusPercent" type="float" onChange="onFocusChanged" />
+        <field id="rowFocusPercent" type="float" onChange="onFocusChanged" />
+    </interface>
+
+    <children>
+        <!-- Cell wrapper. 200×260 to match HomeScene.xml's grid itemSize. -->
+        <Group id="cellInner" translation="[10, 0]">
+
+            <!-- Coloured tile (avatar). Rounded look via two stacked
+                 rectangles isn't quite "rounded" on Roku, so we use a
+                 single Rectangle and accept hard corners — the colour
+                 + initial reads the same. -->
+            <Rectangle
+                id="avatarBg"
+                width="180"
+                height="180"
+                color="0x374151ff" />
+
+            <!-- Initial letter centred in the tile. Big, white-on-bg
+                 colour with auto contrast handled in BRS. -->
+            <Label
+                id="initialLabel"
+                translation="[0, 0]"
+                width="180"
+                height="180"
+                horizAlign="center"
+                vertAlign="center"
+                wrap="false"
+                maxLines="1"
+                color="0xffffffff">
+                <Font role="font" uri="font:LargeBoldSystemFont" />
+            </Label>
+
+            <!-- PIN pill, top-right corner of the avatar tile. Hidden
+                 by default; shown when itemHasPin = true. Pill, not
+                 emoji, so it renders on every Roku. -->
+            <Rectangle
+                id="pinBadgeBg"
+                translation="[130, 6]"
+                width="42"
+                height="22"
+                color="0x000000aa"
+                visible="false" />
+            <Label
+                id="pinBadgeLabel"
+                translation="[130, 6]"
+                width="42"
+                height="22"
+                horizAlign="center"
+                vertAlign="center"
+                text="PIN"
+                wrap="false"
+                maxLines="1"
+                color="0xe5a00dff"
+                visible="false">
+                <Font role="font" uri="font:SystemFontFile" size="14" />
+            </Label>
+
+            <!-- Display name below the tile. -->
+            <Label
+                id="nameLabel"
+                translation="[0, 190]"
+                width="180"
+                horizAlign="center"
+                wrap="false"
+                maxLines="1"
+                color="0xc0c0c0ff">
+                <Font role="font" uri="font:SystemFontFile" size="22" />
+            </Label>
+
+            <!-- Focus ring strips — same 4-strip approach PosterItem uses. -->
+            <Rectangle id="focusRingTop"    translation="[0, 0]"    width="180" height="4"   color="0x00000000" />
+            <Rectangle id="focusRingBottom" translation="[0, 176]"  width="180" height="4"   color="0x00000000" />
+            <Rectangle id="focusRingLeft"   translation="[0, 4]"    width="4"   height="172" color="0x00000000" />
+            <Rectangle id="focusRingRight"  translation="[176, 4]"  width="4"   height="172" color="0x00000000" />
+        </Group>
+    </children>
+</component>

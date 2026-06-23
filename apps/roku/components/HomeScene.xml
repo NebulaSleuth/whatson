@@ -631,6 +631,23 @@
                 vertFocusAnimationStyle="floatingFocus"
                 visible="false"
                 focusable="true" />
+
+            <!-- Whats On Users picker grid. Matches mobile/web's "row of
+                 round badges" layout. Each cell is rendered by
+                 UserCardItem (colour-tinted avatar + initial + name +
+                 optional PIN pill). 4 columns × 2 visible rows ≥ 8
+                 users without scroll; further rows scroll. -->
+            <MarkupGrid
+                id="userGrid"
+                translation="[80, 360]"
+                itemSize="[200, 260]"
+                itemSpacing="[20, 32]"
+                numColumns="4"
+                numRows="2"
+                itemComponentName="UserCardItem"
+                drawFocusFeedback="false"
+                visible="false"
+                focusable="true" />
         </Group>
 
         <!-- ─── Pair view: shown on first run when the backend has an
