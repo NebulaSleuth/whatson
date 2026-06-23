@@ -23,12 +23,12 @@ sub onContentChanged()
     if bgColor = "" then bgColor = "0x374151ff"
     m.avatarBg.color = bgColor
 
-    ' Twemoji PNG overlay — loaded from the channel package so there's
-    ' no network round trip and no font dependency. Falls back to the
-    ' initial Label when the key doesn't map to a bundled image.
-    avatarKey = stringOrEmpty(content.itemAvatarKey)
-    posterUri = ""
-    if avatarKey <> "" then posterUri = "pkg:/images/avatars/" + avatarKey + ".png"
+    ' Avatar PNG served by the backend (/api/whatson-users/avatars/<key>.png)
+    ' — keeps the catalogue editable from the backend without re-shipping
+    ' the channel. The full URL (with auth query) is precomputed in
+    ' HomeScene.renderUserPickerList so the cell doesn't need to know
+    ' anything about the api base or auth key.
+    posterUri = stringOrEmpty(content.itemAvatarUrl)
     if posterUri <> ""
         m.avatarPoster.uri = posterUri
         m.avatarPoster.visible = true

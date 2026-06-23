@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as wo from '../services/whatsonUsers.js';
 import * as plexUsers from '../services/users.js';
-import { listAvatars, getAvatar } from '../services/avatars.js';
+import { listAvatars, getAvatar, getAvatarPng } from '../services/avatars.js';
 import { jellyfinAdapter } from '../services/adapters/jellyfin.js';
 import { embyAdapter } from '../services/adapters/emby.js';
 import * as jellyfin from '../services/jellyfin.js';
@@ -28,12 +28,24 @@ whatsonUsersRouter.get('/whatson-users/avatars', (_req, res) => {
 });
 
 whatsonUsersRouter.get('/whatson-users/avatars/:file', (req, res) => {
-  const m = /^([a-z0-9-]+)\.svg$/i.exec(req.params.file);
-  if (!m) { res.status(400).end(); return; }
-  const a = getAvatar(m[1]);
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.send(a.svg);
+  const svgMatch = /^([a-z0-9-]+)\.svg$/i.exec(req.params.file);
+  if (svgMatch) {
+    const a = getAvatar(svgMatch[1]);
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(a.svg);
+    return;
+  }
+  const pngMatch = /^([a-z0-9-]+)\.png$/i.exec(req.params.file);
+  if (pngMatch) {
+    const buf = getAvatarPng(pngMatch[1]);
+    if (!buf) { res.status(404).end(); return; }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(buf);
+    return;
+  }
+  res.status(400).end();
 });
 
 whatsonUsersRouter.get('/whatson-users', (_req, res) => {

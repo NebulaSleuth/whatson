@@ -5,7 +5,13 @@
  * Style: simple geometric face on a 200x200 viewbox, solid background
  * colour, no fine detail. Plays well at any size from a 40px list cell
  * up to a 280px tvOS picker tile.
+ *
+ * Roku consumes the PNG variant via /api/whatson-users/avatars/<key>.png.
+ * The PNGs are 72x72 Twemoji bitmaps inlined via scripts/gen-avatar-pngs.js
+ * — see avatar-pngs.ts. They scale acceptably to ~180px for picker
+ * tiles and 40px for the Settings tile.
  */
+import { AVATAR_PNGS } from './avatar-pngs.js';
 export interface AvatarEntry {
   key: string;
   label: string;
@@ -51,12 +57,24 @@ export function getAvatar(key: string): AvatarEntry {
   return AVATARS.find((a) => a.key === key) || DEFAULT_AVATAR;
 }
 
-export function listAvatars(): Array<{ key: string; label: string; bg: string; emoji: string; url: string }> {
+export function listAvatars(): Array<{
+  key: string;
+  label: string;
+  bg: string;
+  emoji: string;
+  url: string;
+  pngUrl: string;
+}> {
   return AVATARS.map((a) => ({
     key: a.key,
     label: a.label,
     bg: a.bg,
     emoji: a.emoji,
     url: `/api/whatson-users/avatars/${a.key}.svg`,
+    pngUrl: `/api/whatson-users/avatars/${a.key}.png`,
   }));
+}
+
+export function getAvatarPng(key: string): Buffer | null {
+  return AVATAR_PNGS[key] || null;
 }

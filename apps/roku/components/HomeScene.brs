@@ -5911,6 +5911,12 @@ sub renderUserPickerList()
             item.itemInitial = firstInitial(name)
             item.AddField("itemAvatarKey", "string", false)
             item.itemAvatarKey = avKey
+            ' Hand the picker cell the fully-qualified PNG URL so it
+            ' can load the image without knowing the api base or auth.
+            ' Avatars are served from the backend (not bundled in the
+            ' channel) so the catalog can grow without redeploying Roku.
+            item.AddField("itemAvatarUrl", "string", false)
+            if avKey <> "" then item.itemAvatarUrl = withAuthQuery(m.apiUrl + "/api/whatson-users/avatars/" + avKey + ".png")
             item.AddField("itemName", "string", false)
             item.itemName = name
             item.AddField("itemHasPin", "boolean", false)
@@ -6134,7 +6140,7 @@ sub updateSettingsUserAvatar()
     ' picker behaviour). Initial stays as the fallback when the key
     ' doesn't map to a bundled image.
     if avKey <> "" and m.settingsUserAvatarPoster <> invalid
-        m.settingsUserAvatarPoster.uri = "pkg:/images/avatars/" + avKey + ".png"
+        m.settingsUserAvatarPoster.uri = withAuthQuery(m.apiUrl + "/api/whatson-users/avatars/" + avKey + ".png")
         m.settingsUserAvatarPoster.visible = true
         if m.settingsUserAvatarInitial <> invalid then m.settingsUserAvatarInitial.visible = false
     else if m.settingsUserAvatarInitial <> invalid
