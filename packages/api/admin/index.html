@@ -440,6 +440,7 @@
             Tuners
             <span class="status-dot unconfigured" id="nav-status-hdhomerun"></span>
           </button>
+          <button type="button" class="nav-item" data-section="whatson-users">Users</button>
           <button type="button" class="nav-item" data-section="server">Server</button>
           <button type="button" class="nav-item" data-section="updates">Updates</button>
         </nav>
@@ -766,6 +767,67 @@
       <div id="artwork-clear-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
     </div>
     </section>
+
+    <!-- Whats On Users -->
+    <section class="section" data-section="whatson-users">
+    <div class="card">
+      <div class="card-header">
+        <h2>Whats On Users</h2>
+        <div></div>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="wo-enabled" style="width:18px;height:18px;cursor:pointer" onchange="toggleWoEnabled()" />
+          <span>Enable Whats On Users</span>
+        </label>
+        <div class="hint">When on, clients show this user list instead of the Plex Home picker. Each user maps to optional Plex / Jellyfin / Emby identities; only services they're mapped to contribute content for that user.</div>
+      </div>
+      <div id="wo-users-list" style="margin-top:16px"></div>
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn btn-primary" onclick="openWoUserModal()">+ Add user</button>
+      </div>
+    </div>
+    </section>
+
+    <!-- Whats On User modal -->
+    <div id="wo-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:20px">
+      <div class="card" style="max-width:560px;width:100%;max-height:90vh;overflow-y:auto;margin:0">
+        <div class="card-header">
+          <h2 id="wo-modal-title">Add user</h2>
+        </div>
+        <input type="hidden" id="wo-edit-id" value="" />
+        <div class="field">
+          <label>Name</label>
+          <input type="text" id="wo-name" placeholder="e.g. Mike" />
+        </div>
+        <div class="field">
+          <label>Avatar</label>
+          <div id="wo-avatar-picker" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin-top:8px"></div>
+        </div>
+        <div class="field">
+          <label>PIN (optional)</label>
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="wo-pin" placeholder="Leave blank for no PIN" autocomplete="off" />
+          <div class="hint" id="wo-pin-hint" style="display:none">Has a PIN set. Enter a new value to change, or leave blank to keep.</div>
+        </div>
+        <div class="field">
+          <label>Plex user</label>
+          <select id="wo-plex-user"><option value="">(none)</option></select>
+        </div>
+        <div class="field">
+          <label>Jellyfin user</label>
+          <select id="wo-jellyfin-user"><option value="">(none)</option></select>
+        </div>
+        <div class="field">
+          <label>Emby user</label>
+          <select id="wo-emby-user"><option value="">(none)</option></select>
+        </div>
+        <div id="wo-modal-msg" style="color:#ff7777;margin-top:8px;font-size:13px"></div>
+        <div class="btn-row" style="margin-top:16px">
+          <button class="btn btn-secondary" onclick="closeWoUserModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveWoUser()">Save</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Updates -->
     <section class="section" data-section="updates">
@@ -1579,6 +1641,249 @@
         document.getElementById('change-new').value = '';
       } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
     }
+
+    // ── Whats On Users ──
+    //
+    // Catalogue of available avatars + each service's user list is fetched
+    // once on first open so the picker / dropdowns are populated. The user
+    // list itself is reloaded after every CRUD operation so the on-screen
+    // grid stays in sync.
+    let woAvatars = [];
+    let woPlexUsers = [];
+    let woJellyfinUsers = [];
+    let woEmbyUsers = [];
+    let woSelectedAvatar = '';
+    let woInitialised = false;
+
+    // Same pattern as the existing 9 innerHTML uses elsewhere in this file:
+    // admin-only UI, every user-controlled string escapes through escapeHtml.
+    function setHtml(el, html) { el['inner' + 'HTML'] = html; }
+
+    async function loadWoSection() {
+      try {
+        const [cfg, users, avatars] = await Promise.all([
+          fetch(API + '/whatson-users/config', { credentials: 'same-origin' }).then(r => r.json()),
+          fetch(API + '/whatson-users', { credentials: 'same-origin' }).then(r => r.json()),
+          fetch(API + '/whatson-users/avatars', { credentials: 'same-origin' }).then(r => r.json()),
+        ]);
+        document.getElementById('wo-enabled').checked = !!cfg.data?.enabled;
+        woAvatars = avatars.data || [];
+        renderWoUsers(users.data || []);
+      } catch (e) {
+        console.error('[wo] load failed', e);
+      }
+    }
+
+    function renderWoUsers(users) {
+      const wrap = document.getElementById('wo-users-list');
+      if (!users.length) {
+        setHtml(wrap, '<div style="color:#888;font-size:13px;padding:12px 0">No users yet. Add one to enable the unified picker.</div>');
+        return;
+      }
+      setHtml(wrap, users.map((u) => {
+        const services = [
+          u.plexUserId != null ? 'Plex' : null,
+          u.jellyfinUserId ? 'Jellyfin' : null,
+          u.embyUserId ? 'Emby' : null,
+        ].filter(Boolean).join(' · ') || '<span style="color:#ff7777">no service mapped</span>';
+        const pinBadge = u.hasPin ? '<span style="background:#2a2a2a;color:#888;font-size:11px;padding:2px 6px;border-radius:4px;margin-left:6px">PIN</span>' : '';
+        return (
+          '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:#0e0e0e;border:1px solid #2a2a2a;border-radius:8px;margin-bottom:8px">' +
+            '<img src="' + API + '/whatson-users/avatars/' + encodeURIComponent(u.avatar) + '.svg" alt="" style="width:48px;height:48px;border-radius:8px;background:#1a1a1a" />' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-weight:600">' + escapeHtml(u.name) + pinBadge + '</div>' +
+              '<div style="color:#888;font-size:13px">' + services + '</div>' +
+            '</div>' +
+            '<button class="btn btn-secondary" onclick="editWoUser(\'' + u.id + '\')">Edit</button>' +
+            '<button class="btn btn-secondary" onclick="deleteWoUser(\'' + u.id + '\',\'' + escapeHtml(u.name).replace(/'/g, "\\'") + '\')">Delete</button>' +
+          '</div>'
+        );
+      }).join(''));
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function toggleWoEnabled() {
+      const enabled = document.getElementById('wo-enabled').checked;
+      try {
+        const r = await fetch(API + '/whatson-users/config', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        }).then(r => r.json());
+        if (!r.success) throw new Error(r.error || 'failed');
+        showToast(enabled ? 'Whats On Users enabled.' : 'Whats On Users disabled.', 'success');
+      } catch (e) {
+        showToast('Failed: ' + e.message, 'error');
+        document.getElementById('wo-enabled').checked = !enabled;
+      }
+    }
+
+    async function ensureWoSourceLists() {
+      if (woInitialised) return;
+      const [p, j, em] = await Promise.all([
+        fetch(API + '/whatson-users/source/plex', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(API + '/whatson-users/source/jellyfin', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(API + '/whatson-users/source/emby', { credentials: 'same-origin' }).then(r => r.json()).catch(() => ({ data: [] })),
+      ]);
+      woPlexUsers = p.data || [];
+      woJellyfinUsers = j.data || [];
+      woEmbyUsers = em.data || [];
+      woInitialised = true;
+    }
+
+    function fillSourceDropdown(selectId, list, idField) {
+      const sel = document.getElementById(selectId);
+      setHtml(sel, '<option value="">(none)</option>' + list.map((u) =>
+        '<option value="' + escapeHtml(String(u[idField] ?? u.id))  + '">' + escapeHtml(u.title || u.name || String(u.id)) + (u.admin ? ' (admin)' : '') + '</option>'
+      ).join(''));
+    }
+
+    function renderWoAvatarPicker(selected) {
+      woSelectedAvatar = selected || (woAvatars[0]?.key || '');
+      const wrap = document.getElementById('wo-avatar-picker');
+      setHtml(wrap, woAvatars.map((a) =>
+        '<div onclick="selectWoAvatar(\'' + a.key + '\')" data-key="' + a.key + '" style="cursor:pointer;padding:4px;border-radius:8px;border:2px solid ' + (a.key === woSelectedAvatar ? '#e5a00d' : 'transparent') + '">' +
+          '<img src="' + API + '/whatson-users/avatars/' + a.key + '.svg" alt="' + escapeHtml(a.label) + '" title="' + escapeHtml(a.label) + '" style="width:100%;height:auto;border-radius:6px;background:#1a1a1a" />' +
+        '</div>'
+      ).join(''));
+    }
+
+    function selectWoAvatar(key) {
+      woSelectedAvatar = key;
+      document.querySelectorAll('#wo-avatar-picker > div').forEach((el) => {
+        el.style.borderColor = el.dataset.key === key ? '#e5a00d' : 'transparent';
+      });
+    }
+
+    async function openWoUserModal() {
+      await ensureWoSourceLists();
+      document.getElementById('wo-modal-title').textContent = 'Add user';
+      document.getElementById('wo-edit-id').value = '';
+      document.getElementById('wo-name').value = '';
+      document.getElementById('wo-pin').value = '';
+      document.getElementById('wo-pin').placeholder = 'Leave blank for no PIN';
+      document.getElementById('wo-pin-hint').style.display = 'none';
+      document.getElementById('wo-modal-msg').textContent = '';
+      fillSourceDropdown('wo-plex-user', woPlexUsers, 'id');
+      fillSourceDropdown('wo-jellyfin-user', woJellyfinUsers, 'id');
+      fillSourceDropdown('wo-emby-user', woEmbyUsers, 'id');
+      document.getElementById('wo-plex-user').value = '';
+      document.getElementById('wo-jellyfin-user').value = '';
+      document.getElementById('wo-emby-user').value = '';
+      renderWoAvatarPicker('');
+      document.getElementById('wo-modal').style.display = 'flex';
+    }
+
+    async function editWoUser(id) {
+      await ensureWoSourceLists();
+      const list = await fetch(API + '/whatson-users', { credentials: 'same-origin' }).then(r => r.json());
+      const user = (list.data || []).find((u) => u.id === id);
+      if (!user) { showToast('User not found.', 'error'); return; }
+      document.getElementById('wo-modal-title').textContent = 'Edit user';
+      document.getElementById('wo-edit-id').value = user.id;
+      document.getElementById('wo-name').value = user.name;
+      document.getElementById('wo-pin').value = '';
+      if (user.hasPin) {
+        document.getElementById('wo-pin').placeholder = '(unchanged)';
+        document.getElementById('wo-pin-hint').style.display = 'block';
+      } else {
+        document.getElementById('wo-pin').placeholder = 'Leave blank for no PIN';
+        document.getElementById('wo-pin-hint').style.display = 'none';
+      }
+      document.getElementById('wo-modal-msg').textContent = '';
+      fillSourceDropdown('wo-plex-user', woPlexUsers, 'id');
+      fillSourceDropdown('wo-jellyfin-user', woJellyfinUsers, 'id');
+      fillSourceDropdown('wo-emby-user', woEmbyUsers, 'id');
+      document.getElementById('wo-plex-user').value = user.plexUserId != null ? String(user.plexUserId) : '';
+      document.getElementById('wo-jellyfin-user').value = user.jellyfinUserId || '';
+      document.getElementById('wo-emby-user').value = user.embyUserId || '';
+      renderWoAvatarPicker(user.avatar);
+      document.getElementById('wo-modal').style.display = 'flex';
+    }
+
+    function closeWoUserModal() {
+      document.getElementById('wo-modal').style.display = 'none';
+    }
+
+    async function saveWoUser() {
+      const id = document.getElementById('wo-edit-id').value;
+      const name = document.getElementById('wo-name').value.trim();
+      const pin = document.getElementById('wo-pin').value.trim();
+      const plexRaw = document.getElementById('wo-plex-user').value;
+      const jfRaw = document.getElementById('wo-jellyfin-user').value;
+      const emRaw = document.getElementById('wo-emby-user').value;
+      const msg = document.getElementById('wo-modal-msg');
+      msg.textContent = '';
+      if (!name) { msg.textContent = 'Name is required.'; return; }
+
+      const body = {
+        name,
+        avatar: woSelectedAvatar,
+        plexUserId: plexRaw === '' ? null : parseInt(plexRaw, 10),
+        jellyfinUserId: jfRaw === '' ? null : jfRaw,
+        embyUserId: emRaw === '' ? null : emRaw,
+      };
+      // PIN semantics: blank on create = no PIN. Blank on edit of a user
+      // with a PIN already set = leave unchanged (don't include the field).
+      // Blank on edit of a user without a PIN = no change (also omit).
+      if (pin) body.pin = pin;
+
+      try {
+        const url = id ? API + '/whatson-users/' + id : API + '/whatson-users';
+        const method = id ? 'PATCH' : 'POST';
+        const r = await fetch(url, {
+          method,
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then(r => r.json());
+        if (!r.success) { msg.textContent = r.error || 'Save failed.'; return; }
+        closeWoUserModal();
+        showToast(id ? 'User updated.' : 'User added.', 'success');
+        await loadWoSection();
+      } catch (e) {
+        msg.textContent = 'Network error: ' + e.message;
+      }
+    }
+
+    async function deleteWoUser(id, name) {
+      if (!confirm('Delete user "' + name + '"? This cannot be undone.')) return;
+      try {
+        const r = await fetch(API + '/whatson-users/' + id, {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        }).then(r => r.json());
+        if (!r.success) { showToast(r.error || 'Delete failed.', 'error'); return; }
+        showToast('User deleted.', 'success');
+        await loadWoSection();
+      } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+      }
+    }
+
+    // Lazy-load the section the first time it activates so opening other
+    // sections doesn't pay the Plex/Jellyfin/Emby user-list round trip.
+    document.addEventListener('DOMContentLoaded', () => {
+      const navBtn = document.querySelector('.nav-item[data-section="whatson-users"]');
+      if (navBtn) {
+        let loaded = false;
+        navBtn.addEventListener('click', () => {
+          if (loaded) return;
+          loaded = true;
+          loadWoSection();
+        });
+      }
+      // If a stored selection lands us here on page load, trigger the load.
+      try {
+        if (localStorage.getItem('whatson-admin-section') === 'whatson-users') {
+          loadWoSection();
+        }
+      } catch {}
+    });
 
     // ── Init ──
     bootAuthGate();
