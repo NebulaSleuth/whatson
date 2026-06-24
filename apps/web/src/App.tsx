@@ -34,10 +34,11 @@ export default function App() {
         // Verify the auth key by probing a protected endpoint. Without
         // this, a revoked/stale key lets boot complete and every later
         // call 401s — stranding the user on an error screen with no way
-        // back to the pair flow.
+        // back to the pair flow. /auth/providers is in the public
+        // allowlist so we probe /whatson-users/config instead.
         if (status.hasAdminPassword && getAuthKey()) {
           try {
-            await api.getAuthProviders();
+            await api.getWhatsOnConfig();
           } catch (err) {
             const msg = (err as Error).message || '';
             if (msg.includes('Invalid auth key') || msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {

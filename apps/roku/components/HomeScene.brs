@@ -729,10 +729,13 @@ sub onAdminStatusResponse()
 end sub
 
 sub verifyAuthKey()
+    ' /auth/providers is in the backend's public allowlist so it would
+    ' return 200 even with a bad key. /whatson-users/config is
+    ' properly gated, so 401 there means the key is rejected.
     task = CreateObject("roSGNode", "ApiTask")
     task.observeField("response", "onVerifyAuthKeyResponse")
     task.method = "GET"
-    task.url = m.apiUrl + "/api/auth/providers"
+    task.url = m.apiUrl + "/api/whatson-users/config"
     setApiTaskAuth(task)
     task.control = "RUN"
     m.verifyAuthTask = task

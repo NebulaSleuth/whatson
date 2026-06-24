@@ -91,9 +91,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
             // We have a key — verify it actually works. A stale or revoked
             // key would otherwise let init complete and 401 every protected
             // call downstream, stranding the user on the picker error
-            // screen with no way back to /pair-device.
+            // screen with no way back to /pair-device. We probe
+            // /whatson-users/config since it's small AND properly gated
+            // (auth-providers is in the public allowlist, so a bad key
+            // wouldn't be detected there).
             try {
-              await api.getAuthProviders();
+              await api.getWhatsOnConfig();
               console.log('[Init] auth key verified');
             } catch (err) {
               const msg = (err as Error).message || '';
