@@ -6,10 +6,9 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey } from '@/lib/storage';
-import { isTV, isTVOS, isAndroidTV } from '@/lib/tv';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey } from '@/lib/storage';
+import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
-import { TVClickSound } from '@/lib/useTVClickSound';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,8 +87,27 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           const adminStatus = await api.getAdminStatus();
           if (adminStatus.hasAdminPassword && !authKey) {
             needsPair = true;
+          } else if (adminStatus.hasAdminPassword && authKey) {
+            // We have a key — verify it actually works. A stale or revoked
+            // key would otherwise let init complete and 401 every protected
+            // call downstream, stranding the user on the picker error
+            // screen with no way back to /pair-device.
+            try {
+              await api.getAuthProviders();
+              console.log('[Init] auth key verified');
+            } catch (err) {
+              const msg = (err as Error).message || '';
+              if (msg.includes('Invalid auth key') || msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
+                console.warn('[Init] auth key rejected — clearing and re-pairing');
+                useAppStore.getState().setAuthKey(null);
+                await setStoredAuthKey(null);
+                needsPair = true;
+              } else {
+                console.warn('[Init] /auth/providers unavailable:', msg);
+              }
+            }
           }
-          console.log(`[Init] hasAdminPassword=${adminStatus.hasAdminPassword} authKey=${authKey ? 'set' : 'unset'}`);
+          console.log(`[Init] hasAdminPassword=${adminStatus.hasAdminPassword} authKey=${authKey ? 'set' : 'unset'} needsPair=${needsPair}`);
         } catch (err) {
           // Backend unreachable — likely the API URL is wrong. Route to
           // pair-device so the user can fix it.
@@ -229,7 +247,6 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppInitializer>
-        {isAndroidTV && <TVClickSound />}
         <StatusBar style="light" />
         <Stack
           screenOptions={{

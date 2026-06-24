@@ -13,7 +13,7 @@ import ShowDetail from './pages/ShowDetail';
 import SelectUser from './pages/SelectUser';
 import SelectWhatsOnUser from './pages/SelectWhatsOnUser';
 import PairDevice from './pages/PairDevice';
-import { api, getAuthKey, getCurrentUserId } from './lib/api';
+import { api, getAuthKey, setAuthKey, getCurrentUserId } from './lib/api';
 
 type BootStatus = 'checking' | 'needsPair' | 'needsUser' | 'ready';
 
@@ -30,6 +30,23 @@ export default function App() {
           setBoot('needsPair');
           navigate('/pair', { replace: true });
           return;
+        }
+        // Verify the auth key by probing a protected endpoint. Without
+        // this, a revoked/stale key lets boot complete and every later
+        // call 401s — stranding the user on an error screen with no way
+        // back to the pair flow.
+        if (status.hasAdminPassword && getAuthKey()) {
+          try {
+            await api.getAuthProviders();
+          } catch (err) {
+            const msg = (err as Error).message || '';
+            if (msg.includes('Invalid auth key') || msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
+              setAuthKey('');
+              setBoot('needsPair');
+              navigate('/pair', { replace: true });
+              return;
+            }
+          }
         }
       } catch {
         // /auth/admin-status is open — if it fails, backend is unreachable.

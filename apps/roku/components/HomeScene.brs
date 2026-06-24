@@ -712,9 +712,61 @@ sub onAdminStatusResponse()
         return
     end if
 
+    ' Verify the auth key actually works before continuing. A stale or
+    ' revoked key (e.g. backend's device list got cleared, or this is
+    ' a redeploy of a key that was rotated) would otherwise let boot
+    ' complete and every protected /api/* call would 401, stranding
+    ' the user with no way to re-pair.
+    if hasAdminPassword and m.authKey <> invalid and m.authKey <> ""
+        verifyAuthKey()
+        return
+    end if
+
     ' Past the pair gate. Before deciding which picker to show, check
     ' whether the operator has enabled Whats On Users. When the feature
     ' is on, that picker fully replaces the Plex Home picker.
+    checkWhatsOnConfig()
+end sub
+
+sub verifyAuthKey()
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onVerifyAuthKeyResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/auth/providers"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.verifyAuthTask = task
+end sub
+
+sub onVerifyAuthKeyResponse()
+    if m.verifyAuthTask = invalid then return
+    resp = m.verifyAuthTask.response
+    m.verifyAuthTask = invalid
+    rejected = false
+    if resp = invalid or resp.success <> true
+        msg = ""
+        if resp <> invalid and resp.error <> invalid then msg = resp.error.toStr()
+        ' Treat "Invalid auth key" / 401 as a rejected key. Anything else
+        ' (timeout, transient 500) is a transient backend problem we
+        ' shouldn't penalise the user for — let them proceed and the
+        ' shelf calls will surface their own errors.
+        lc = lcase(msg)
+        if Instr(1, lc, "invalid auth key") > 0 or Instr(1, lc, "401") > 0 or Instr(1, lc, "unauthorized") > 0
+            rejected = true
+        end if
+    end if
+    if rejected
+        print "[HomeScene] auth key rejected — clearing and re-pairing"
+        m.authKey = ""
+        section = CreateObject("roRegistrySection", "whatson")
+        if section <> invalid
+            section.Delete("authKey")
+            section.Flush()
+        end if
+        showView("pair")
+        startPair()
+        return
+    end if
     checkWhatsOnConfig()
 end sub
 
@@ -5739,17 +5791,10 @@ sub finishPair(authKey as string)
     print "[HomeScene] paired FULL KEY (copy into setroku.ps1 ROKU_AUTH_KEY): "; authKey
 
     ' Resume the boot flow that was deferred while the pair view was up.
-    ' Always go through showView so the pair view actually hides — the
-    ' home / userPicker views were toggled OFF when we entered "pair",
-    ' so direct calls to startInitialFetches alone leave the pair
-    ' overlay still on screen.
-    if m.userId = invalid or m.userId = ""
-        showView("userPicker")
-        fetchUsers()
-    else
-        showView("home")
-        startInitialFetches()
-    end if
+    ' Route through checkWhatsOnConfig so the WO feature flag is honoured
+    ' on first run after a fresh pair — without this, the channel jumps
+    ' straight to the legacy Plex picker even when the backend has WO on.
+    checkWhatsOnConfig()
 end sub
 
 ' Friendly device label so the admin knows which device they're approving
