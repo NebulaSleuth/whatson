@@ -7,7 +7,7 @@ import { Grid } from '@/components/Grid';
 import { DetailSheet } from '@/components/DetailSheet';
 
 type LibType = 'show' | 'movie';
-type LibSource = 'plex' | 'jellyfin' | 'emby';
+type LibSource = 'all' | 'plex' | 'jellyfin' | 'emby';
 type SortField = 'alpha' | 'added' | 'release' | 'watched' | 'ready';
 type SortDir = 'asc' | 'desc';
 
@@ -32,15 +32,35 @@ export default function Library() {
     initialSort === 'added' || initialSort === 'watched' || initialSort === 'ready' ? 'desc' : 'asc';
 
   const [type, setType] = useState<LibType>(initialType);
-  const [source, setSource] = useState<LibSource>('plex');
+  const [source, setSource] = useState<LibSource>('all');
   const [selected, setSelected] = useState<ContentItem | null>(null);
   const [sortField, setSortField] = useState<SortField>(initialSort);
   const [sortDir, setSortDir] = useState<SortDir>(initialDir);
 
   const providers = useQuery({ queryKey: ['auth', 'providers'], queryFn: api.getAuthProviders });
+
+  // "All" fans out to every configured library server and unions the
+  // results — matches mobile/Roku "All" behaviour. Specific sources
+  // pass through to a single-source fetch.
+  const configuredSources = useMemo<Array<Exclude<LibSource, 'all'>>>(() => {
+    const list: Array<Exclude<LibSource, 'all'>> = [];
+    if (providers.data?.plex) list.push('plex');
+    if (providers.data?.jellyfin) list.push('jellyfin');
+    if (providers.data?.emby) list.push('emby');
+    return list.length > 0 ? list : ['plex'];
+  }, [providers.data]);
+
   const lib = useQuery({
-    queryKey: ['library', type, source],
-    queryFn: () => api.getLibrary(type, source),
+    queryKey: ['library', type, source, configuredSources.join(',')],
+    queryFn: async () => {
+      if (source === 'all') {
+        const results = await Promise.all(
+          configuredSources.map((s) => api.getLibrary(type, s).catch(() => [] as ContentItem[])),
+        );
+        return results.flat();
+      }
+      return api.getLibrary(type, source);
+    },
   });
 
   const items = useMemo(() => {
@@ -93,6 +113,7 @@ export default function Library() {
         <Pill on={type === 'show'} onClick={() => setType('show')}>TV Shows</Pill>
         <Pill on={type === 'movie'} onClick={() => setType('movie')}>Movies</Pill>
         <span className="mx-3 w-px h-6 bg-card-border" />
+        <Pill on={source === 'all'} onClick={() => setSource('all')}>All</Pill>
         {(['plex', 'jellyfin', 'emby'] as const).map((s) => (
           <Pill
             key={s}

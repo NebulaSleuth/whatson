@@ -41,8 +41,11 @@ end sub
 sub applyTextFont()
     size = m.top.textFontSize
     if size = invalid or size <= 0 then return
+    ' font:SystemFontFile is the sizeable variant. The preset
+    ' MediumBoldSystemFont bundles its own size and ignores overrides,
+    ' which is why the earlier attempt produced blank labels.
     font = CreateObject("roSGNode", "Font")
-    font.uri = "font:MediumBoldSystemFont"
+    font.uri = "font:SystemFontFile"
     font.size = size
     m.textLabel.font = font
 end sub

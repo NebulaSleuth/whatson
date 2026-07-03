@@ -189,13 +189,13 @@
                 <TabButton id="libraryTypeMovie" label="Movies" hideIcon="true" focusable="true" />
             </LayoutGroup>
 
-            <!-- Source filter: All / Plex / Jellyfin / Emby. Mirrors
-                 the web Library page pills. "All" unions every
-                 configured library server; the other pills filter to
-                 a single source. -->
+            <!-- Source filter: All / Plex / Jellyfin / Emby. Sits on
+                 the same row as the type toggle, matching mobile/web.
+                 "All" unions every configured library server; the
+                 other pills filter to a single source. -->
             <LayoutGroup
                 id="librarySourceToggle"
-                translation="[80, 200]"
+                translation="[600, 110]"
                 layoutDirection="horiz"
                 itemSpacings="[8]">
                 <TabButton id="librarySourceAll"      label="All"      hideIcon="true" buttonWidth="140" focusable="true" />
@@ -211,7 +211,7 @@
                  home page's Ready to Watch shelf uses. -->
             <LayoutGroup
                 id="librarySortToggle"
-                translation="[80, 260]"
+                translation="[80, 210]"
                 layoutDirection="horiz"
                 itemSpacings="[8]">
                 <TabButton id="librarySortAlpha"   label="A-Z"            hideIcon="true" buttonWidth="180" textFontSize="20" focusable="true" />
@@ -224,7 +224,7 @@
             <Label
                 id="libraryStatus"
                 text="Loading library…"
-                translation="[80, 350]"
+                translation="[80, 310]"
                 color="0xb0b0b0ff" />
 
             <!-- itemComponentName tells MarkupGrid which custom component
@@ -234,7 +234,7 @@
             <MarkupGrid
                 id="libraryGrid"
                 itemComponentName="PosterItem"
-                translation="[80, 350]"
+                translation="[80, 310]"
                 itemSize="[220, 400]"
                 itemSpacing="[16, 24]"
                 numRows="2"

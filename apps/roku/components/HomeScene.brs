@@ -3121,7 +3121,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
 
     ' Same fallback for the Library TV/Movies toggle — also a
-    ' LayoutGroup of two TabButtons.
+    ' LayoutGroup of two TabButtons. Right from Movies bridges into
+    ' the source pills (they share the same row on Library now).
     if (key = "left" or key = "right") and m.libraryTypeToggle.isInFocusChain()
         if key = "right" and m.libraryTypeShow.isInFocusChain()
             m.libraryTypeMovie.setFocus(true)
@@ -3129,6 +3130,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
         if key = "left" and m.libraryTypeMovie.isInFocusChain()
             m.libraryTypeShow.setFocus(true)
+            return true
+        end if
+        if key = "right" and m.libraryTypeMovie.isInFocusChain()
+            focusActiveLibrarySource()
             return true
         end if
     end if
@@ -3153,7 +3158,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
     end if
 
-    ' Library source toggle (All / Plex / Jellyfin / Emby).
+    ' Library source toggle (All / Plex / Jellyfin / Emby). Left from
+    ' the leftmost pill bridges back into the type toggle.
     if (key = "left" or key = "right") and m.librarySourceToggle.isInFocusChain()
         order = [m.librarySourceAll, m.librarySourcePlex, m.librarySourceJellyfin, m.librarySourceEmby]
         currentIdx = -1
@@ -3166,6 +3172,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
             newIdx = currentIdx + delta
             if newIdx >= 0 and newIdx < order.Count()
                 order[newIdx].setFocus(true)
+                return true
+            end if
+            if key = "left" and currentIdx = 0
+                focusActiveLibraryType()
                 return true
             end if
         end if
@@ -3314,17 +3324,15 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 end if
             end if
         else if m.currentView = "library"
-            ' Library up chain: grid → sort → source → type → tabBar
-            if m.libraryTypeToggle.isInFocusChain()
+            ' Library up chain: grid → sort → (type/source header row) → tabBar
+            if m.libraryTypeToggle.isInFocusChain() or m.librarySourceToggle.isInFocusChain()
                 focusActiveTab()
                 return true
             end if
-            if m.librarySourceToggle.isInFocusChain()
-                focusActiveLibraryType()
-                return true
-            end if
             if m.librarySortToggle.isInFocusChain()
-                focusActiveLibrarySource()
+                ' Type + source share a row now — return to type as the
+                ' default anchor; user can arrow right to reach source.
+                focusActiveLibraryType()
                 return true
             end if
             ' Grid handles row 1+ → row 0 internally; the up event
@@ -3420,12 +3428,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 return true
             end if
         end if
-        ' Library down chain: tabBar → type → source → sort → grid.
-        if m.libraryTypeToggle.isInFocusChain()
-            focusActiveLibrarySource()
-            return true
-        end if
-        if m.librarySourceToggle.isInFocusChain()
+        ' Library down chain: tabBar → (type/source header) → sort → grid.
+        if m.libraryTypeToggle.isInFocusChain() or m.librarySourceToggle.isInFocusChain()
             focusActiveLibrarySort()
             return true
         end if

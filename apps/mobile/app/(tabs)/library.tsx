@@ -14,6 +14,7 @@ import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
+type LibrarySource = 'all' | 'plex' | 'jellyfin' | 'emby';
 type SortField = 'alpha' | 'added' | 'release' | 'watched' | 'ready';
 type SortDir = 'asc' | 'desc';
 
@@ -126,6 +127,7 @@ export default function LibraryScreen() {
     initialSort === 'added' || initialSort === 'watched' || initialSort === 'ready' ? 'desc' : 'asc';
 
   const [type, setType] = useState<LibraryType>(initialType);
+  const [source, setSource] = useState<LibrarySource>('all');
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
   const [sortField, setSortField] = useState<SortField>(initialSort);
   const [sortDir, setSortDir] = useState<SortDir>(initialSortDir);
@@ -166,17 +168,24 @@ export default function LibraryScreen() {
     return list.length > 0 ? list : ['plex'];
   }, [providers]);
 
+  // When source === 'all' we fan out to every configured server and
+  // union. Specific sources hit that single server. Matches web/Roku.
+  const effectiveSources = useMemo(
+    () => (source === 'all' ? librarySources : [source]),
+    [source, librarySources],
+  );
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['library', type, librarySources.join(',')],
+    queryKey: ['library', type, source, effectiveSources.join(',')],
     queryFn: async () => {
       const results = await Promise.all(
-        librarySources.map((src) =>
+        effectiveSources.map((src) =>
           api.getLibrary(type, src).catch(() => [] as ContentItem[]),
         ),
       );
       return results.flat();
     },
-    enabled: librarySources.length > 0,
+    enabled: effectiveSources.length > 0,
   });
 
   const items = useMemo(() => {
@@ -288,6 +297,34 @@ export default function LibraryScreen() {
             Movies
           </Text>
         </TVPressable>
+        <View style={styles.toggleDivider} />
+        {(['all', 'plex', 'jellyfin', 'emby'] as const).map((s) => {
+          // Grey out sources that aren't configured (except 'all', which
+          // is always available). Providers query may not have resolved
+          // yet on first render — treat undefined as enabled.
+          const disabled = s !== 'all' && providers ? !providers[s] : false;
+          return (
+            <TVPressable
+              key={s}
+              style={[
+                styles.toggleChip,
+                source === s && styles.toggleChipActive,
+                disabled && styles.toggleChipDisabled,
+              ]}
+              onPress={() => { if (!disabled) setSource(s); }}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  source === s && styles.toggleTextActive,
+                  disabled && styles.toggleTextDisabled,
+                ]}
+              >
+                {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+              </Text>
+            </TVPressable>
+          );
+        })}
       </View>
 
       <View style={styles.sortRow}>
@@ -375,9 +412,11 @@ const styles = StyleSheet.create({
   },
   toggleRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
     marginBottom: spacing.lg,
+    alignItems: 'center',
   },
   toggleChip: {
     paddingHorizontal: spacing.xl,
@@ -391,6 +430,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  toggleChipDisabled: {
+    opacity: 0.3,
+  },
   toggleText: {
     fontSize: isTV ? 16 : 14,
     fontWeight: '600',
@@ -398,6 +440,16 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: '#000',
+  },
+  toggleTextDisabled: {
+    color: colors.textMuted,
+  },
+  toggleDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: colors.cardBorder,
+    marginHorizontal: spacing.xs,
+    alignSelf: 'center',
   },
   sortRow: {
     flexDirection: 'row',
