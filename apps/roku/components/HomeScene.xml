@@ -204,10 +204,27 @@
                 <TabButton id="librarySourceEmby"     label="Emby"     hideIcon="true" buttonWidth="140" focusable="true" />
             </LayoutGroup>
 
+            <!-- Sort chips. Matches the mobile Library sortRow: five
+                 options that also flip direction on repeat press.
+                 "Ready to Watch" filters to unwatched + no in-progress
+                 position and sorts by date added desc — same rule the
+                 home page's Ready to Watch shelf uses. -->
+            <LayoutGroup
+                id="librarySortToggle"
+                translation="[80, 260]"
+                layoutDirection="horiz"
+                itemSpacings="[8]">
+                <TabButton id="librarySortAlpha"   label="A-Z"           hideIcon="true" buttonWidth="140" focusable="true" />
+                <TabButton id="librarySortAdded"   label="Date Added"    hideIcon="true" buttonWidth="180" focusable="true" />
+                <TabButton id="librarySortRelease" label="Release Year"  hideIcon="true" buttonWidth="180" focusable="true" />
+                <TabButton id="librarySortWatched" label="Last Watched"  hideIcon="true" buttonWidth="180" focusable="true" />
+                <TabButton id="librarySortReady"   label="Ready to Watch" hideIcon="true" buttonWidth="200" focusable="true" />
+            </LayoutGroup>
+
             <Label
                 id="libraryStatus"
                 text="Loading library…"
-                translation="[80, 290]"
+                translation="[80, 350]"
                 color="0xb0b0b0ff" />
 
             <!-- itemComponentName tells MarkupGrid which custom component
@@ -217,7 +234,7 @@
             <MarkupGrid
                 id="libraryGrid"
                 itemComponentName="PosterItem"
-                translation="[80, 290]"
+                translation="[80, 350]"
                 itemSize="[220, 400]"
                 itemSpacing="[16, 24]"
                 numRows="2"

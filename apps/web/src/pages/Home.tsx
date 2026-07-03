@@ -1,9 +1,26 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ContentItem } from '@whatson/shared';
+import type { ContentItem, ContentSection } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
 import { DetailSheet } from '@/components/DetailSheet';
+
+/**
+ * The backend aggregator emits Ready-to-Watch shelves with fixed ids;
+ * we tack on a viewAllRoute here so <Shelf> renders the trailing tile
+ * that jumps into the Library filtered to the same list.
+ */
+function annotateReadyToWatch(sections: ContentSection[]): ContentSection[] {
+  return sections.map((s) => {
+    if (s.id === 'tv-ready') {
+      return { ...s, viewAllRoute: '/library?type=show&sort=ready' };
+    }
+    if (s.id === 'movies-ready') {
+      return { ...s, viewAllRoute: '/library?type=movie&sort=ready' };
+    }
+    return s;
+  });
+}
 
 export default function Home() {
   const [selected, setSelected] = useState<ContentItem | null>(null);
@@ -58,7 +75,7 @@ export default function Home() {
 
   return (
     <div className="py-6">
-      {sections.map((s) => (
+      {annotateReadyToWatch(sections).map((s) => (
         <Shelf key={s.id} section={s} onItemClick={setSelected} />
       ))}
       {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}

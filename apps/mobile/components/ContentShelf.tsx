@@ -2,8 +2,16 @@ import React, { useRef, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, findNodeHandle } from 'react-native';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { ContentCard } from './ContentCard';
+import { ViewAllCard } from './ViewAllCard';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 import { isTV } from '@/lib/tv';
+
+/**
+ * Sentinel id used by ContentShelf to append a trailing "View All" tile
+ * when the section carries a viewAllRoute. Chosen so it can't collide
+ * with any real ContentItem.id (which are always source-prefixed).
+ */
+const VIEW_ALL_SENTINEL = '__view-all__';
 
 interface ContentShelfProps {
   section: ContentSection;
@@ -53,30 +61,50 @@ export const ContentShelf = React.memo(function ContentShelf({
   // Deduplicate items by id to prevent "two children with the same key" errors
   const items = useMemo(() => {
     const seen = new Set<string>();
-    return section.items.filter((item) => {
+    const list = section.items.filter((item) => {
       if (seen.has(item.id)) return false;
       seen.add(item.id);
       return true;
     });
-  }, [section.items]);
+    // Append the View All sentinel when the section has a route set —
+    // renderItem swaps in a ViewAllCard for this id. Cast keeps the
+    // FlatList data type ContentItem; the real ContentItem fields
+    // aren't read for the sentinel.
+    if (section.viewAllRoute) {
+      list.push({ id: VIEW_ALL_SENTINEL } as ContentItem);
+    }
+    return list;
+  }, [section.items, section.viewAllRoute]);
 
   const itemCount = items.length;
 
-  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => (
-    <ContentCard
-      item={item}
-      onPress={onItemPress}
-      onMarkWatched={onRefresh}
-      onTVFocus={() => handleCardFocus(index)}
-      onTVBlur={handleCardBlur}
-      isFirstInRow={index === 0}
-      isLastInRow={index === itemCount - 1}
-      tvRef={index === 0 ? handleFirstCardMounted : undefined}
-      nextFocusUp={aboveFirstCardId}
-      nextFocusDown={belowFirstCardId}
-      hasTVPreferredFocus={index === 0 && focusFirstCard}
-    />
-  ), [onItemPress, onRefresh, handleCardFocus, handleCardBlur, itemCount, handleFirstCardMounted, aboveFirstCardId, belowFirstCardId, focusFirstCard]);
+  const renderItem = useCallback(({ item, index }: { item: ContentItem; index: number }) => {
+    if (item.id === VIEW_ALL_SENTINEL && section.viewAllRoute) {
+      return (
+        <ViewAllCard
+          route={section.viewAllRoute}
+          isLastInRow={index === itemCount - 1}
+          nextFocusUp={aboveFirstCardId}
+          nextFocusDown={belowFirstCardId}
+        />
+      );
+    }
+    return (
+      <ContentCard
+        item={item}
+        onPress={onItemPress}
+        onMarkWatched={onRefresh}
+        onTVFocus={() => handleCardFocus(index)}
+        onTVBlur={handleCardBlur}
+        isFirstInRow={index === 0}
+        isLastInRow={index === itemCount - 1}
+        tvRef={index === 0 ? handleFirstCardMounted : undefined}
+        nextFocusUp={aboveFirstCardId}
+        nextFocusDown={belowFirstCardId}
+        hasTVPreferredFocus={index === 0 && focusFirstCard}
+      />
+    );
+  }, [onItemPress, onRefresh, handleCardFocus, handleCardBlur, itemCount, handleFirstCardMounted, aboveFirstCardId, belowFirstCardId, focusFirstCard, section.viewAllRoute]);
 
   return (
     <View style={[styles.container, isTV && tvContainerStyle]}>

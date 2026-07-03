@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { View, Text, FlatList, StyleSheet, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
 import { DetailSheet } from '@/components/DetailSheet';
@@ -14,7 +14,7 @@ import { useTVBackHandler } from '@/lib/useBackHandler';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 
 type LibraryType = 'show' | 'movie';
-type SortField = 'alpha' | 'added' | 'release' | 'watched';
+type SortField = 'alpha' | 'added' | 'release' | 'watched' | 'ready';
 type SortDir = 'asc' | 'desc';
 
 const SORT_LABELS: Record<SortField, string> = {
@@ -22,6 +22,7 @@ const SORT_LABELS: Record<SortField, string> = {
   added: 'Date Added',
   release: 'Release Year',
   watched: 'Last Watched',
+  ready: 'Ready to Watch',
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -108,10 +109,26 @@ const cardStyles = StyleSheet.create({
 });
 
 export default function LibraryScreen() {
-  const [type, setType] = useState<LibraryType>('show');
+  // ContentShelf's View All tiles deep-link into this screen with
+  // ?type=show|movie&sort=<field>. Seed the initial state from the
+  // query params so those tiles land the user on the intended view.
+  const params = useLocalSearchParams<{ type?: string; sort?: string }>();
+  const initialType: LibraryType = params.type === 'movie' ? 'movie' : 'show';
+  const initialSort: SortField =
+    params.sort === 'added' ||
+    params.sort === 'release' ||
+    params.sort === 'watched' ||
+    params.sort === 'ready' ||
+    params.sort === 'alpha'
+      ? params.sort
+      : 'alpha';
+  const initialSortDir: SortDir =
+    initialSort === 'added' || initialSort === 'watched' || initialSort === 'ready' ? 'desc' : 'asc';
+
+  const [type, setType] = useState<LibraryType>(initialType);
   const [selectedItem, setSelectedItem] = useState<ContentItem | null>(null);
-  const [sortField, setSortField] = useState<SortField>('alpha');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortField, setSortField] = useState<SortField>(initialSort);
+  const [sortDir, setSortDir] = useState<SortDir>(initialSortDir);
   const listRef = useRef<FlatList>(null);
   const currentRowRef = useRef(0);
   const [focusTrigger, setFocusTrigger] = useState(0);
@@ -164,7 +181,13 @@ export default function LibraryScreen() {
 
   const items = useMemo(() => {
     const raw = data || [];
-    const sorted = [...raw].sort((a, b) => {
+    // "Ready to Watch" isn't a sort — it's a filter (drop watched
+    // items + items already in Continue Watching) followed by a
+    // date-added ordering. Matches the home page's shelf definition.
+    const source = sortField === 'ready'
+      ? raw.filter((i) => !i.progress?.watched && (i.progress?.percentage ?? 0) === 0)
+      : raw;
+    const sorted = [...source].sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
         case 'alpha': {
@@ -181,6 +204,9 @@ export default function LibraryScreen() {
           break;
         case 'watched':
           cmp = new Date(a.lastViewedAt || 0).getTime() - new Date(b.lastViewedAt || 0).getTime();
+          break;
+        case 'ready':
+          cmp = new Date(a.addedAt || 0).getTime() - new Date(b.addedAt || 0).getTime();
           break;
       }
       return sortDir === 'desc' ? -cmp : cmp;
@@ -274,7 +300,7 @@ export default function LibraryScreen() {
                 setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
               } else {
                 setSortField(field);
-                setSortDir(field === 'added' || field === 'watched' ? 'desc' : 'asc');
+                setSortDir(field === 'added' || field === 'watched' || field === 'ready' ? 'desc' : 'asc');
               }
               listRef.current?.scrollToOffset({ offset: 0, animated: false });
               currentRowRef.current = 0;

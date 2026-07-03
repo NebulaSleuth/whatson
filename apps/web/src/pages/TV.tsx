@@ -37,10 +37,17 @@ export default function TV() {
     const out: ContentSection[] = [];
     const dl = downloading.data ?? [];
     if (dl.length > 0) out.push({ id: 'tv-downloading', title: 'Downloading', type: 'tv', items: dl, sortOrder: 0 });
-    const ready = (recent.data ?? []).filter((i) => !i.progress.watched);
-    if (ready.length > 0) out.push({ id: 'tv-ready', title: 'Ready to Watch', type: 'tv', items: ready, sortOrder: 1 });
+    // "Ready to Watch" replaced by "Recently Downloaded" — the shelf now
+    // shows every recently-added item regardless of watched status.
     const recentDl = recentlyDownloaded.data ?? [];
-    if (recentDl.length > 0) out.push({ id: 'tv-recently-downloaded', title: 'Recently Downloaded', type: 'tv', items: recentDl, sortOrder: 2 });
+    if (recentDl.length > 0) out.push({
+      id: 'tv-recently-downloaded',
+      title: 'Recently Downloaded',
+      type: 'tv',
+      items: recentDl,
+      sortOrder: 1,
+      viewAllRoute: '/library?type=show&sort=added',
+    });
     const coming = upcoming.data ?? [];
     if (coming.length > 0) out.push({ id: 'tv-coming', title: 'Coming Soon', type: 'tv', items: coming, sortOrder: 3 });
     const trackedItems = (tracked.data ?? []).slice().sort((a, b) => a.title.localeCompare(b.title)).map(trackedShowToContentItem);

@@ -57,6 +57,19 @@ export interface ContentSection {
   type: SectionType;
   items: ContentItem[];
   sortOrder: number;
+  /**
+   * Optional client-side hint: when set, shelf renderers append a
+   * "View All" tile at the end of the row that navigates to this
+   * route. Backend never sets it — clients apply it locally where
+   * they want the tile (e.g. Ready to Watch, Recently Downloaded).
+   *
+   * Format is intentionally free-form so each platform interprets
+   * it in its own idiom (Expo Router path, React Router path, or
+   * a Roku view identifier).
+   */
+  viewAllRoute?: string;
+  /** Optional sort hint appended to viewAllRoute as a query param. */
+  viewAllSort?: string;
 }
 
 // ── API Response Models ──

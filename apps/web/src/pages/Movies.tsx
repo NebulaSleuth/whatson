@@ -16,10 +16,17 @@ export default function Movies() {
     const out: ContentSection[] = [];
     const dl = downloading.data ?? [];
     if (dl.length > 0) out.push({ id: 'mv-downloading', title: 'Downloading', type: 'movie', items: dl, sortOrder: 0 });
-    const ready = (recent.data ?? []).filter((i) => !i.progress.watched);
-    if (ready.length > 0) out.push({ id: 'mv-ready', title: 'Ready to Watch', type: 'movie', items: ready, sortOrder: 1 });
+    // "Ready to Watch" replaced by "Recently Downloaded" — the shelf now
+    // shows every recently-added item regardless of watched status.
     const recentDl = recentlyDownloaded.data ?? [];
-    if (recentDl.length > 0) out.push({ id: 'mv-recently-downloaded', title: 'Recently Downloaded', type: 'movie', items: recentDl, sortOrder: 2 });
+    if (recentDl.length > 0) out.push({
+      id: 'mv-recently-downloaded',
+      title: 'Recently Downloaded',
+      type: 'movie',
+      items: recentDl,
+      sortOrder: 1,
+      viewAllRoute: '/library?type=movie&sort=added',
+    });
     const coming = upcoming.data ?? [];
     if (coming.length > 0) out.push({ id: 'mv-coming', title: 'Coming Soon', type: 'movie', items: coming, sortOrder: 3 });
     return out;

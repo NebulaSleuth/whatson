@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { ContentItem, ContentSection } from '@whatson/shared';
 import { PosterCard } from './PosterCard';
 
@@ -62,6 +63,15 @@ export function Shelf({ section, onItemClick }: Props) {
         {section.items.map((item) => (
           <PosterCard key={item.id} item={item} onClick={onItemClick} />
         ))}
+        {section.viewAllRoute && (
+          <Link
+            to={section.viewAllRoute}
+            className="flex-shrink-0 w-[180px] h-[270px] rounded bg-surface hover:bg-surface-hover border border-card-border flex flex-col items-center justify-center gap-3 text-text-secondary hover:text-primary transition-colors focus:outline-none focus:border-primary"
+          >
+            <span className="text-6xl font-light">→</span>
+            <span className="text-sm font-semibold">View All</span>
+          </Link>
+        )}
       </div>
       {!atStart && <ScrollButton direction="left" onClick={() => scrollBy(-1)} />}
       {!atEnd && <ScrollButton direction="right" onClick={() => scrollBy(1)} />}

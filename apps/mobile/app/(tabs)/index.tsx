@@ -16,6 +16,24 @@ import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { colors, spacing, typography } from '@/constants/theme';
 
+/**
+ * Attach viewAllRoute to the aggregator's Ready-to-Watch shelves so
+ * ContentShelf appends the trailing "View All" tile. The backend
+ * doesn't set the field; it's a UX choice we apply per-client to the
+ * shelves we know about by section id.
+ */
+function annotateReadyToWatch(sections: ContentSection[]): ContentSection[] {
+  return sections.map((s) => {
+    if (s.id === 'tv-ready') {
+      return { ...s, viewAllRoute: '/(tabs)/library?type=show&sort=ready' };
+    }
+    if (s.id === 'movies-ready') {
+      return { ...s, viewAllRoute: '/(tabs)/library?type=movie&sort=ready' };
+    }
+    return s;
+  });
+}
+
 export default function HomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const shelfListRef = useRef<ShelfListHandle>(null);
@@ -152,7 +170,7 @@ export default function HomeScreen() {
         {isReady && !isLoading && !error && data?.sections && (
           <ShelfList
             ref={shelfListRef}
-            sections={data.sections}
+            sections={annotateReadyToWatch(data.sections)}
             onItemPress={handleItemPress}
             onRefresh={() => refetch()}
             tabBarNodeId={tabNodeId}

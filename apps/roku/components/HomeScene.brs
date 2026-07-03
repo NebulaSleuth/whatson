@@ -110,6 +110,12 @@ sub init()
     m.librarySourcePlex = m.top.findNode("librarySourcePlex")
     m.librarySourceJellyfin = m.top.findNode("librarySourceJellyfin")
     m.librarySourceEmby = m.top.findNode("librarySourceEmby")
+    m.librarySortToggle = m.top.findNode("librarySortToggle")
+    m.librarySortAlpha = m.top.findNode("librarySortAlpha")
+    m.librarySortAdded = m.top.findNode("librarySortAdded")
+    m.librarySortRelease = m.top.findNode("librarySortRelease")
+    m.librarySortWatched = m.top.findNode("librarySortWatched")
+    m.librarySortReady = m.top.findNode("librarySortReady")
     m.libraryStatus = m.top.findNode("libraryStatus")
     m.libraryGrid = m.top.findNode("libraryGrid")
 
@@ -242,6 +248,13 @@ sub init()
     ' the mobile library tab default ("show").
     m.libraryType = "show"
     m.libraryCache = { show: invalid, movie: invalid }
+    ' Library sort/dir. Matches mobile/web defaults. When a View All
+    ' tile routes here it stamps m.libraryPendingType / Sort and
+    ' showView("library") applies them before render.
+    m.librarySort = "alpha"
+    m.librarySortDir = "asc"
+    m.libraryPendingType = invalid
+    m.libraryPendingSort = invalid
     m.libraryFetchPending = 0
     m.libraryFetchResults = invalid
     ' Source filter for the library grid. "all" unions every configured
@@ -569,6 +582,14 @@ sub init()
     m.librarySourcePlex.observeField("buttonSelected", "onLibrarySourceSelected")
     m.librarySourceJellyfin.observeField("buttonSelected", "onLibrarySourceSelected")
     m.librarySourceEmby.observeField("buttonSelected", "onLibrarySourceSelected")
+    ' Library sort chips — default A-Z asc. Each chip toggles the
+    ' direction on repeat press (mirrors mobile).
+    m.librarySortAlpha.selected = true
+    m.librarySortAlpha.observeField("buttonSelected", "onLibrarySortSelected")
+    m.librarySortAdded.observeField("buttonSelected", "onLibrarySortSelected")
+    m.librarySortRelease.observeField("buttonSelected", "onLibrarySortSelected")
+    m.librarySortWatched.observeField("buttonSelected", "onLibrarySortSelected")
+    m.librarySortReady.observeField("buttonSelected", "onLibrarySortSelected")
     m.libraryTypeShow.selected = true
     m.libraryTypeShow.nextFocusRight = m.libraryTypeMovie
     m.libraryTypeMovie.nextFocusLeft = m.libraryTypeShow
@@ -1013,6 +1034,20 @@ sub buildHomeRows()
                     attachItemFields(child, item)
                 end for
             end if
+            ' Append View All tile on the aggregator's Ready-to-Watch
+            ' shelves (fixed backend section ids). Jumps to Library
+            ' with the same ordering as the shelf.
+            viewAllRoute = ""
+            if section.id = "tv-ready" then viewAllRoute = "library:show:ready"
+            if section.id = "movies-ready" then viewAllRoute = "library:movie:ready"
+            if viewAllRoute <> ""
+                viewAll = row.createChild("ContentNode")
+                viewAll.title = "View All"
+                viewAll.AddField("itemViewAllRoute", "string", false)
+                viewAll.itemViewAllRoute = viewAllRoute
+                viewAll.AddField("itemSource", "string", false)
+                viewAll.itemSource = "view-all"
+            end if
             rowSizes.push([220, 330])
             rowHeights.push(libraryRowHeight)
         end for
@@ -1116,6 +1151,12 @@ sub onRowItemSelected()
     if row = invalid then return
     node = row.getChild(colIdx)
     if node = invalid then return
+
+    ' Trailing View All tile — jump into the Library page.
+    if node.itemViewAllRoute <> invalid and node.itemViewAllRoute <> ""
+        routeToViewAll(node.itemViewAllRoute)
+        return
+    end if
 
     m.detailReturnTo = "home"
     populateDetail(node)
@@ -1396,16 +1437,51 @@ sub renderLibrary(items as object)
     ' From here on, "items" refers to the filtered slice.
     items = filtered
 
-    ' Sort alphabetically by display title (showTitle for episodes,
-    ' falling back to title) — matches the mobile library default sort.
+    ' "Ready to Watch" sort is filter-plus-order: drop watched items
+    ' AND items with a mid-playback position, then sort by addedAt
+    ' desc. Matches the home page's Ready to Watch shelf definition.
+    if m.librarySort = "ready"
+        readyOnly = []
+        for each it in items
+            watched = false
+            pct = 0
+            if it.progress <> invalid
+                if it.progress.watched <> invalid then watched = it.progress.watched
+                if it.progress.percentage <> invalid then pct = it.progress.percentage
+            end if
+            if not watched and pct = 0 then readyOnly.Push(it)
+        end for
+        items = readyOnly
+    end if
+
+    ' Build (sortKey, data) tuples per the active sort field, then
+    ' sort. All non-alpha sorts key on numbers (dates as unix seconds,
+    ' years as integers) so SortBy orders them naturally.
     sortable = []
     for each it in items
-        title = ""
-        if it.showTitle <> invalid and it.showTitle <> "" then title = it.showTitle
-        if title = "" and it.title <> invalid then title = it.title
-        sortable.Push({ sortKey: lcase(title), data: it })
+        key = 0
+        if m.librarySort = "alpha"
+            title = ""
+            if it.showTitle <> invalid and it.showTitle <> "" then title = it.showTitle
+            if title = "" and it.title <> invalid then title = it.title
+            sortable.Push({ sortKey: lcase(title), data: it })
+        else if m.librarySort = "added" or m.librarySort = "ready"
+            key = isoToSeconds(stringField(it, "addedAt"))
+            sortable.Push({ sortKey: key, data: it })
+        else if m.librarySort = "release"
+            if it.year <> invalid then key = it.year
+            sortable.Push({ sortKey: key, data: it })
+        else if m.librarySort = "watched"
+            key = isoToSeconds(stringField(it, "lastViewedAt"))
+            sortable.Push({ sortKey: key, data: it })
+        else
+            title = ""
+            if it.title <> invalid then title = it.title
+            sortable.Push({ sortKey: lcase(title), data: it })
+        end if
     end for
     sortable.SortBy("sortKey")
+    if m.librarySortDir = "desc" then sortable.Reverse()
 
     rootNode = CreateObject("roSGNode", "ContentNode")
     for each entry in sortable
@@ -1424,6 +1500,76 @@ sub renderLibrary(items as object)
     m.libraryGrid.visible = true
     m.libraryStatus.visible = false
     if m.currentView = "library" then m.libraryGrid.setFocus(true)
+end sub
+
+' Parse an ISO 8601 date string into unix seconds. Returns 0 for
+' anything malformed or empty so sort keys stay numeric.
+function isoToSeconds(iso as string) as double
+    if iso = invalid or iso = "" then return 0
+    dt = CreateObject("roDateTime")
+    dt.FromISO8601String(iso)
+    return dt.AsSeconds()
+end function
+
+' Apply a pending type/sort request stamped by routeToViewAll and
+' load / re-render as needed. Called from showView("library").
+sub applyLibraryPending()
+    if m.libraryPendingType <> invalid and m.libraryPendingType <> "" and m.libraryPendingType <> m.libraryType
+        m.libraryType = m.libraryPendingType
+        m.libraryTypeShow.selected = (m.libraryType = "show")
+        m.libraryTypeMovie.selected = (m.libraryType = "movie")
+    end if
+    if m.libraryPendingSort <> invalid and m.libraryPendingSort <> ""
+        m.librarySort = m.libraryPendingSort
+        if m.librarySort = "added" or m.librarySort = "watched" or m.librarySort = "ready"
+            m.librarySortDir = "desc"
+        else
+            m.librarySortDir = "asc"
+        end if
+        m.librarySortAlpha.selected = (m.librarySort = "alpha")
+        m.librarySortAdded.selected = (m.librarySort = "added")
+        m.librarySortRelease.selected = (m.librarySort = "release")
+        m.librarySortWatched.selected = (m.librarySort = "watched")
+        m.librarySortReady.selected = (m.librarySort = "ready")
+    end if
+    m.libraryPendingType = invalid
+    m.libraryPendingSort = invalid
+    ensureLibraryLoaded()
+end sub
+
+' Sort chip handler. Repeat press on the active field toggles the
+' direction; a fresh field switch resets direction to what mobile /
+' web use as their default for that field.
+sub onLibrarySortSelected()
+    field = ""
+    if m.librarySortAlpha.buttonSelected = true then field = "alpha"
+    if m.librarySortAdded.buttonSelected = true then field = "added"
+    if m.librarySortRelease.buttonSelected = true then field = "release"
+    if m.librarySortWatched.buttonSelected = true then field = "watched"
+    if m.librarySortReady.buttonSelected = true then field = "ready"
+    if field = "" then return
+
+    if field = m.librarySort
+        if m.librarySortDir = "asc" then m.librarySortDir = "desc" else m.librarySortDir = "asc"
+    else
+        m.librarySort = field
+        if field = "added" or field = "watched" or field = "ready"
+            m.librarySortDir = "desc"
+        else
+            m.librarySortDir = "asc"
+        end if
+    end if
+
+    ' Repaint the active chip so only one carries the .selected pip.
+    m.librarySortAlpha.selected = (m.librarySort = "alpha")
+    m.librarySortAdded.selected = (m.librarySort = "added")
+    m.librarySortRelease.selected = (m.librarySort = "release")
+    m.librarySortWatched.selected = (m.librarySort = "watched")
+    m.librarySortReady.selected = (m.librarySort = "ready")
+
+    ' Re-render the current cached dataset with the new sort/filter.
+    cached = m.libraryCache[m.libraryType]
+    if cached <> invalid then renderLibrary(cached)
 end sub
 
 ' ─── TV Shows tab ─────────────────────────────────────────────────
@@ -1450,10 +1596,12 @@ sub fetchTvAll()
     m.tvStatus.visible = true
     m.tvRowList.visible = false
     m.tvFetchPending = 4
-    m.tvFetchData = { downloading: invalid, recent: invalid, upcoming: invalid, tracked: invalid }
+    m.tvFetchData = { downloading: invalid, recentlyDownloaded: invalid, upcoming: invalid, tracked: invalid }
 
     m.tvDownloadingTask = startTvFetch("/api/tv/downloading", "onTvFetchResponse")
-    m.tvRecentTask = startTvFetch("/api/tv/recent", "onTvFetchResponse")
+    ' /tv/recently-downloaded replaces /tv/recent so the shelf shows
+    ' every recently-added item regardless of watched status.
+    m.tvRecentlyDownloadedTask = startTvFetch("/api/tv/recently-downloaded", "onTvFetchResponse")
     m.tvUpcomingTask = startTvFetch("/api/tv/upcoming?days=7", "onTvFetchResponse")
     m.tvTrackedTask = startTvFetch("/api/tracked?all=true&type=tv", "onTvFetchResponse")
 end sub
@@ -1480,7 +1628,7 @@ sub onTvFetchResponse(event as object)
     ' don't depend on roSGNode object-identity semantics.
     url = task.url
     if url = m.tvDownloadingTask.url then m.tvFetchData.downloading = data
-    if url = m.tvRecentTask.url then m.tvFetchData.recent = data
+    if url = m.tvRecentlyDownloadedTask.url then m.tvFetchData.recentlyDownloaded = data
     if url = m.tvUpcomingTask.url then m.tvFetchData.upcoming = data
     if url = m.tvTrackedTask.url then m.tvFetchData.tracked = data
 
@@ -1494,20 +1642,12 @@ end sub
 sub buildTvRows()
     if m.tvCache = invalid then return
 
-    ' Filter Ready to Watch to unwatched only — mirrors mobile's
-    '   recent?.filter((i) => !i.progress.watched)
-    readyItems = []
-    if m.tvCache.recent <> invalid
-        for each item in m.tvCache.recent
-            watched = false
-            if item.progress <> invalid and item.progress.watched <> invalid then watched = item.progress.watched
-            if not watched then readyItems.Push(item)
-        end for
-    end if
-
     rows = CreateObject("roSGNode", "ContentNode")
     appendShelfIfNonEmpty(rows, "Downloading", m.tvCache.downloading, false)
-    appendShelfIfNonEmpty(rows, "Ready to Watch", readyItems, false)
+    ' "Ready to Watch" replaced by "Recently Downloaded" (all recently
+    ' added, ignoring watched status). The View All tile jumps into
+    ' the Library sorted by Date Added.
+    appendShelfWithViewAll(rows, "Recently Downloaded", m.tvCache.recentlyDownloaded, false, "library:show:added")
     appendShelfIfNonEmpty(rows, "Coming Soon", m.tvCache.upcoming, false)
     appendShelfIfNonEmpty(rows, "Tracked", m.tvCache.tracked, true)
 
@@ -1533,6 +1673,13 @@ sub onTvRowItemSelected()
     if row = invalid then return
     node = row.getChild(sel[1])
     if node = invalid then return
+
+    ' Trailing View All tile — jump into the Library page with the
+    ' preselected type/sort instead of opening a detail view.
+    if node.itemViewAllRoute <> invalid and node.itemViewAllRoute <> ""
+        routeToViewAll(node.itemViewAllRoute)
+        return
+    end if
 
     m.detailReturnTo = "tv"
     populateDetail(node)
@@ -1561,10 +1708,12 @@ sub fetchMoviesAll()
     m.moviesStatus.visible = true
     m.moviesRowList.visible = false
     m.moviesFetchPending = 3
-    m.moviesFetchData = { downloading: invalid, recent: invalid, upcoming: invalid }
+    m.moviesFetchData = { downloading: invalid, recentlyDownloaded: invalid, upcoming: invalid }
 
     m.moviesDownloadingTask = startMoviesFetch("/api/movies/downloading")
-    m.moviesRecentTask = startMoviesFetch("/api/movies/recent")
+    ' /movies/recently-downloaded replaces /movies/recent so the shelf
+    ' shows every recently-added item regardless of watched status.
+    m.moviesRecentlyDownloadedTask = startMoviesFetch("/api/movies/recently-downloaded")
     m.moviesUpcomingTask = startMoviesFetch("/api/movies/upcoming?days=30")
 end sub
 
@@ -1588,7 +1737,7 @@ sub onMoviesFetchResponse(event as object)
 
     url = task.url
     if url = m.moviesDownloadingTask.url then m.moviesFetchData.downloading = data
-    if url = m.moviesRecentTask.url then m.moviesFetchData.recent = data
+    if url = m.moviesRecentlyDownloadedTask.url then m.moviesFetchData.recentlyDownloaded = data
     if url = m.moviesUpcomingTask.url then m.moviesFetchData.upcoming = data
 
     m.moviesFetchPending = m.moviesFetchPending - 1
@@ -1601,18 +1750,12 @@ end sub
 sub buildMoviesRows()
     if m.moviesCache = invalid then return
 
-    readyItems = []
-    if m.moviesCache.recent <> invalid
-        for each item in m.moviesCache.recent
-            watched = false
-            if item.progress <> invalid and item.progress.watched <> invalid then watched = item.progress.watched
-            if not watched then readyItems.Push(item)
-        end for
-    end if
-
     rows = CreateObject("roSGNode", "ContentNode")
     appendShelfIfNonEmpty(rows, "Downloading", m.moviesCache.downloading, false)
-    appendShelfIfNonEmpty(rows, "Ready to Watch", readyItems, false)
+    ' "Ready to Watch" replaced by "Recently Downloaded" — all recently
+    ' added items regardless of watched status. View All tile jumps
+    ' into the Library sorted by Date Added.
+    appendShelfWithViewAll(rows, "Recently Downloaded", m.moviesCache.recentlyDownloaded, false, "library:movie:added")
     appendShelfIfNonEmpty(rows, "Coming Soon", m.moviesCache.upcoming, false)
 
     if rows.getChildCount() = 0
@@ -1637,6 +1780,12 @@ sub onMoviesRowItemSelected()
     if row = invalid then return
     node = row.getChild(sel[1])
     if node = invalid then return
+
+    ' Trailing View All tile — jump into the Library page.
+    if node.itemViewAllRoute <> invalid and node.itemViewAllRoute <> ""
+        routeToViewAll(node.itemViewAllRoute)
+        return
+    end if
 
     m.detailReturnTo = "movies"
     populateDetail(node)
@@ -2381,6 +2530,61 @@ sub appendShelfIfNonEmpty(rows as object, title as string, items as object, isTr
             attachItemFields(child, item)
         end if
     end for
+end sub
+
+' Variant that appends a "View All" tile at the end of the row.
+' viewAllRoute is a short-hand string interpreted by onRowItemSelected
+' handlers — currently "library:<type>:<sort>" jumps to the Library
+' page with the corresponding type/sort preselected.
+sub appendShelfWithViewAll(rows as object, title as string, items as object, isTracked as boolean, viewAllRoute as string)
+    if items = invalid or items.Count() = 0 then return
+    row = rows.createChild("ContentNode")
+    row.title = title
+    for each item in items
+        child = row.createChild("ContentNode")
+        if isTracked
+            attachTrackedFields(child, item)
+        else
+            child.title = itemDisplayTitle(item)
+            child.description = itemDescription(item)
+            posterUrl = resolvePosterUrl(item)
+            if posterUrl <> ""
+                child.HDPosterUrl = posterUrl
+                child.SDPosterUrl = posterUrl
+            end if
+            attachItemFields(child, item)
+        end if
+    end for
+    ' Trailing tile: rendered as a distinct "View All" cell by PosterItem
+    ' when itemViewAllRoute is set. Selection dispatches to routeToView.
+    viewAll = row.createChild("ContentNode")
+    viewAll.title = "View All"
+    viewAll.AddField("itemViewAllRoute", "string", false)
+    viewAll.itemViewAllRoute = viewAllRoute
+    ' Keep the standard item fields available so PosterItem's guards
+    ' don't blow up on missing values — everything reads as invalid /
+    ' empty, and the ViewAll branch short-circuits before the poster /
+    ' badge / progress render logic runs.
+    viewAll.AddField("itemSource", "string", false)
+    viewAll.itemSource = "view-all"
+end sub
+
+' Central handler for View All selections. Called from tab-specific
+' rowItemSelected handlers when they detect an itemViewAllRoute on the
+' picked cell. Currently only "library:<type>:<sort>" is understood.
+sub routeToViewAll(route as string)
+    if route = invalid or route = "" then return
+    parts = route.Split(":")
+    if parts.Count() >= 1 and parts[0] = "library"
+        libType = "show"
+        if parts.Count() >= 2 and parts[1] = "movie" then libType = "movie"
+        sortField = "alpha"
+        if parts.Count() >= 3 and parts[2] <> "" then sortField = parts[2]
+        m.libraryPendingType = libType
+        m.libraryPendingSort = sortField
+        showView("library")
+        return
+    end if
 end sub
 
 ' Tracked items come from /api/tracked and have a different shape than
@@ -3413,6 +3617,9 @@ sub showView(name as string)
     if name = "settings"
         m.settingsUserValue.text = displayUserName(m.userId, m.usersData)
         updateSettingsUserAvatar()
+    end if
+    if name = "library"
+        applyLibraryPending()
     end if
     m.userPickerView.visible = (name = "userPicker")
     m.pairView.visible = (name = "pair")

@@ -149,6 +149,36 @@
             <Font role="font" uri="font:SystemFontFile" size="20" />
         </Label>
 
+        <!-- View All tile — shown when itemContent.itemViewAllRoute is
+             set. Colour-tinted rectangle with a large arrow + label,
+             matching the mobile/web variants. Positioned to occupy the
+             same 220×330 footprint as a poster cell so the row height
+             stays consistent. -->
+        <Group id="viewAllView" visible="false">
+            <Rectangle id="viewAllBg" width="220" height="330" color="0x1e2734ff" />
+            <Label
+                id="viewAllArrow"
+                translation="[0, 100]"
+                width="220"
+                horizAlign="center"
+                vertAlign="center"
+                wrap="false"
+                text="→"
+                color="0xb0b0b0ff">
+                <Font role="font" uri="font:SystemFontFile" size="120" />
+            </Label>
+            <Label
+                id="viewAllLabel"
+                translation="[0, 260]"
+                width="220"
+                horizAlign="center"
+                wrap="false"
+                text="View All"
+                color="0xb0b0b0ff">
+                <Font role="font" uri="font:SystemFontFile" size="24" />
+            </Label>
+        </Group>
+
         <!-- Sports-mode card — landscape variant matching SportsCard's
              340×160 layout used on the Sports tab. Hidden by default;
              toggled on when itemContent.itemSource = "sports". Home's

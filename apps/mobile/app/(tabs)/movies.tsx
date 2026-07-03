@@ -121,8 +121,17 @@ export default function MoviesScreen() {
             {(() => {
               const sections: ContentSection[] = [];
               if (downloadingItems.length > 0) sections.push({ id: 'movies-downloading', title: 'Downloading', type: 'movie', items: downloadingItems, sortOrder: 0 });
-              if (recentItems.length > 0) sections.push({ id: 'movies-recent', title: 'Ready to Watch', type: 'movie', items: recentItems, sortOrder: 1 });
-              if (recentlyDownloaded && recentlyDownloaded.length > 0) sections.push({ id: 'movies-recently-downloaded', title: 'Recently Downloaded', type: 'movie', items: recentlyDownloaded, sortOrder: 2 });
+              // "Ready to Watch" used to sit here — replaced by "Recently
+              // Downloaded" so the shelf shows everything most recently
+              // added regardless of watched status.
+              if (recentlyDownloaded && recentlyDownloaded.length > 0) sections.push({
+                id: 'movies-recently-downloaded',
+                title: 'Recently Downloaded',
+                type: 'movie',
+                items: recentlyDownloaded,
+                sortOrder: 1,
+                viewAllRoute: '/(tabs)/library?type=movie&sort=added',
+              });
               if (comingSoonItems.length > 0) sections.push({ id: 'movies-coming', title: 'Coming Soon', type: 'movie', items: comingSoonItems, sortOrder: 3 });
               if (sections.length === 0) return null;
               return (

@@ -20,6 +20,9 @@ sub init()
     m.sourceBadgeLabel = m.top.findNode("sourceBadgeLabel")
     m.progressBarBg = m.top.findNode("progressBarBg")
     m.progressBarFill = m.top.findNode("progressBarFill")
+    m.viewAllView = m.top.findNode("viewAllView")
+    m.viewAllArrow = m.top.findNode("viewAllArrow")
+    m.viewAllLabel = m.top.findNode("viewAllLabel")
     m.focusRingTop = m.top.findNode("focusRingTop")
     m.focusRingBottom = m.top.findNode("focusRingBottom")
     m.focusRingLeft = m.top.findNode("focusRingLeft")
@@ -60,6 +63,15 @@ sub onContentChanged()
     if content = invalid then return
     src = lcase(stringOrEmpty(content.itemSource))
 
+    ' View All tile — trailing cell on shelves that carry a
+    ' viewAllRoute. Selection routing is handled by the rowItemSelected
+    ' handler in HomeScene; this component only renders the visual.
+    if content.itemViewAllRoute <> invalid and content.itemViewAllRoute <> ""
+        layoutFocusRing(220, 330)
+        renderViewAllTile()
+        return
+    end if
+
     ' Sports cards on Home get the portrait SportsCard layout instead
     ' of the regular poster + title rendering. Mirrors mobile, where
     ' Home Sports On Now / Later use SportsShelf with the full card
@@ -75,6 +87,7 @@ sub onContentChanged()
     ' Restore the focus ring to portrait poster dimensions.
     layoutFocusRing(220, 330)
     m.sportsView.visible = false
+    m.viewAllView.visible = false
     m.poster.visible = true
     m.label.visible = true
     m.poster.uri = content.HDPosterUrl
@@ -292,6 +305,21 @@ end function
 ' ContentNode (league, team1Name, team1LogoUrl, statusText, bgColor,
 ' isLive, isTeamSport, …). Standard poster / label / badge nodes get
 ' hidden so this view owns the full cell area.
+
+sub renderViewAllTile()
+    ' Hide every other layer, show the View All group.
+    m.poster.visible = false
+    m.label.visible = false
+    m.watchedDim.visible = false
+    m.sourceBadgeBg.visible = false
+    m.sourceBadgeLabel.visible = false
+    m.progressBarBg.visible = false
+    m.progressBarFill.visible = false
+    m.statusOverlayBg.visible = false
+    m.statusOverlayLabel.visible = false
+    m.sportsView.visible = false
+    m.viewAllView.visible = true
+end sub
 
 sub renderSportsCard(content as object)
     ' Hide the standard cell chrome — sports view fills the cell.
