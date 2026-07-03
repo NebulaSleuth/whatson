@@ -29,14 +29,14 @@ export function SourceBadge({ source, label }: SourceBadgeProps) {
 
 const styles = StyleSheet.create({
   badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
     alignSelf: 'flex-start',
-    maxWidth: 120,
+    maxWidth: 100,
   },
   text: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: '700',
     color: '#000',
     textTransform: 'uppercase',

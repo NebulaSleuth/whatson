@@ -134,7 +134,7 @@ const tvContainerStyle = { height: TV_SHELF_HEIGHT };
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: isTV ? spacing.md : spacing.xl,
+    marginBottom: isTV ? spacing.xs : spacing.xl,
   },
   title: {
     ...typography.sectionTitle,
