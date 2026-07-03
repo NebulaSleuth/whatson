@@ -8,13 +8,14 @@ import { isTV } from '@/lib/tv';
 const CARD_WIDTH = isTV ? 340 : 280;
 const CARD_HEIGHT = isTV ? 160 : 140;
 /**
- * Larger sports card used on the Home shelf. Sized to match the
- * dynamic TV poster row: same height as a regular poster, double the
- * width so it stands out on Home. Sports tab keeps the standard
- * landscape sizing (CARD_WIDTH/HEIGHT above).
+ * Larger sports card used on the Home shelf. Width = two posters plus
+ * the horizontal gap between them, so a sports tile occupies the same
+ * footprint as two posters side-by-side. Height is 10% shorter than a
+ * poster so the tile reads as a distinct block, not a stretched poster.
+ * Sports tab keeps the standard landscape sizing (CARD_WIDTH/HEIGHT).
  */
-export const HOME_SPORTS_CARD_WIDTH = isTV ? cardDimensions.poster.width * 2 : 320;
-export const HOME_SPORTS_CARD_HEIGHT = isTV ? cardDimensions.poster.height : 200;
+export const HOME_SPORTS_CARD_WIDTH = isTV ? cardDimensions.poster.width * 2 + spacing.sm : 320;
+export const HOME_SPORTS_CARD_HEIGHT = isTV ? Math.floor(cardDimensions.poster.height * 0.9) : 200;
 
 // ── Helpers ──
 
@@ -374,20 +375,31 @@ const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: 'center', gap: 4 },
   teamRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   teamRowLoser: { opacity: 0.55 },
-  teamLogo: { width: 22, height: 22 },
+  teamLogo: { width: isTV ? 18 : 22, height: isTV ? 18 : 22 },
   teamLogoPlaceholder: { backgroundColor: '#222', borderRadius: 11 },
-  teamName: { ...typography.body, color: colors.text, fontWeight: '600', flex: 1 },
+  teamName: {
+    ...typography.body,
+    fontSize: isTV ? 14 : 14,
+    color: colors.text,
+    fontWeight: '600',
+    flex: 1,
+  },
   teamNameWinner: { fontWeight: '800', color: colors.primary },
   teamScore: {
-    fontSize: isTV ? 22 : 20,
+    fontSize: isTV ? 16 : 20,
     fontWeight: '800',
     color: colors.text,
-    minWidth: 30,
+    minWidth: 24,
     textAlign: 'right',
   },
   teamScoreLive: { color: '#fff' },
   teamScoreWinner: { color: colors.primary },
-  tournamentTitle: { ...typography.body, color: colors.text, fontWeight: '600' },
+  tournamentTitle: {
+    ...typography.body,
+    fontSize: isTV ? 14 : 14,
+    color: colors.text,
+    fontWeight: '600',
+  },
 
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
   status: { ...typography.caption, color: colors.text, flex: 1 },
