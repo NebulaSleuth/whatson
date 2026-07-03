@@ -199,7 +199,13 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     const isMovie = item.Type === 'Movie';
     const durationMs = (item.RunTimeTicks || 0) / TICKS_PER_MS;
     const positionMs = (item.UserData?.PlaybackPositionTicks || 0) / TICKS_PER_MS;
-    const watched = item.UserData?.Played === true;
+    // Jellyfin surfaces items on its resume shelf even when it has
+    // stamped Played=true on the UserData (Emby doesn't do this, which
+    // is why the Roku progress bar showed for Emby but not for
+    // Jellyfin). Treat an item as watched only when Played is true AND
+    // there's no resume position — a positive position means the user
+    // wants the progress bar even if Jellyfin flipped the Played flag.
+    const watched = item.UserData?.Played === true && positionMs === 0;
     const percentage = durationMs > 0 ? Math.round((positionMs / durationMs) * 100) : 0;
 
     const posterTag = isEpisode
