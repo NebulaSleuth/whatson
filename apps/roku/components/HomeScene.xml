@@ -634,23 +634,33 @@
              Settings → Switch User. Mirrors the mobile select-user
              screen: title + scrollable list of Plex Home users. -->
         <Group id="userPickerView" visible="false">
+            <!-- Labels centre-align across the full 1920 width to match
+                 the mobile picker's centred layout. Grid translation is
+                 computed at render time (BRS) so 1..4 users appear
+                 centred instead of left-justified. -->
             <Label
                 id="userPickerTitle"
                 text="Who's Watching?"
-                translation="[80, 200]"
+                translation="[0, 200]"
+                width="1920"
+                horizAlign="center"
                 font="font:LargeBoldSystemFont"
                 color="0xe5a00dff" />
 
             <Label
                 id="userPickerSubtitle"
                 text="Choose a Plex Home user."
-                translation="[80, 280]"
+                translation="[0, 280]"
+                width="1920"
+                horizAlign="center"
                 color="0xb0b0b0ff" />
 
             <Label
                 id="userPickerStatus"
                 text="Loading users…"
-                translation="[80, 360]"
+                translation="[0, 360]"
+                width="1920"
+                horizAlign="center"
                 color="0xb0b0b0ff" />
 
             <LabelList
@@ -666,7 +676,9 @@
                  round badges" layout. Each cell is rendered by
                  UserCardItem (colour-tinted avatar + initial + name +
                  optional PIN pill). 4 columns × 2 visible rows ≥ 8
-                 users without scroll; further rows scroll. -->
+                 users without scroll; further rows scroll. Translation x
+                 gets recomputed in renderUserPickerList() based on the
+                 actual user count so a partial row still centres. -->
             <MarkupGrid
                 id="userGrid"
                 translation="[80, 360]"

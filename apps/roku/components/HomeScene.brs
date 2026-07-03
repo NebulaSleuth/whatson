@@ -5984,6 +5984,19 @@ sub renderUserPickerList()
 
     m.userPickerStatus.visible = false
     if m.whatsOnEnabled = true
+        ' Centre the grid horizontally. cellWidth (200) + itemSpacing.x
+        ' (20) come from userGrid attributes in HomeScene.xml. Screen
+        ' width is 1920 (manifest ui_resolutions=fhd). Effective columns
+        ' cap at 4 to match numColumns; a single-user picker centres a
+        ' single cell, a 4-user picker centres the whole row.
+        count = m.usersData.Count()
+        effectiveCols = count
+        if effectiveCols > 4 then effectiveCols = 4
+        if effectiveCols < 1 then effectiveCols = 1
+        gridWidth = effectiveCols * 200 + (effectiveCols - 1) * 20
+        xOffset = (1920 - gridWidth) / 2
+        m.userGrid.translation = [xOffset, 360]
+
         m.userGrid.content = rootNode
         m.userGrid.visible = true
         m.userList.visible = false
