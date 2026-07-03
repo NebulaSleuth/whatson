@@ -214,11 +214,11 @@
                 translation="[80, 210]"
                 layoutDirection="horiz"
                 itemSpacings="[8]">
-                <TabButton id="librarySortAlpha"   label="A-Z"            hideIcon="true" buttonWidth="180" textFontSize="20" focusable="true" />
-                <TabButton id="librarySortAdded"   label="Date Added"     hideIcon="true" buttonWidth="240" textFontSize="20" focusable="true" />
-                <TabButton id="librarySortRelease" label="Release Year"   hideIcon="true" buttonWidth="240" textFontSize="20" focusable="true" />
-                <TabButton id="librarySortWatched" label="Last Watched"   hideIcon="true" buttonWidth="240" textFontSize="20" focusable="true" />
-                <TabButton id="librarySortReady"   label="Ready to Watch" hideIcon="true" buttonWidth="280" textFontSize="20" focusable="true" />
+                <TabButton id="librarySortAlpha"   label="A-Z"            hideIcon="true" buttonWidth="100" textFontSize="20" focusable="true" />
+                <TabButton id="librarySortAdded"   label="Date Added"     hideIcon="true" buttonWidth="160" textFontSize="20" focusable="true" />
+                <TabButton id="librarySortRelease" label="Release Year"   hideIcon="true" buttonWidth="180" textFontSize="20" focusable="true" />
+                <TabButton id="librarySortWatched" label="Last Watched"   hideIcon="true" buttonWidth="180" textFontSize="20" focusable="true" />
+                <TabButton id="librarySortReady"   label="Ready to Watch" hideIcon="true" buttonWidth="200" textFontSize="20" focusable="true" />
             </LayoutGroup>
 
             <Label
