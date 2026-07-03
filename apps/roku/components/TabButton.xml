@@ -37,6 +37,10 @@
              (e.g. the Search input button). Resizes bg, icon row,
              text label, and bottom border together. -->
         <field id="buttonWidth" type="integer" onChange="onButtonWidthChanged" />
+        <!-- Optional smaller text font for compact chips (e.g. Library
+             sort row where five buttons need to fit in one strip).
+             When empty, the default MediumBoldSystemFont is kept. -->
+        <field id="textFontSize" type="integer" onChange="onTextFontChanged" />
         <field id="selected" type="boolean" onChange="onSelectedChanged" />
         <!-- Toggled by OK key handling; parent observes for clicks. -->
         <field id="buttonSelected" type="boolean" alwaysNotify="true" />

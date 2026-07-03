@@ -27,7 +27,24 @@ sub init()
     applyIconOffset()
     applyHideIcon()
     applyButtonWidth()
+    applyTextFont()
     applyStyle()
+end sub
+
+sub onTextFontChanged()
+    applyTextFont()
+end sub
+
+' Optional text-font override — used by compact chip rows. When
+' textFontSize is 0 / unset, the XML default (MediumBoldSystemFont
+' ~30px) is kept.
+sub applyTextFont()
+    size = m.top.textFontSize
+    if size = invalid or size <= 0 then return
+    font = CreateObject("roSGNode", "Font")
+    font.uri = "font:MediumBoldSystemFont"
+    font.size = size
+    m.textLabel.font = font
 end sub
 
 sub onHideIconChanged()
