@@ -1364,6 +1364,20 @@ sub focusActiveLibrarySource()
     end if
 end sub
 
+sub focusActiveLibrarySort()
+    if m.librarySort = "added"
+        m.librarySortAdded.setFocus(true)
+    else if m.librarySort = "release"
+        m.librarySortRelease.setFocus(true)
+    else if m.librarySort = "watched"
+        m.librarySortWatched.setFocus(true)
+    else if m.librarySort = "ready"
+        m.librarySortReady.setFocus(true)
+    else
+        m.librarySortAlpha.setFocus(true)
+    end if
+end sub
+
 ' Fan out to every library-server source in parallel, mirroring how the
 ' mobile Library tab's `librarySources.map(...)` union works. We don't
 ' know which servers are configured, so we ask all three — unconfigured
@@ -3157,6 +3171,24 @@ function onKeyEvent(key as string, press as boolean) as boolean
         end if
     end if
 
+    ' Library sort chips — LayoutGroup of five TabButtons.
+    if (key = "left" or key = "right") and m.librarySortToggle.isInFocusChain()
+        order = [m.librarySortAlpha, m.librarySortAdded, m.librarySortRelease, m.librarySortWatched, m.librarySortReady]
+        currentIdx = -1
+        for i = 0 to order.Count() - 1
+            if order[i].isInFocusChain() then currentIdx = i
+        end for
+        if currentIdx >= 0
+            delta = -1
+            if key = "right" then delta = 1
+            newIdx = currentIdx + delta
+            if newIdx >= 0 and newIdx < order.Count()
+                order[newIdx].setFocus(true)
+                return true
+            end if
+        end if
+    end if
+
     ' Search Mode + Filter toggles are also LayoutGroups of TabButtons.
     if (key = "left" or key = "right") and m.searchModeToggle.isInFocusChain()
         if key = "right" and m.searchModeLibrary.isInFocusChain()
@@ -3282,13 +3314,17 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 end if
             end if
         else if m.currentView = "library"
-            ' Library up chain: grid → source toggle → type toggle → tabBar
+            ' Library up chain: grid → sort → source → type → tabBar
             if m.libraryTypeToggle.isInFocusChain()
                 focusActiveTab()
                 return true
             end if
             if m.librarySourceToggle.isInFocusChain()
                 focusActiveLibraryType()
+                return true
+            end if
+            if m.librarySortToggle.isInFocusChain()
+                focusActiveLibrarySource()
                 return true
             end if
             ' Grid handles row 1+ → row 0 internally; the up event
@@ -3298,7 +3334,7 @@ function onKeyEvent(key as string, press as boolean) as boolean
             if m.libraryGrid.isInFocusChain()
                 idx = m.libraryGrid.itemFocused
                 if idx = invalid or idx < 9
-                    focusActiveLibrarySource()
+                    focusActiveLibrarySort()
                     return true
                 end if
             end if
@@ -3384,12 +3420,16 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 return true
             end if
         end if
-        ' Library down chain: tabBar → type → source → grid.
+        ' Library down chain: tabBar → type → source → sort → grid.
         if m.libraryTypeToggle.isInFocusChain()
             focusActiveLibrarySource()
             return true
         end if
         if m.librarySourceToggle.isInFocusChain()
+            focusActiveLibrarySort()
+            return true
+        end if
+        if m.librarySortToggle.isInFocusChain()
             m.libraryGrid.setFocus(true)
             return true
         end if
