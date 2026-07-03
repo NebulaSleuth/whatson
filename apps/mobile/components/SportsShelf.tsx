@@ -2,19 +2,19 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import type { SportsCompetitor, SportsEvent } from '@whatson/shared';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 import { isTV } from '@/lib/tv';
 
 const CARD_WIDTH = isTV ? 340 : 280;
 const CARD_HEIGHT = isTV ? 160 : 140;
 /**
- * Larger sports card used on the Home shelf. Sized to match the new
- * TV poster row: same height as a regular poster (330), double the
+ * Larger sports card used on the Home shelf. Sized to match the
+ * dynamic TV poster row: same height as a regular poster, double the
  * width so it stands out on Home. Sports tab keeps the standard
- * landscape sizing.
+ * landscape sizing (CARD_WIDTH/HEIGHT above).
  */
-export const HOME_SPORTS_CARD_WIDTH = isTV ? 440 : 320;
-export const HOME_SPORTS_CARD_HEIGHT = isTV ? 330 : 200;
+export const HOME_SPORTS_CARD_WIDTH = isTV ? cardDimensions.poster.width * 2 : 320;
+export const HOME_SPORTS_CARD_HEIGHT = isTV ? cardDimensions.poster.height : 200;
 
 // ── Helpers ──
 

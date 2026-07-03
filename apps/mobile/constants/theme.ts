@@ -1,12 +1,25 @@
-import { Platform } from 'react-native';
+import { Platform, Dimensions } from 'react-native';
 
 const isTV = Platform.isTV;
 
-// Fixed 220×330 on TV — sized so a shelf plus its title is ~440 tall,
-// which fits exactly two shelves in the visible area on a 1080p Shield
-// once the tab bar and safe-area padding are accounted for. Phones stay
-// at 140. Library uses a smaller override locally (extra chrome).
-const TV_POSTER_WIDTH = isTV ? 220 : 140;
+// On TV, size the poster so exactly two shelves fit in the visible
+// area. A shelf's height is the section title + the poster + the
+// item's title/subtitle/meta rows + margins; we back out the poster
+// height from the screen height minus known chrome (tab bar, safe
+// areas, per-shelf label chrome). Falls back to 140 on phones.
+const TV_SCREEN_HEIGHT = Dimensions.get('window').height;
+// Chrome we can't shrink: tab bar (~72) + safe area top+bottom
+// (~54) + slack for status bar / drop shadows / rounding (~40).
+const TV_PAGE_CHROME = 260;
+// Per-shelf overhead above and below the poster:
+//   section title + margin       ~40
+//   item title + subtitle + meta ~60
+//   inter-shelf margin           ~16
+const TV_SHELF_LABEL_CHROME = 116;
+const TV_TARGET_SHELF_HEIGHT = Math.floor((TV_SCREEN_HEIGHT - TV_PAGE_CHROME) / 2);
+const TV_POSTER_HEIGHT_CALC = Math.max(180, TV_TARGET_SHELF_HEIGHT - TV_SHELF_LABEL_CHROME);
+// Round the width to preserve the 2:3 poster aspect ratio.
+const TV_POSTER_WIDTH = isTV ? Math.floor(TV_POSTER_HEIGHT_CALC / 1.5) : 140;
 
 export const colors = {
   background: '#0F0F0F',
@@ -79,10 +92,11 @@ export const typography = {
 } as const;
 
 export const cardDimensions = {
-  // Portrait poster card (2:3 ratio) — sized relative to screen width on TV
+  // Portrait poster card (2:3 ratio) — TV picks a width that makes
+  // exactly two shelves fit (see calc above). Phones stay at 140.
   poster: {
     width: isTV ? TV_POSTER_WIDTH : 140,
-    height: isTV ? Math.floor(TV_POSTER_WIDTH * 1.5) : 210,
+    height: isTV ? TV_POSTER_HEIGHT_CALC : 210,
   },
   // Landscape thumbnail card (16:9 ratio)
   landscape: {
