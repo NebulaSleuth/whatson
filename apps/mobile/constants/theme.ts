@@ -6,25 +6,32 @@ const isTV = Platform.isTV;
 // area. A shelf's height is the section title + the poster + the
 // item's title/subtitle/meta rows + margins; we back out the poster
 // height from the screen height minus known chrome (tab bar, safe
-// areas, per-shelf label chrome). Falls back to 140 on phones.
+// areas, per-shelf label chrome).
+//
+// The Shield reports 540 dp height (4K panel with 1080p override at
+// density 320, so RN halves it). Real chrome measured on that device:
+//   - tab bar         72 dp   (see (tabs)/_layout.tsx)
+//   - safe area top   27 dp   (lib/tv.ts TV_SAFE_AREA.vertical)
+//   - safe area bot   27 dp
+//   - inter-margin    ~4  dp
+// ≈ 130 dp, or ~24% of a 540 dp screen. Per-shelf label chrome
+// (section title + item title/subtitle/meta + inter-shelf margin) is
+// text-sized in fixed dp, not proportional — ~90 dp on any TV.
 const TV_SCREEN_HEIGHT = Dimensions.get('window').height;
-// Chrome expressed as a fraction of screen height so it scales across
-// devices that report different dp (Shield 1080p ≈ 540 dp, other boxes
-// may report 720 or 1080 dp). Empirically tuned so the 2nd shelf
-// clears the bottom safe area on the Shield.
-// 28% of screen ~= tab bar + safe areas + status bar + inter-shelf slack
-const TV_PAGE_CHROME = Math.floor(TV_SCREEN_HEIGHT * 0.28);
-// 14% of screen per shelf ~= section title + item title/subtitle/meta
-const TV_SHELF_LABEL_CHROME = Math.floor(TV_SCREEN_HEIGHT * 0.14);
+const TV_PAGE_CHROME = 130;
+// Shrunk from 90 → 65 after tightening cardTitle/cardSubtitle/caption
+// sizes below. Recovered ~25 dp per shelf → adds ~50 dp to each poster
+// on a 540 dp Shield screen (roughly 46% larger).
+const TV_SHELF_LABEL_CHROME = 65;
 const TV_TARGET_SHELF_HEIGHT = Math.floor((TV_SCREEN_HEIGHT - TV_PAGE_CHROME) / 2);
-const TV_POSTER_HEIGHT_CALC = Math.max(140, TV_TARGET_SHELF_HEIGHT - TV_SHELF_LABEL_CHROME);
+const TV_POSTER_HEIGHT_CALC = Math.max(80, TV_TARGET_SHELF_HEIGHT - TV_SHELF_LABEL_CHROME);
 // Round the width to preserve the 2:3 poster aspect ratio.
 const TV_POSTER_WIDTH = isTV ? Math.floor(TV_POSTER_HEIGHT_CALC / 1.5) : 140;
 
 if (isTV) {
   // Diagnostic — check what the runtime is actually reporting so we can
-  // tune the chrome fractions if the calculation is off on other Android
-  // TV models. Shows up in `adb logcat -s ReactNativeJS`.
+  // tune the chrome constants if the calculation is off on other
+  // Android TV models. Shows up in `adb logcat -s ReactNativeJS`.
   console.log(
     `[theme] TV screen=${TV_SCREEN_HEIGHT}dp chrome=${TV_PAGE_CHROME} ` +
     `shelfTarget=${TV_TARGET_SHELF_HEIGHT} labelChrome=${TV_SHELF_LABEL_CHROME} ` +
@@ -81,12 +88,12 @@ export const typography = {
     color: colors.text,
   },
   cardTitle: {
-    fontSize: isTV ? 16 : 14,
+    fontSize: isTV ? 13 : 14,
     fontWeight: '600' as const,
     color: colors.text,
   },
   cardSubtitle: {
-    fontSize: isTV ? 14 : 12,
+    fontSize: isTV ? 11 : 12,
     fontWeight: '400' as const,
     color: colors.textSecondary,
   },
@@ -96,7 +103,7 @@ export const typography = {
     color: colors.textSecondary,
   },
   caption: {
-    fontSize: isTV ? 13 : 11,
+    fontSize: isTV ? 11 : 11,
     fontWeight: '400' as const,
     color: colors.textMuted,
   },
