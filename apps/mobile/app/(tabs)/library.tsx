@@ -29,11 +29,10 @@ const SORT_LABELS: Record<SortField, string> = {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_PADDING = spacing.md * 2;
 
-// Library uses smaller posters than the Home / TV / Movies tabs — the
-// extra chrome (type + source + sort rows) leaves less room for the
-// grid, and the browsing task benefits from more titles on screen.
-const TV_POSTER_W = isTV ? 160 : cardDimensions.poster.width;
-const TV_POSTER_H = isTV ? 240 : cardDimensions.poster.height;
+// Library uses the same poster size as Home / TV / Movies so the
+// visual density is consistent across tabs.
+const TV_POSTER_W = cardDimensions.poster.width;
+const TV_POSTER_H = cardDimensions.poster.height;
 const TV_CARD_MARGIN = spacing.md; // marginBottom per card
 const TV_TITLE_H = 20 + spacing.xs; // title text + marginTop
 const TV_BORDER = 6;
