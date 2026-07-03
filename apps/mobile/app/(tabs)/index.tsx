@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem, ContentSection, SportsEvent } from '@whatson/shared';
 import { ShelfList, type ShelfListHandle } from '@/components/ShelfList';
-import { SportsShelf } from '@/components/SportsShelf';
+import { SportsShelf, HOME_SPORTS_CARD_WIDTH, HOME_SPORTS_CARD_HEIGHT } from '@/components/SportsShelf';
 import { DetailSheet } from '@/components/DetailSheet';
 import { SkeletonShelf } from '@/components/SkeletonCard';
 import { isTV } from '@/lib/tv';
@@ -178,11 +178,23 @@ export default function HomeScreen() {
         )}
 
         {isReady && !isLoading && !error && followsSports && (sportsNow?.length ?? 0) > 0 && (
-          <SportsShelf title="Sports On Now" events={sportsNow!} onItemPress={handleSportsPress} />
+          <SportsShelf
+            title="Sports On Now"
+            events={sportsNow!}
+            onItemPress={handleSportsPress}
+            cardWidth={HOME_SPORTS_CARD_WIDTH}
+            cardHeight={HOME_SPORTS_CARD_HEIGHT}
+          />
         )}
 
         {isReady && !isLoading && !error && followsSports && (sportsLater?.length ?? 0) > 0 && (
-          <SportsShelf title="Sports On Later" events={sportsLater!} onItemPress={handleSportsPress} />
+          <SportsShelf
+            title="Sports On Later"
+            events={sportsLater!}
+            onItemPress={handleSportsPress}
+            cardWidth={HOME_SPORTS_CARD_WIDTH}
+            cardHeight={HOME_SPORTS_CARD_HEIGHT}
+          />
         )}
 
         {isReady && !isLoading && !error && liveSections.length > 0 && (

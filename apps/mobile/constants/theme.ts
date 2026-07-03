@@ -1,12 +1,12 @@
-import { Platform, Dimensions } from 'react-native';
+import { Platform } from 'react-native';
 
 const isTV = Platform.isTV;
-const SCREEN_WIDTH = Dimensions.get('window').width;
 
-// Target ~14% of screen width per card (gives ~6 cards on 1920, ~5 on 960)
-const TV_POSTER_WIDTH = isTV
-  ? Math.max(140, Math.min(300, Math.floor(SCREEN_WIDTH * 0.14)))
-  : 140;
+// Fixed 220×330 on TV — sized so a shelf plus its title is ~440 tall,
+// which fits exactly two shelves in the visible area on a 1080p Shield
+// once the tab bar and safe-area padding are accounted for. Phones stay
+// at 140. Library uses a smaller override locally (extra chrome).
+const TV_POSTER_WIDTH = isTV ? 220 : 140;
 
 export const colors = {
   background: '#0F0F0F',

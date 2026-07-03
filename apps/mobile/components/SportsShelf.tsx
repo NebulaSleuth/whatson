@@ -7,6 +7,14 @@ import { isTV } from '@/lib/tv';
 
 const CARD_WIDTH = isTV ? 340 : 280;
 const CARD_HEIGHT = isTV ? 160 : 140;
+/**
+ * Larger sports card used on the Home shelf. Sized to match the new
+ * TV poster row: same height as a regular poster (330), double the
+ * width so it stands out on Home. Sports tab keeps the standard
+ * landscape sizing.
+ */
+export const HOME_SPORTS_CARD_WIDTH = isTV ? 440 : 320;
+export const HOME_SPORTS_CARD_HEIGHT = isTV ? 330 : 200;
 
 // ── Helpers ──
 
@@ -151,9 +159,14 @@ function TeamRow({
 export const SportsCard = React.memo(function SportsCard({
   event,
   onPress,
+  width,
+  height,
 }: {
   event: SportsEvent;
   onPress: (event: SportsEvent) => void;
+  /** Optional dimension overrides — Home passes larger values so its sports tiles match the poster row height. */
+  width?: number;
+  height?: number;
 }) {
   const [focused, setFocused] = React.useState(false);
   const live = event.status === 'in';
@@ -175,8 +188,14 @@ export const SportsCard = React.memo(function SportsCard({
   return (
     <Pressable
       // Order matters: live-accent border first, then focus border, so focus
-      // always wins when both conditions are true.
-      style={[styles.card, live && styles.cardLive, focused && styles.cardFocused]}
+      // always wins when both conditions are true. Optional width/height
+      // overrides ride on top (Home page passes larger dims).
+      style={[
+        styles.card,
+        live && styles.cardLive,
+        focused && styles.cardFocused,
+        (width || height) ? { width: width ?? CARD_WIDTH, height: height ?? CARD_HEIGHT } : null,
+      ]}
       onPress={() => onPress(event)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
@@ -262,14 +281,21 @@ export function SportsShelf({
   title,
   events,
   onItemPress,
+  cardWidth,
+  cardHeight,
 }: {
   title: string;
   events: SportsEvent[];
   onItemPress: (e: SportsEvent) => void;
+  /** Optional card size overrides — passed by the Home page for its double-wide, poster-height tiles. */
+  cardWidth?: number;
+  cardHeight?: number;
 }) {
   const renderItem = useCallback(
-    ({ item }: { item: SportsEvent }) => <SportsCard event={item} onPress={onItemPress} />,
-    [onItemPress],
+    ({ item }: { item: SportsEvent }) => (
+      <SportsCard event={item} onPress={onItemPress} width={cardWidth} height={cardHeight} />
+    ),
+    [onItemPress, cardWidth, cardHeight],
   );
   return (
     <View style={shelfStyles.container}>
