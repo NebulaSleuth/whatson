@@ -303,7 +303,11 @@ export const api = {
       body: JSON.stringify({ ratingKey, time, duration, state, sessionId, source }),
     }),
 
-  stopPlayback: (sessionId: string, source: string = 'plex', extras?: { ratingKey?: string; positionMs?: number }) =>
+  stopPlayback: (
+    sessionId: string,
+    source: string = 'plex',
+    extras?: { ratingKey?: string; positionMs?: number; durationMs?: number; creditsStartMs?: number },
+  ) =>
     fetchApi<any>('/playback/stop', {
       method: 'POST',
       body: JSON.stringify({ sessionId, source, ...(extras || {}) }),

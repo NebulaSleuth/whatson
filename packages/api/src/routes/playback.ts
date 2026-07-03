@@ -80,21 +80,50 @@ playbackRouter.post('/playback/progress', async (req, res) => {
   }
 });
 
+/**
+ * Auto-mark-watched thresholds. Clients pass durationMs + optional
+ * creditsStartMs; if either signal fires we call adapter.markWatched
+ * so the item drops off Continue Watching.
+ *
+ * - WATCHED_PERCENT: mirrors Plex's default (90% of runtime). Same
+ *   default as Jellyfin/Emby, so the rule works uniformly across all
+ *   three adapters.
+ * - Credits marker: if the client is past the start of the credits
+ *   marker we treat the item as effectively finished even if we're
+ *   only at, say, 88% of runtime. Matches the "auto-play next"
+ *   behaviour Plex's own clients ship.
+ */
+const WATCHED_PERCENT = 0.9;
+
 /** Stop a transcode / playback session. */
 playbackRouter.post('/playback/stop', async (req, res) => {
   const startedAt = Date.now();
   try {
-    const { sessionId, source, ratingKey, positionMs } = req.body as {
+    const { sessionId, source, ratingKey, positionMs, durationMs, creditsStartMs } = req.body as {
       sessionId?: string;
       source?: ContentSource;
       ratingKey?: string;
       positionMs?: number;
+      durationMs?: number;
+      creditsStartMs?: number;
     };
     console.log(
       `[playback] POST /stop session=${(sessionId || '').slice(0, 12)} src=${source ?? 'plex'} ` +
-      `positionMs=${positionMs ?? '(unset)'} ratingKey=${ratingKey ?? '(unset)'}`,
+      `positionMs=${positionMs ?? '(unset)'} durationMs=${durationMs ?? '(unset)'} ` +
+      `creditsStartMs=${creditsStartMs ?? '(unset)'} ratingKey=${ratingKey ?? '(unset)'}`,
     );
     const adapter = getAdapterForSource(source || 'plex');
+
+    // Decide whether this stop should count as "watched". Once either
+    // threshold fires we skip the pre-stop progress report — Plex's
+    // /:/scrobble handles both marking watched AND wiping the resume
+    // point, so sending viewOffset first would be a wasted call.
+    const finished =
+      typeof positionMs === 'number' &&
+      positionMs > 0 &&
+      ((typeof creditsStartMs === 'number' && creditsStartMs > 0 && positionMs >= creditsStartMs) ||
+        (typeof durationMs === 'number' && durationMs > 0 && positionMs / durationMs >= WATCHED_PERCENT));
+
     // Seed the adapter with the final position before stopping. This
     // guarantees the resume position is saved to UserData (Jellyfin)
     // or scrobbled (Plex) even if /api/playback/progress hasn't been
@@ -102,18 +131,34 @@ playbackRouter.post('/playback/stop', async (req, res) => {
     // quickly after seeking, the periodic 10s reporter might not have
     // fired yet. The client sends positionMs + ratingKey alongside the
     // stop call so the server can record a final progress event before
-    // tearing down.
-    if (adapter && sessionId && ratingKey && typeof positionMs === 'number' && positionMs > 0) {
+    // tearing down. State is "stopped" (not "paused") to match what
+    // native Plex clients send, so Plex's own 90% threshold engages.
+    if (!finished && adapter && sessionId && ratingKey && typeof positionMs === 'number' && positionMs > 0) {
       try {
-        await adapter.reportProgress(ratingKey, positionMs, 0, 'paused', sessionId, req.plexUserToken);
+        await adapter.reportProgress(
+          ratingKey,
+          positionMs,
+          durationMs ?? 0,
+          'stopped',
+          sessionId,
+          req.plexUserToken,
+        );
       } catch (err) {
         console.warn(`[playback] stop pre-progress failed: ${(err as Error).message}`);
+      }
+    }
+    if (finished && adapter && ratingKey) {
+      try {
+        await adapter.markWatched(ratingKey, req.plexUserToken);
+        console.log(`[playback] auto-marked watched — ${ratingKey}`);
+      } catch (err) {
+        console.warn(`[playback] auto-mark-watched failed: ${(err as Error).message}`);
       }
     }
     if (adapter && sessionId) {
       await adapter.stopPlayback(sessionId, req.plexUserToken);
     }
-    console.log(`[playback] stop done in ${Date.now() - startedAt}ms`);
+    console.log(`[playback] stop done in ${Date.now() - startedAt}ms finished=${finished}`);
     notifyDataChanged('playback-stop', 'home', 'tv', 'movies');
     res.json({ success: true });
   } catch (err) {

@@ -558,10 +558,17 @@ export default function PlayerScreen() {
       // Pass the final position + raw sourceId so the backend can seed
       // lastProgress and write UserData (Jellyfin) / scrobble (Plex)
       // deterministically before tearing the transcoder down.
+      // durationMs + creditsStartMs let the backend decide whether to
+      // auto-mark-watched (90% of runtime OR past the credits marker)
+      // so the item drops off Continue Watching when the user stops in
+      // the credits period.
+      const creditsMarker = playbackInfo.markers?.find((m) => m.type === 'credits');
       await api
         .stopPlayback(playbackInfo.sessionId, source, {
           ratingKey,
           positionMs: currentPositionRef.current,
+          durationMs: playbackInfo.duration,
+          creditsStartMs: creditsMarker?.startMs,
         })
         .catch(() => {});
     }

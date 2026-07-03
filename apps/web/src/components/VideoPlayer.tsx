@@ -526,9 +526,20 @@ export function VideoPlayer({ item, fromStart = false, onClose }: Props) {
       }
       if (sid) {
         // ratingKey here is the unprefixed sourceId (Jellyfin GUID) —
-        // see comment on the progress reporter above.
+        // see comment on the progress reporter above. durationMs +
+        // creditsStartMs let the backend decide whether to
+        // auto-mark-watched (90% of runtime OR past the credits marker)
+        // so the item drops off Continue Watching when the user stops
+        // in the credits period.
+        const durationMs = info ? Math.floor(info.duration || 0) : undefined;
+        const creditsMarker = info?.markers?.find((m) => m.type === 'credits');
         api
-          .stopPlayback(sid, item.source, { ratingKey: item.sourceId, positionMs: finalPositionMs })
+          .stopPlayback(sid, item.source, {
+            ratingKey: item.sourceId,
+            positionMs: finalPositionMs,
+            durationMs,
+            creditsStartMs: creditsMarker?.startMs,
+          })
           .catch(() => {});
       }
       // Refetch the shelves that depend on watched / position state so

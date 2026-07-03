@@ -4249,6 +4249,19 @@ sub sendStop()
     if m.video <> invalid and m.video.position <> invalid
         body["positionMs"] = Int(m.video.position * 1000)
     end if
+    ' durationMs + creditsStartMs let the backend decide whether to
+    ' auto-mark-watched (90% of runtime OR past the credits marker),
+    ' so the item drops off Continue Watching when the user stops
+    ' during the credits.
+    if m.playbackInfo.duration <> invalid then body["durationMs"] = Int(m.playbackInfo.duration)
+    if m.playbackInfo.markers <> invalid
+        for each marker in m.playbackInfo.markers
+            if marker.type = "credits" and marker.startMs <> invalid
+                body["creditsStartMs"] = Int(marker.startMs)
+                exit for
+            end if
+        end for
+    end if
     ' `stop` would shadow the BrightScript reserved word — use stopTask.
     stopTask = CreateObject("roSGNode", "ApiTask")
     stopTask.method = "POST"
