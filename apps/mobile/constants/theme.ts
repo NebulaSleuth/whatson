@@ -8,18 +8,29 @@ const isTV = Platform.isTV;
 // height from the screen height minus known chrome (tab bar, safe
 // areas, per-shelf label chrome). Falls back to 140 on phones.
 const TV_SCREEN_HEIGHT = Dimensions.get('window').height;
-// Chrome we can't shrink: tab bar (~72) + safe area top+bottom
-// (~54) + slack for status bar / drop shadows / rounding (~40).
-const TV_PAGE_CHROME = 260;
-// Per-shelf overhead above and below the poster:
-//   section title + margin       ~40
-//   item title + subtitle + meta ~60
-//   inter-shelf margin           ~16
-const TV_SHELF_LABEL_CHROME = 116;
+// Chrome expressed as a fraction of screen height so it scales across
+// devices that report different dp (Shield 1080p ≈ 540 dp, other boxes
+// may report 720 or 1080 dp). Empirically tuned so the 2nd shelf
+// clears the bottom safe area on the Shield.
+// 28% of screen ~= tab bar + safe areas + status bar + inter-shelf slack
+const TV_PAGE_CHROME = Math.floor(TV_SCREEN_HEIGHT * 0.28);
+// 14% of screen per shelf ~= section title + item title/subtitle/meta
+const TV_SHELF_LABEL_CHROME = Math.floor(TV_SCREEN_HEIGHT * 0.14);
 const TV_TARGET_SHELF_HEIGHT = Math.floor((TV_SCREEN_HEIGHT - TV_PAGE_CHROME) / 2);
-const TV_POSTER_HEIGHT_CALC = Math.max(180, TV_TARGET_SHELF_HEIGHT - TV_SHELF_LABEL_CHROME);
+const TV_POSTER_HEIGHT_CALC = Math.max(140, TV_TARGET_SHELF_HEIGHT - TV_SHELF_LABEL_CHROME);
 // Round the width to preserve the 2:3 poster aspect ratio.
 const TV_POSTER_WIDTH = isTV ? Math.floor(TV_POSTER_HEIGHT_CALC / 1.5) : 140;
+
+if (isTV) {
+  // Diagnostic — check what the runtime is actually reporting so we can
+  // tune the chrome fractions if the calculation is off on other Android
+  // TV models. Shows up in `adb logcat -s ReactNativeJS`.
+  console.log(
+    `[theme] TV screen=${TV_SCREEN_HEIGHT}dp chrome=${TV_PAGE_CHROME} ` +
+    `shelfTarget=${TV_TARGET_SHELF_HEIGHT} labelChrome=${TV_SHELF_LABEL_CHROME} ` +
+    `poster=${TV_POSTER_WIDTH}x${TV_POSTER_HEIGHT_CALC}`,
+  );
+}
 
 export const colors = {
   background: '#0F0F0F',
