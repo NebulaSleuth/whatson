@@ -83,7 +83,7 @@ export const typography = {
     color: colors.text,
   },
   sectionTitle: {
-    fontSize: isTV ? 22 : 18,
+    fontSize: isTV ? 18 : 18,
     fontWeight: '600' as const,
     color: colors.text,
   },

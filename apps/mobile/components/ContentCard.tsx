@@ -246,7 +246,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
 const styles = StyleSheet.create({
   container: {
     width: isTV ? cardDimensions.poster.width + 6 : cardDimensions.poster.width,
-    marginRight: isTV ? spacing.lg : spacing.md,
+    marginRight: isTV ? spacing.sm : spacing.md,
   },
   pressed: {
     opacity: 0.8,

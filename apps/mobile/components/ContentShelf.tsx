@@ -138,7 +138,11 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.sectionTitle,
-    marginBottom: spacing.sm,
+    // Shift a few dp of breathing room from below the title to above,
+    // so shelves visually separate from the row above without pushing
+    // the poster row further down.
+    marginTop: isTV ? 6 : 0,
+    marginBottom: isTV ? 2 : spacing.sm,
     paddingHorizontal: spacing.lg,
   },
   list: {
