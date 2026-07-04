@@ -23,7 +23,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
-| M8 — secure data path: A/AAAA + per-server DNS-01 TLS + IPv4 forward (UPnP) + stable IPv6 (pinhole) + reachability panel | ⬜ design decided | — | — |
+| M8 — secure data path | 🟡 **8a DNS publishing DONE + deployed** (A/AAAA per-server on heartbeat); remaining: per-server DNS-01 TLS, IPv4 forward (UPnP), stable IPv6 (pinhole), reachability panel | — | `dfd8875` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
 ---
@@ -191,16 +191,27 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
 7. **M8 — secure remote data path (DECIDED design).** Goal: **secure delivery
    that works on every device, and everywhere a direct path exists** (relay
    deferred — see decision 4). Per-server, no shared secret:
-   - **IPv4 (primary):** publish an **A record** `<id>.s.whatsontv.net` → the
-     server's WAN IPv4, so apps connect to the *hostname* (cert matches). Needs a
-     **port forward** on the remote port — automate via **UPnP/NAT-PMP** where the
-     router allows, else guide the owner. IPv4 reaches essentially every client,
-     so this is the "works everywhere" path — **for non-CGNAT servers**.
-   - **IPv6 (for CGNAT + where available):** publish an **AAAA record** to a
-     **stable** global v6 (`netsh` Public/Preferred on Windows — today's
-     best-effort address can be a privacy/temporary one that rotates daily) +
-     a firewall **pinhole** (Windows Firewall rule; **PCP** to ask the router).
-     Only connects when the *client* also has v6.
+   - **✅ 8a — DNS publishing DONE + deployed (`dfd8875`).** On heartbeat the
+     cloud writes `<serverId>.s.whatsontv.net` **A → real WAN IPv4** (from
+     `X-Forwarded-For`; the App Service socket addr is the internal LB
+     `169.254.x` — trap) and **AAAA → global IPv6**, into the Azure DNS zone via
+     the App Service **managed identity** (DNS Zone Contributor, scoped to the
+     one zone). Change-gated so 45s heartbeats don't hammer ARM. Verified end-
+     to-end: `<id>.s.whatsontv.net` resolves publicly to the home public IPv4.
+     Azure infra (reproduce): `az webapp identity assign`; role assignment of
+     "DNS Zone Contributor" on the zone to the MSI principal (had to use a REST
+     PUT — the CLI `role assignment create` hit a MissingSubscription quirk);
+     app settings `CLOUD_DNS_SUBSCRIPTION_ID` + `CLOUD_DNS_RESOURCE_GROUP`.
+   - **IPv4 (primary):** the A record is in place. STILL NEEDS a **port forward**
+     on the remote port — automate via **UPnP/NAT-PMP** where the router allows,
+     else guide the owner. IPv4 reaches essentially every client, so this is the
+     "works everywhere" path — **for non-CGNAT servers**.
+   - **IPv6 (for CGNAT + where available):** AAAA is published, but from the
+     backend's current best-effort v6 which can be a **stable-address bug**
+     (`netsh` Public/Preferred on Windows — today's address can be a
+     privacy/temporary one that rotates daily) + still needs a firewall
+     **pinhole** (Windows Firewall rule; **PCP** to ask the router). Only
+     connects when the *client* also has v6.
    - **Per-server DNS-01 TLS cert** for `<id>.s.whatsontv.net` (NOT a wildcard
      shared across servers — H1: the cloud never holds a server's TLS key; a
      leaked backend must not compromise every server). Backend proves control of
