@@ -23,7 +23,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
-| M8 — secure data path | 🟡 **8a DNS publishing DONE + deployed** (A/AAAA per-server on heartbeat); remaining: per-server DNS-01 TLS, IPv4 forward (UPnP), stable IPv6 (pinhole), reachability panel | — | `dfd8875` |
+| M8 — secure data path | 🟡 **8a DNS + 8b per-server DNS-01 TLS DONE** (A/AAAA publish; backend ACME cert via cloud-assisted DNS-01; HTTPS remote listener; auto-renew); remaining: IPv4 forward (UPnP), stable IPv6 (pinhole), reachability panel | — | `dfd8875`, `eea8cff`, `c944430` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
 ---
@@ -212,12 +212,18 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
      privacy/temporary one that rotates daily) + still needs a firewall
      **pinhole** (Windows Firewall rule; **PCP** to ask the router). Only
      connects when the *client* also has v6.
-   - **Per-server DNS-01 TLS cert** for `<id>.s.whatsontv.net` (NOT a wildcard
-     shared across servers — H1: the cloud never holds a server's TLS key; a
-     leaked backend must not compromise every server). Backend proves control of
-     its name via a DNS-01 TXT written through the cloud API. A valid public cert
-     is what makes **all devices** accept the stream (iOS ATS, Android cleartext,
-     browser no-mixed-content all satisfied).
+   - **✅ 8b — per-server DNS-01 TLS cert DONE (`eea8cff`, `c944430` + backend
+     commits).** Backend runs its own ACME order (`acme-client`), generates its
+     OWN cert keypair (never leaves the box — H1), and completes DNS-01 by asking
+     the cloud (server-signed) to publish `_acme-challenge.<id>` (cloud endpoint
+     `POST /servers/:id/acme-challenge`). Remote listener terminates HTTPS with
+     the cert; `certManager.ts` obtains on enable/boot (background) + renews
+     twice-daily under 30 days. `/setup` panel shows cert state. NOT a shared
+     wildcard (a leaked backend can't compromise others). **Verified against
+     Let's Encrypt STAGING end-to-end** (register→order→dns-01 via cloud→validate
+     →finalize = valid PEM cert for `<id>.s.whatsontv.net`, ~27s; TLS listener
+     serves it, rejects plaintext). Production runs on the real backend at enable.
+     `acme-client` confirmed to bundle into the esbuild standalone build.
    - **BUG to fix:** `registration.ts ipv6Url()` currently emits
      `https://[literal-v6]:port`, which FAILS cert validation (cert is for the
      hostname, not an IP literal). Switch to AAAA-record + hostname candidates.
