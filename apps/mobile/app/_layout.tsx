@@ -246,6 +246,34 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     return () => subscription.remove();
   }, []);
 
+  // M5: re-race cached connection candidates when the app returns to the
+  // foreground. The user may have moved between the home LAN and cellular/
+  // remote, so a previously-pinned LAN URL could now be unreachable (or a
+  // remote URL now has a faster LAN path). resolveConnection() no-ops for
+  // installs without a candidate cache, so this is dormant until cloud
+  // onboarding populates candidates — zero effect on today's single-URL setup.
+  // Debounced so a rapid background/foreground flip doesn't spam probes.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const before = useAppStore.getState().apiUrl;
+        const status = await resolveConnection();
+        const after = useAppStore.getState().apiUrl;
+        if (status === 'connected' && after !== before) {
+          console.log(`[Conn] re-raced on resume: ${before} → ${after}`);
+          queryClient.invalidateQueries();
+        }
+      }, 800);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      subscription.remove();
+    };
+  }, []);
+
   // Connect to WebSocket for real-time updates
   useRealtimeUpdates();
 

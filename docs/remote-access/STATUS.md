@@ -19,7 +19,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M2 — mandatory auth, roles, profile binding | ✅ shipped, live | v0.1.132 | `948a93a` |
 | M3 — cloud control plane | ✅ scaffolded + committed + **DEPLOYED to Azure** | — | `f790850` |
 | M4 — backend registration client | ✅ built + committed (dormant, unshipped) | — | `81b59a0` |
-| M5 — client connection manager | 🟡 core done (mobile racer + serverId echo); Roku + re-race listener + offline UX remain | — | `9a1dae6` |
+| M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code | ⬜ | — | — |
 | M8 — DNS + certs + UPnP + IPv6 + mDNS | ⬜ | — | — |
@@ -134,14 +134,23 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    the live cloud scaffold. NOT yet shipped as a release (dormant, so no rush) —
    and the cloud is NOT deployed to Azure (still runs locally only).
 4. 🟡 **M5 — client connection manager** — CORE DONE (`9a1dae6`): mobile
-   `lib/connectionRace.ts` (pure, unit-tested) + `connection.ts` + candidate/
-   serverId storage + `/api/health` serverId echo, wired into `_layout` init
-   (no-op until candidates exist). REMAINING: debounced re-race on network
-   change/foreground; the "can't reach your server" offline state (vs the
-   pair-device bounce); and the **Roku** parallel-`ApiTask` racer (L).
-   Also unbuilt: fetching `/candidates` from the cloud to populate the list
-   (needs the cloud deployed) — that's the onboarding tie-in with M7.
-   → unlocks the **browse-remotely demo** (over BYO-TLS or a wildcard cert).
+   `lib/connectionRace.ts` (pure) + `connection.ts` + candidate/serverId storage
+   + `/api/health` serverId echo, wired into `_layout` init (no-op until
+   candidates exist). ADDED since: persisted race tests (`49445fe`,
+   `apps/mobile/lib/connectionRace.test.ts`, `npm test` via tsx — 9 cases incl.
+   the P0 wrong-server rejection) and a **debounced foreground re-race**
+   (`_layout` AppState 'active' → `resolveConnection()`, invalidates queries if
+   the winner changed; dormant-safe no-op without candidates). REMAINING:
+   the "can't reach your server" offline state (vs the pair-device bounce — note
+   the correctness catch: a naive early-return skips post-connection routing, so
+   the retry path must re-run init, not just navigate to '/'); and the **Roku**
+   parallel-`ApiTask` racer (L). Also unbuilt and **domain-gated**: fetching
+   `/candidates` from the cloud to populate the list — the cloud endpoint
+   `GET /servers/:id/candidates` exists and is deployed, but candidates return
+   `<serverId>.s.whatson.direct` hostnames that don't resolve until
+   `whatson.direct` is registered + `s.` delegated, so building the onboarding UI
+   against it can't be exercised end-to-end yet. That's the onboarding tie-in
+   with M7. → unlocks the **browse-remotely demo** (over BYO-TLS or wildcard cert).
 5. **M6 — remote playback**: per-adapter stream+segment proxy (Item 8, new code —
    the `hlsProxy.ts` transmux is NOT reusable) + short-lived HMAC signed URLs
    (Item 5), segment URIs signed **inside the playlist**.
