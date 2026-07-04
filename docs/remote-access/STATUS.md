@@ -111,9 +111,11 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
 
 ## Open decisions (doc 02 §10 — settle before the dependent milestone)
 
-1. **Cloud DNS zone / `CLOUD_DOMAIN`** — currently placeholder `s.whatson.example`.
-   **The next real blocker** (M4 wiring + M8 certs both lean on it, and the app
-   CORS allowlist references it). Pick this early.
+1. **Cloud DNS zone / `CLOUD_DOMAIN`** — ✅ DECIDED: **`whatson.direct`** (infra;
+   per-server hostnames `<id>.s.whatson.direct`, plex.direct-style). Branding on a
+   separate domain `whatsontv.net`. TODO: register `whatson.direct` + delegate the
+   `s.whatson.direct` zone to a DNS host with an API (Azure DNS recommended) for
+   the M8 cert flow. Config default now set to `whatson.direct`.
 2. **Account model** — email+password (current) vs federate Plex OAuth.
 3. **Invite → profile** — auto-create the WO profile on redeem vs require
    pre-create. (Redeem currently assumes it exists.)

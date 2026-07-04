@@ -7,10 +7,11 @@ import { join } from 'node:path';
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   /**
-   * Public DNS zone for per-server hostnames (<serverId>.s.<cloudDomain>).
-   * OPEN DECISION (doc 02 §10): pick the real zone before the cert flow (M8).
+   * Base cloud domain. Per-server hostnames are `<serverId>.s.<cloudDomain>`
+   * (the Plex `plex.direct` pattern), so the DNS-01 cert zone is
+   * `s.<cloudDomain>`. Branding lives on a separate domain (whatsontv.net).
    */
-  cloudDomain: process.env.CLOUD_DOMAIN || 's.whatson.example',
+  cloudDomain: process.env.CLOUD_DOMAIN || 'whatson.direct',
   dataDir: process.env.CLOUD_DATA_DIR || join(process.cwd(), 'data'),
   /** TTL (seconds) for the candidate list handed to apps. */
   candidateTtl: parseInt(process.env.CANDIDATE_TTL || '300', 10),
