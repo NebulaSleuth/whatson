@@ -18,10 +18,11 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M1 — two-listener split + surface hardening | ✅ shipped, live | v0.1.131 | `59d97da` |
 | M2 — mandatory auth, roles, profile binding | ✅ shipped, live | v0.1.132 | `948a93a` |
 | M3 — cloud control plane | ✅ scaffolded + committed + **DEPLOYED to Azure** | — | `f790850` |
-| M4 — backend registration client | ✅ built + committed (dormant, unshipped) | — | `81b59a0` |
+| M4 — backend registration client | ✅ built + **shipped v0.1.133** (dormant) | v0.1.133 | `81b59a0`, `1602be4` |
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
+| /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
-| M7 — invites + guest roles + device-code | ⬜ | — | — |
+| M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
 | M8 — DNS + certs + UPnP + IPv6 + mDNS | ⬜ | — | — |
 | v2 — relay | ⬜ future | — | — |
 
