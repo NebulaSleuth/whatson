@@ -168,8 +168,9 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
 ## Cloud deployment (live)
 
 The control plane is deployed and verified:
-- **URL:** `https://whatson-cloud.azurewebsites.net` (health, `/api/cloud-key`,
-  accounts, servers, WSS `/ws` all working — App Service WebSockets verified).
+- **Branded URL:** `https://cloud.whatsontv.net` ✅ live, TLS chain validates
+  (GeoTrust managed cert, thumb `51FAA213…`, SNI, auto-renews). This is the URL
+  backends point `CLOUD_URL` at. Origin is still `whatson-cloud.azurewebsites.net`.
 - **Azure:** Extrastrength sub, RG `whatson-cloud-rg`, App Service `whatson-cloud`
   (B1 Linux, Node 22), Always On + WebSockets on + https-only. ~$13/mo.
 - **Deploy method:** local `tsc` build → zip of `dist/` + prod `node_modules` →
@@ -177,12 +178,26 @@ The control plane is deployed and verified:
 - ⚠️ **Signing key** lives in `/home/data/cloud-ed25519.pem` (persistent Azure
   Files). Do NOT wipe `/home/data` — losing it invalidates every issued grant.
   The pinned public key backends need is always at `GET /api/cloud-key`.
-- **Next to make it usable end-to-end:** (1) register `whatsontv.net` (buyable
-  directly in Azure App Service Domains, `.net` supported) + host the
-  `s.whatsontv.net` zone in Azure DNS so WAN/IPv6 candidate hostnames resolve (+ M8
-  certs); (2) point a real backend at it — `CLOUD_URL=https://whatson-cloud.
-  azurewebsites.net`, `CLOUD_PUBLIC_KEY=<cloud-key>`, `REMOTE_ACCESS=true`,
-  admin password set — so it registers + heartbeats.
+
+### DNS (done — 2026-07-04)
+- Domain **`whatsontv.net`** registered at **GoDaddy** (apex/`www`/`cloud` DNS
+  stays at GoDaddy; only the machinery subdomain is delegated to Azure).
+- **`s.whatsontv.net`** = Azure DNS zone in `whatson-cloud-rg`, delegated from
+  GoDaddy via 4 `s` NS records → `ns{1-4}-07.azure-dns.{com,net,org,info}`.
+  Verified end-to-end (wrote a temp A record, resolved it publicly, deleted it).
+  The cloud will auto-write per-server A/AAAA + the `*.s.whatsontv.net` wildcard
+  cert here in M8.
+- **`cloud.whatsontv.net`** → GoDaddy CNAME to `whatson-cloud.azurewebsites.net`;
+  bound as an App Service custom domain with a free managed cert. (The `asuid`
+  TXT wasn't needed — App Service verified off the CNAME.)
+
+- **Next to make it usable end-to-end:** (1) ✅ DNS done. (2) ship backend
+  v0.1.133 (M4 registration client + M5 health echo, dormant) so a real backend
+  *can* register. (3) point the backend at it — `CLOUD_URL=https://cloud.whatsontv.net`,
+  `CLOUD_PUBLIC_KEY=<GET /api/cloud-key>`, `REMOTE_ACCESS=true`, admin password —
+  so it registers + heartbeats. (4) build the client device-code onboarding to
+  fetch `/candidates`; the **LAN candidate proves the whole path with no cert**.
+  (5) M8 for the WAN path (per-server DNS records + wildcard cert).
 
 ## Operational facts to remember
 
