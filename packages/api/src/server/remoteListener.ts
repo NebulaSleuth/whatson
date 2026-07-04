@@ -1,8 +1,10 @@
-import { createServer, type Server } from 'http';
+import { createServer as createHttpServer, type Server as HttpServer } from 'http';
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'https';
 import express from 'express';
 import { config } from '../config.js';
 import { corsMiddleware } from '../security/httpGuards.js';
 import { mountApiRoutes, makeErrorHandler } from './surface.js';
+import { loadCertificate } from '../services/cloud/acme.js';
 
 /**
  * The internet-facing "remote" listener (docs/remote-access/, M1) as a
@@ -16,7 +18,7 @@ import { mountApiRoutes, makeErrorHandler } from './surface.js';
  * turns it on.
  */
 
-let remoteServer: Server | null = null;
+let remoteServer: HttpServer | HttpsServer | null = null;
 
 /** True when the remote listener is currently bound. */
 export function isRemoteListenerRunning(): boolean {
@@ -44,8 +46,9 @@ export function startRemoteListener(): { started: boolean; reason?: string } {
   }
 
   const remoteApp = express();
-  // Behind a loopback TLS terminator (BYO reverse proxy / tunnel) for now;
-  // M8 tightens this to the managed per-server cert terminator.
+  // We terminate TLS ourselves with the per-server cert (M8/8b) when one has
+  // been obtained; `trust proxy` stays loopback for the BYO-terminator case
+  // (no cert yet), where a local reverse proxy / tunnel fronts us.
   remoteApp.set('trust proxy', 'loopback');
   remoteApp.use(corsMiddleware);
   remoteApp.use(express.json());
@@ -53,13 +56,19 @@ export function startRemoteListener(): { started: boolean; reason?: string } {
   remoteApp.use(makeErrorHandler('remote'));
   // Intentionally NO initWebSocket here — a WS upgrade bypasses apiAuth and the
   // not-mounted invariant (see 04-implementation-plan.md H4).
-  const srv = createServer(remoteApp);
+
+  // Serve HTTPS directly when we hold a per-server cert; otherwise HTTP for the
+  // BYO-TLS-terminator model until the cert lands (then restartRemoteListener).
+  const bundle = loadCertificate();
+  const srv = bundle
+    ? createHttpsServer({ cert: bundle.cert, key: bundle.key }, remoteApp)
+    : createHttpServer(remoteApp);
   srv.on('error', (err: NodeJS.ErrnoException) => {
     console.error(`[Remote] Listener error on port ${config.remote.port}:`, err);
   });
   srv.listen(config.remote.port, () => {
     console.log(
-      `[Remote] Consumer-only listener on port ${config.remote.port} — ` +
+      `[Remote] Consumer-only ${bundle ? 'HTTPS' : 'HTTP'} listener on port ${config.remote.port} — ` +
         `admin routes not mounted, WebSocket disabled, auth mandatory.`,
     );
   });
@@ -73,4 +82,14 @@ export function stopRemoteListener(): void {
   remoteServer.close();
   remoteServer = null;
   console.log('[Remote] Consumer-only listener stopped.');
+}
+
+/**
+ * Stop + start the listener — used after a cert is obtained or renewed so the
+ * new cert takes effect (Node binds the cert at server-creation time). No-op
+ * when remote access is disabled.
+ */
+export function restartRemoteListener(): { started: boolean; reason?: string } {
+  stopRemoteListener();
+  return startRemoteListener();
 }
