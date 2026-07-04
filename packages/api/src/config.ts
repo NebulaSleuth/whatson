@@ -14,6 +14,15 @@ export interface AppConfig extends ServerConfig {
     enabled: boolean;
     port: number;
   };
+  /**
+   * Cloud control-plane connection (docs/remote-access/, M4). Only used when
+   * remote access is enabled. `publicKey` is the PINNED cloud Ed25519 public
+   * key (PEM) used to verify grants offline — env value may use `\n` escapes.
+   */
+  cloud: {
+    url: string;
+    publicKey: string;
+  };
 }
 
 function trimUrl(url: string | undefined): string {
@@ -39,6 +48,11 @@ function loadConfig(): AppConfig {
     remote: {
       enabled: (process.env.REMOTE_ACCESS || 'false').toLowerCase() === 'true',
       port: parseInt(process.env.REMOTE_PORT || '3002', 10),
+    },
+    cloud: {
+      url: (process.env.CLOUD_URL || '').trim().replace(/\/+$/, ''),
+      // Allow a `\n`-escaped PEM in a single-line env var.
+      publicKey: (process.env.CLOUD_PUBLIC_KEY || '').replace(/\\n/g, '\n').trim(),
     },
     plex: {
       url: trimUrl(process.env.PLEX_URL),

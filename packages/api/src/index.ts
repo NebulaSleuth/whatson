@@ -49,6 +49,7 @@ reloadConfig();
 import { startUpdateScheduler } from './services/updater.js';
 import { initWebSocket } from './ws.js';
 import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
+import { startCloudRegistration } from './services/cloud/registration.js';
 
 const app = express();
 
@@ -192,3 +193,7 @@ if (config.remote.enabled) {
     });
   }
 }
+
+// Cloud registration client (M4). Self-guards: no-op unless remote access is
+// enabled AND a CLOUD_URL is configured, so the fleet is unaffected by default.
+startCloudRegistration();

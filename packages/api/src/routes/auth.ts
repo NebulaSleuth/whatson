@@ -11,7 +11,11 @@ import {
   getPendingPair,
   listPairedDevices,
   revokeDevice,
+  provisionDevice,
 } from '../services/pairing.js';
+import { getServerId } from '../services/cloud/identity.js';
+import { verifyGrant } from '../services/cloud/grants.js';
+import { isRedeemed, markRedeemed } from '../services/cloud/redeemedGrants.js';
 
 export const authRouter = Router();
 
@@ -170,6 +174,41 @@ authRouter.post('/auth/pair/complete', sessionAuth, async (req, res) => {
 authRouter.get('/auth/pair/pending', sessionAuth, (_req, res) => {
   const pending = getPendingPair();
   res.json({ success: true, data: pending });
+});
+
+// ── Remote onboarding via a cloud grant (doc 02 §5-6) ─────────────
+
+/**
+ * Redeem a cloud-signed grant for a device auth key. Public (the grant IS the
+ * proof): verified against the pinned cloud key, bound to this server, and
+ * single-use by `jti`. The resulting device carries the grant's role + profile.
+ */
+authRouter.post('/auth/redeem-grant', async (req, res) => {
+  const grant = String(req.body?.grant || '');
+  if (!grant) {
+    res.status(400).json({ success: false, error: 'grant required' });
+    return;
+  }
+  const payload = verifyGrant(grant);
+  if (!payload) {
+    res.status(401).json({ success: false, error: 'invalid or expired grant' });
+    return;
+  }
+  if (payload.serverId !== getServerId()) {
+    res.status(403).json({ success: false, error: 'grant is not for this server' });
+    return;
+  }
+  if (isRedeemed(payload.jti)) {
+    res.status(409).json({ success: false, error: 'grant already redeemed' });
+    return;
+  }
+  markRedeemed(payload.jti);
+  const { key, deviceId } = await provisionDevice({
+    role: payload.role,
+    boundWoProfileId: payload.boundWoProfileId,
+    label: 'Remote (grant)',
+  });
+  res.json({ success: true, data: { key, deviceId } });
 });
 
 // ── Paired-device management ──────────────────────────────────────

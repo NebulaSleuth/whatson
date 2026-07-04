@@ -26,8 +26,9 @@ import type { Surface } from '../server/surface.js';
  * prefix is stripped.
  */
 
-// Public on every surface — liveness + the client's provider-capability probe.
-const PUBLIC_PATHS_COMMON = new Set<string>(['/health', '/auth/providers']);
+// Public on every surface — liveness, the provider-capability probe, and the
+// grant-redemption onboarding path (the signed grant is itself the proof).
+const PUBLIC_PATHS_COMMON = new Set<string>(['/health', '/auth/providers', '/auth/redeem-grant']);
 
 // Public on the LAN surface only — admin-session flow, the 6-digit pair flow,
 // and the update poller. None of these should be unauthenticated on the

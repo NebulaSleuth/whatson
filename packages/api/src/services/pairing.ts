@@ -214,6 +214,32 @@ export async function completePair(
   return { ok: true, deviceId: id };
 }
 
+/**
+ * Provision a device directly from a verified cloud grant (doc 02 §6), skipping
+ * the 6-digit LAN code flow. The grant's role + bound profile are carried onto
+ * the device record. Returns the one-shot auth key.
+ */
+export async function provisionDevice(opts: {
+  role: DeviceRole;
+  boundWoProfileId?: string | null;
+  label?: string;
+}): Promise<{ key: string; deviceId: string }> {
+  const key = genKey();
+  const id = crypto.randomBytes(8).toString('hex');
+  const list = await loadPaired();
+  list.push({
+    id,
+    keyHash: hashKey(key),
+    label: opts.label || 'Remote device',
+    role: opts.role,
+    boundWoProfileId: opts.boundWoProfileId ?? null,
+    createdAt: new Date().toISOString(),
+    lastSeenAt: null,
+  });
+  await savePaired();
+  return { key, deviceId: id };
+}
+
 export function getPendingPair(): { code: string; expiresAt: number; deviceLabel: string | null } | null {
   expireIfDone();
   if (!activePair || activePair.status !== 'pending') return null;
