@@ -76,11 +76,14 @@ State persists to `CLOUD_DATA_DIR/cloud-db.json`; the signing key to
 
 ## Open decisions (doc 02 §10 — settle before the dependent milestone)
 
-- **Cloud DNS zone / domain** (`CLOUD_DOMAIN`) — ✅ decided: **`whatson.direct`**
-  (per-server hostnames `<serverId>.s.whatson.direct`, mirroring `plex.direct`).
-  Branding is a separate domain, `whatsontv.net`. Still to do: register
-  `whatson.direct`, delegate the `s.whatson.direct` zone to a DNS host with an
-  API (Azure DNS recommended) for the M8 DNS-01 cert flow.
+- **Cloud DNS zone / domain** (`CLOUD_DOMAIN`) — ✅ decided: **`whatsontv.net`**
+  (per-server hostnames `<serverId>.s.whatsontv.net`, mirroring `plex.direct`).
+  Consolidated onto the branding domain instead of a separate `.direct`: the
+  marketing site lives on the apex/`www`, the per-server machinery on the `s.`
+  subdomain — one domain, no conflict. (`.direct` was dropped because Azure App
+  Service Domains can't sell that TLD, whereas `.net` is supported.) Still to do:
+  register `whatsontv.net`, host the zone in Azure DNS, and delegate/manage the
+  `s.whatsontv.net` records for the M8 DNS-01 cert flow.
 - **Account model** — email + password today. Could federate Plex OAuth (already
   wired for the PIN flow) instead.
 - **Invite → profile** — redeem currently assumes the WO profile already exists

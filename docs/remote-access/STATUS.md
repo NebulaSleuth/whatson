@@ -111,11 +111,14 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
 
 ## Open decisions (doc 02 §10 — settle before the dependent milestone)
 
-1. **Cloud DNS zone / `CLOUD_DOMAIN`** — ✅ DECIDED: **`whatson.direct`** (infra;
-   per-server hostnames `<id>.s.whatson.direct`, plex.direct-style). Branding on a
-   separate domain `whatsontv.net`. TODO: register `whatson.direct` + delegate the
-   `s.whatson.direct` zone to a DNS host with an API (Azure DNS recommended) for
-   the M8 cert flow. Config default now set to `whatson.direct`.
+1. **Cloud DNS zone / `CLOUD_DOMAIN`** — ✅ DECIDED: **`whatsontv.net`** (one
+   domain for branding + infra; per-server hostnames `<id>.s.whatsontv.net`,
+   plex.direct-style; marketing site on apex/`www`, machinery on `s.`). Dropped
+   the separate `.direct`: Azure App Service Domains can't sell that TLD, `.net`
+   is supported, and `whatsontv.net` is available. Config default + deployed-cloud
+   `CLOUD_DOMAIN` app setting both now `whatsontv.net`. TODO (user): register
+   `whatsontv.net` (buyable directly in Azure), host the zone in Azure DNS, manage
+   `s.whatsontv.net` records for the M8 DNS-01 cert flow.
 2. **Account model** — email+password (current) vs federate Plex OAuth.
 3. **Invite → profile** — auto-create the WO profile on redeem vs require
    pre-create. (Redeem currently assumes it exists.)
@@ -147,8 +150,8 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    parallel-`ApiTask` racer (L). Also unbuilt and **domain-gated**: fetching
    `/candidates` from the cloud to populate the list — the cloud endpoint
    `GET /servers/:id/candidates` exists and is deployed, but candidates return
-   `<serverId>.s.whatson.direct` hostnames that don't resolve until
-   `whatson.direct` is registered + `s.` delegated, so building the onboarding UI
+   `<serverId>.s.whatsontv.net` hostnames that don't resolve until
+   `whatsontv.net` is registered + `s.` delegated, so building the onboarding UI
    against it can't be exercised end-to-end yet. That's the onboarding tie-in
    with M7. → unlocks the **browse-remotely demo** (over BYO-TLS or wildcard cert).
 5. **M6 — remote playback**: per-adapter stream+segment proxy (Item 8, new code —
@@ -174,8 +177,9 @@ The control plane is deployed and verified:
 - ⚠️ **Signing key** lives in `/home/data/cloud-ed25519.pem` (persistent Azure
   Files). Do NOT wipe `/home/data` — losing it invalidates every issued grant.
   The pinned public key backends need is always at `GET /api/cloud-key`.
-- **Next to make it usable end-to-end:** (1) register `whatson.direct` + delegate
-  the `s.whatson.direct` DNS zone so WAN/IPv6 candidate hostnames resolve (+ M8
+- **Next to make it usable end-to-end:** (1) register `whatsontv.net` (buyable
+  directly in Azure App Service Domains, `.net` supported) + host the
+  `s.whatsontv.net` zone in Azure DNS so WAN/IPv6 candidate hostnames resolve (+ M8
   certs); (2) point a real backend at it — `CLOUD_URL=https://whatson-cloud.
   azurewebsites.net`, `CLOUD_PUBLIC_KEY=<cloud-key>`, `REMOTE_ACCESS=true`,
   admin password set — so it registers + heartbeats.

@@ -9,9 +9,11 @@ export const config = {
   /**
    * Base cloud domain. Per-server hostnames are `<serverId>.s.<cloudDomain>`
    * (the Plex `plex.direct` pattern), so the DNS-01 cert zone is
-   * `s.<cloudDomain>`. Branding lives on a separate domain (whatsontv.net).
+   * `s.<cloudDomain>`. We consolidated onto the branding domain rather than a
+   * separate `.direct`: the marketing site lives on the apex/`www`, while the
+   * per-server machinery lives on the `s.` subdomain — one domain, no conflict.
    */
-  cloudDomain: process.env.CLOUD_DOMAIN || 'whatson.direct',
+  cloudDomain: process.env.CLOUD_DOMAIN || 'whatsontv.net',
   dataDir: process.env.CLOUD_DATA_DIR || join(process.cwd(), 'data'),
   /** TTL (seconds) for the candidate list handed to apps. */
   candidateTtl: parseInt(process.env.CANDIDATE_TTL || '300', 10),
