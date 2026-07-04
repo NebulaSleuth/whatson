@@ -23,8 +23,8 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
-| M8 — DNS + certs + UPnP + IPv6 + mDNS | ⬜ | — | — |
-| v2 — relay | ⬜ future | — | — |
+| M8 — secure data path: A/AAAA + per-server DNS-01 TLS + IPv4 forward (UPnP) + stable IPv6 (pinhole) + reachability panel | ⬜ design decided | — | — |
+| relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
 ---
 
@@ -120,9 +120,22 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    `CLOUD_DOMAIN` app setting both now `whatsontv.net`. TODO (user): register
    `whatsontv.net` (buyable directly in Azure), host the zone in Azure DNS, manage
    `s.whatsontv.net` records for the M8 DNS-01 cert flow.
-2. **Account model** — email+password (current) vs federate Plex OAuth.
+2. **Account model** — ✅ DECIDED: **each viewer gets their OWN email+password
+   cloud account** (not one account with sub-profiles), created via an emailed
+   invite. Plex-OAuth federation stays a possible later add-on.
 3. **Invite → profile** — auto-create the WO profile on redeem vs require
-   pre-create. (Redeem currently assumes it exists.)
+   pre-create. (Redeem currently assumes it exists.) M7 flow: the viewer picks a
+   WO User + avatar (WO-Users mode) or a Plex Home user at redeem time.
+4. **Remote data path / relay** — ✅ DECIDED: **direct paths only this phase, no
+   relay.** IPv4 port-forward (primary, works for every client on non-CGNAT
+   servers) + IPv6 (for CGNAT / where available), both over **per-server TLS**
+   (A/AAAA record + DNS-01 cert). **Plaintext video is off the table** — media
+   stays behind TLS + signed capability URLs (decision drivers: credential leak
+   on the wire, browser mixed-content block, iOS ATS / Android cleartext).
+   **Relay is deferred** — it's the only thing that covers CGNAT-server +
+   v4-only-client, but egress is costly; revisit as a **paid-account** feature in
+   a later phase, not now. Admin "no port forwarding required" copy is now wrong
+   and is being corrected.
 
 ---
 
@@ -157,12 +170,50 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    with M7. → unlocks the **browse-remotely demo** (over BYO-TLS or wildcard cert).
 5. **M6 — remote playback**: per-adapter stream+segment proxy (Item 8, new code —
    the `hlsProxy.ts` transmux is NOT reusable) + short-lived HMAC signed URLs
-   (Item 5), segment URIs signed **inside the playlist**.
-6. **M7** — invites + guest roles + device-code (cloud is scaffolded; needs app
-   UIs; device-code + keyboard on TV, no QR).
-7. **M8** — DNS + per-server DNS-01 certs (or wildcard shortcut), UPnP/NAT-PMP,
-   Windows stable-IPv6 (`netsh` Public/Preferred), mDNS/SSDP LAN fallback,
-   `/setup` reachability panel.
+   (Item 5), segment URIs signed **inside the playlist**. **Media stays behind
+   TLS + signed capability URLs — plaintext HTTP video is OFF THE TABLE** (it
+   would leak a reusable credential on the wire, breaks browser mixed-content,
+   and fights iOS ATS / Android cleartext). Signed URLs mean no reusable secret
+   ever rides a media request; TLS (M8 per-server cert) makes every platform
+   accept the stream.
+6. **M7** — invites + self-service accounts + device-code (cloud invites/accounts
+   scaffolded; needs the `whatsontv.net` web UI + app "sign in to cloud" screens).
+   **Refined flow (decided):** admin invites a viewer by email → viewer clicks
+   link → creates their OWN cloud account (email + password) → picks their in-app
+   identity (a Whats On User + avatar if the server runs WO-Users mode, else a
+   Plex Home user) → the invite binds their account to this server as a guest
+   bound to that profile. Thereafter the viewer is **self-service**: on each
+   device they device-code → `whatsontv.net/link` → log in as themselves →
+   approve their own device. Removes the admin-approves-every-device bottleneck.
+   Also in M7's orbit: a public marketing page at `whatsontv.net` with a Sign-in
+   button; per-user **PIN** managed in the cloud account; and (separate follow-on
+   milestone) a browser **web player** to watch from the site.
+7. **M8 — secure remote data path (DECIDED design).** Goal: **secure delivery
+   that works on every device, and everywhere a direct path exists** (relay
+   deferred — see decision 4). Per-server, no shared secret:
+   - **IPv4 (primary):** publish an **A record** `<id>.s.whatsontv.net` → the
+     server's WAN IPv4, so apps connect to the *hostname* (cert matches). Needs a
+     **port forward** on the remote port — automate via **UPnP/NAT-PMP** where the
+     router allows, else guide the owner. IPv4 reaches essentially every client,
+     so this is the "works everywhere" path — **for non-CGNAT servers**.
+   - **IPv6 (for CGNAT + where available):** publish an **AAAA record** to a
+     **stable** global v6 (`netsh` Public/Preferred on Windows — today's
+     best-effort address can be a privacy/temporary one that rotates daily) +
+     a firewall **pinhole** (Windows Firewall rule; **PCP** to ask the router).
+     Only connects when the *client* also has v6.
+   - **Per-server DNS-01 TLS cert** for `<id>.s.whatsontv.net` (NOT a wildcard
+     shared across servers — H1: the cloud never holds a server's TLS key; a
+     leaked backend must not compromise every server). Backend proves control of
+     its name via a DNS-01 TXT written through the cloud API. A valid public cert
+     is what makes **all devices** accept the stream (iOS ATS, Android cleartext,
+     browser no-mixed-content all satisfied).
+   - **BUG to fix:** `registration.ts ipv6Url()` currently emits
+     `https://[literal-v6]:port`, which FAILS cert validation (cert is for the
+     hostname, not an IP literal). Switch to AAAA-record + hostname candidates.
+   - Also: mDNS/SSDP LAN fallback + a `/setup` reachability panel (is my port
+     open? is my cert valid? which paths resolve?).
+   - **CGNAT residual gap:** CGNAT server + v4-only client = no direct path this
+     phase. Detect it and tell the owner "needs IPv6, or wait for relay."
 
 ---
 
