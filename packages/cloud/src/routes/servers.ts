@@ -7,6 +7,7 @@ import {
   humanCode,
   verifySession,
 } from '../crypto.js';
+import { config } from '../config.js';
 import { requireAccount, bearer } from '../middleware.js';
 import { probeServer } from '../probe.js';
 import { upsertTxt, deleteTxt } from '../dns.js';
@@ -65,7 +66,8 @@ serversRouter.post('/servers/register', (req, res) => {
     appVersion: null,
   };
   store.upsertServer(record);
-  res.json({ serverId, cloudPublicKey: cloudPublicKeyPem() });
+  // hostname is what the backend requests a cert for + what apps connect to.
+  res.json({ serverId, cloudPublicKey: cloudPublicKeyPem(), hostname: `${serverId}.s.${config.cloudDomain}` });
 });
 
 serversRouter.post('/servers/:id/claim-code', (req, res) => {
