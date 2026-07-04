@@ -524,6 +524,7 @@
           <div><span style="color:#777">Cloud URL:</span> <span id="ri-url" style="color:#bbb"></span></div>
           <div><span style="color:#777">Server ID:</span> <span id="ri-sid" style="color:#bbb;font-family:monospace;font-size:12px"></span></div>
           <div><span style="color:#777">Last heartbeat:</span> <span id="ri-hb" style="color:#bbb"></span></div>
+          <div><span style="color:#777">TLS certificate:</span> <span id="ri-cert" style="color:#bbb"></span></div>
         </div>
 
         <h3 style="margin:0 0 8px 0;color:#ccc;font-size:14px">Link this server to your account</h3>
@@ -1743,8 +1744,19 @@
         document.getElementById('ri-sid').textContent = s.serverId;
         document.getElementById('ri-hb').textContent = (s.cloud && s.cloud.lastHeartbeatAt)
           ? new Date(s.cloud.lastHeartbeatAt).toLocaleTimeString() : '—';
+        const cert = s.cert || {};
+        const certEl = document.getElementById('ri-cert');
+        if (cert.obtaining) { certEl.textContent = 'obtaining…'; certEl.style.color = '#e5a00d'; }
+        else if (typeof cert.daysRemaining === 'number') { certEl.textContent = 'valid · ' + cert.daysRemaining + ' days left'; certEl.style.color = '#77dd77'; }
+        else { certEl.textContent = 'not issued yet'; certEl.style.color = '#888'; }
         show('remote-enabled');
         loadClaimCode();
+        // While the cert is being obtained (or absent right after enable),
+        // re-poll so the operator sees it flip to "valid" without a manual refresh.
+        if (cert.obtaining || typeof cert.daysRemaining !== 'number') {
+          clearTimeout(window.__remotePoll);
+          window.__remotePoll = setTimeout(loadRemoteStatus, 6000);
+        }
       } catch (e) {
         if (dot) dot.className = 'status-dot error';
         box.textContent = 'Could not load remote status: ' + e.message;

@@ -9,6 +9,8 @@ import {
   stopCloudRegistration,
 } from '../services/cloud/registration.js';
 import { startRemoteListener, stopRemoteListener } from '../server/remoteListener.js';
+import { certDaysRemaining } from '../services/cloud/acme.js';
+import { startCertManager, stopCertManager, isObtainingCert } from '../services/cloud/certManager.js';
 
 /**
  * Remote Access control (docs/remote-access/) for the /setup owner UI. Turns
@@ -28,6 +30,7 @@ function statusPayload() {
     remotePort: config.remote.port,
     adminPasswordSet: Boolean(config.auth.adminPasswordHash),
     cloud: getCloudStatus(),
+    cert: { daysRemaining: certDaysRemaining(), obtaining: isObtainingCert() },
   };
 }
 
@@ -90,6 +93,9 @@ remoteRouter.post('/remote/enable', async (req, res) => {
     return;
   }
   startCloudRegistration();
+  // Obtain the per-server TLS cert in the background (~30s), then the cert
+  // manager restarts the listener as HTTPS. The panel polls cert state.
+  startCertManager();
 
   res.json({ success: true, data: statusPayload() });
 });
@@ -98,6 +104,7 @@ remoteRouter.post('/remote/enable', async (req, res) => {
 remoteRouter.post('/remote/disable', (_req, res) => {
   saveConfigToEnv({ REMOTE_ACCESS: 'false' });
   reloadConfig();
+  stopCertManager();
   stopCloudRegistration();
   stopRemoteListener();
   res.json({ success: true, data: statusPayload() });

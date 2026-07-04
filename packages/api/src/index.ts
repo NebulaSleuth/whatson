@@ -51,6 +51,7 @@ import { initWebSocket } from './ws.js';
 import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
 import { startRemoteListener } from './server/remoteListener.js';
 import { startCloudRegistration } from './services/cloud/registration.js';
+import { startCertManager } from './services/cloud/certManager.js';
 
 const app = express();
 
@@ -163,6 +164,9 @@ server.listen(config.port, () => {
 // password is a hard prerequisite (without it apiAuth would run open).
 // Runtime-toggleable via the /setup Remote Access panel; see remoteListener.ts.
 startRemoteListener();
+// Obtain/renew the per-server TLS cert and upgrade the listener to HTTPS
+// (M8/8b). Self-guards: no-op unless remote access + a cloud URL are set.
+startCertManager();
 
 // Cloud registration client (M4). Self-guards: no-op unless remote access is
 // enabled AND a CLOUD_URL is configured, so the fleet is unaffected by default.
