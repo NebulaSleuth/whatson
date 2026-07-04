@@ -9,6 +9,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test lib/*.test.ts",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@react-native-tvos/config-tv": "~0.1.5",
     "@types/react": "~19.1.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2"
   }
 }
