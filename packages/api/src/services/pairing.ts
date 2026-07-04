@@ -51,13 +51,28 @@ const PAIRED_FILE = (() => {
   return d ? join(d, 'paired-devices.json') : '';
 })();
 
-interface PairedDevice {
+/** Privilege level of a paired device. */
+export type DeviceRole = 'owner' | 'guest';
+
+export interface PairedDevice {
   /** Stable opaque id, used for revoke. */
   id: string;
   /** SHA-256 hex of the auth key. */
   keyHash: string;
   /** Human-readable label set when the device paired. */
   label: string;
+  /**
+   * Privilege level. `owner` = full access (admin routes, all WO profiles);
+   * `guest` = consumer routes only, locked to `boundWoProfileId`. Devices
+   * paired via the LAN `/setup` flow are owners; guests come from the invite /
+   * device-code flow (M7). Legacy records with no role migrate to `owner`.
+   */
+  role: DeviceRole;
+  /**
+   * For guest devices, the single Whats On profile id this device may act as
+   * (enforced in userContext). null for owners (any profile).
+   */
+  boundWoProfileId: string | null;
   /** ISO timestamp. */
   createdAt: string;
   /** ISO timestamp of last seen X-Whatson-Auth match. */
@@ -79,6 +94,20 @@ async function loadPaired(): Promise<PairedDevice[]> {
   } catch {
     paired = [];
   }
+  // Migrate legacy records: anything paired before roles existed was paired by
+  // the admin at /setup, so it's an owner with no profile binding.
+  let migrated = false;
+  for (const d of paired) {
+    if (d.role !== 'owner' && d.role !== 'guest') {
+      d.role = 'owner';
+      migrated = true;
+    }
+    if (d.boundWoProfileId === undefined) {
+      d.boundWoProfileId = null;
+      migrated = true;
+    }
+  }
+  if (migrated) savePaired().catch(() => {});
   return paired;
 }
 
@@ -148,7 +177,11 @@ export function pollPair(code: string): { status: 'pending' | 'completed' | 'exp
  * generates a fresh auth key, persists the device record (storing
  * only the hash), and stages the key for the client's next poll.
  */
-export async function completePair(code: string, label: string): Promise<{ ok: boolean; deviceId?: string; reason?: string }> {
+export async function completePair(
+  code: string,
+  label: string,
+  opts?: { role?: DeviceRole; boundWoProfileId?: string | null },
+): Promise<{ ok: boolean; deviceId?: string; reason?: string }> {
   expireIfDone();
   if (!activePair || activePair.status !== 'pending') {
     return { ok: false, reason: 'no-active-pair' };
@@ -160,10 +193,14 @@ export async function completePair(code: string, label: string): Promise<{ ok: b
   const key = genKey();
   const id = crypto.randomBytes(8).toString('hex');
   const list = await loadPaired();
+  // LAN /setup pairing yields an owner; the grant/invite flow (M7) passes
+  // role='guest' + a bound profile.
   list.push({
     id,
     keyHash: hashKey(key),
     label: label || activePair.deviceLabel || 'Unnamed device',
+    role: opts?.role ?? 'owner',
+    boundWoProfileId: opts?.boundWoProfileId ?? null,
     createdAt: new Date().toISOString(),
     lastSeenAt: null,
   });

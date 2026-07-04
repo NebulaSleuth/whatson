@@ -16,6 +16,7 @@ import type { Express, ErrorRequestHandler } from 'express';
 
 import { userContext } from '../middleware/userContext.js';
 import { apiAuth } from '../middleware/apiAuth.js';
+import { requireOwner } from '../middleware/roles.js';
 
 // Consumer routers — the read/playback surface an app needs. Mounted on both
 // the LAN and remote listeners.
@@ -60,8 +61,10 @@ export type Surface = 'lan' | 'remote';
  * every non-public path on it.
  */
 export function mountApiRoutes(app: Express, surface: Surface): void {
+  // apiAuth runs BEFORE userContext so the authenticated device (and its role)
+  // is available when userContext enforces guest profile binding.
+  app.use('/api', apiAuth(surface));
   app.use('/api', userContext);
-  app.use('/api', apiAuth);
 
   // Consumer routes — both surfaces.
   app.use('/api', usersRouter);
@@ -81,8 +84,25 @@ export function mountApiRoutes(app: Express, surface: Surface): void {
   app.use('/api', authRouter);
   app.use('/api', sportsRouter);
 
-  // Admin routes — LAN surface only. Unreachable on the remote listener.
+  // Admin routes — LAN surface only. Unreachable on the remote listener AND
+  // (belt-and-suspenders) gated to owner devices / admin sessions via
+  // requireOwner, so a paired guest device on the LAN can't reach them either.
+  //
+  // requireOwner is mounted on the specific sensitive path PREFIXES rather than
+  // the whole router, so it doesn't shadow public/consumer routes that share a
+  // router. In particular: /update/status + /update/check stay public (client
+  // polls them), while /update/apply (installs code) is owner-only; and the
+  // Plex cast/OAuth routes that live in configRouter (/plex/*) stay ungated
+  // while /config/* (service tokens) is owner-only.
   if (surface === 'lan') {
+    const owner = requireOwner(surface);
+    app.use('/api/config', owner);
+    app.use('/api/logs', owner);
+    app.use('/api/debug', owner);
+    app.use('/api/sonarr/add', owner);
+    app.use('/api/radarr/add', owner);
+    app.use('/api/update/apply', owner);
+
     app.use('/api', configRouter);
     app.use('/api', debugRouter);
     app.use('/api', addRouter);

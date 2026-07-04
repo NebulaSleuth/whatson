@@ -3,6 +3,7 @@ import { getUserToken, seedUserToken } from '../services/users.js';
 import { setRequestUserId } from '../services/tracked.js';
 import { setActiveUserScope } from '../services/adapters/registry.js';
 import * as wo from '../services/whatsonUsers.js';
+import type { PairedDevice } from '../services/pairing.js';
 
 /**
  * Per-request user context.
@@ -25,6 +26,12 @@ declare global {
       plexUserToken?: string;
       plexUserId?: string;
       plexConnectionType?: 'local' | 'remote';
+      /** Paired device that authenticated this request (set by apiAuth). */
+      whatsonDevice?: PairedDevice;
+      /** Id of that device, for logging. */
+      whatsonDeviceId?: string;
+      /** True when a valid admin session cookie authenticated the request. */
+      isAdminSession?: boolean;
       whatsonUser?: {
         id: string;
         name: string;
@@ -38,7 +45,26 @@ declare global {
 
 export function userContext(req: Request, res: Response, next: NextFunction): void {
   const woIdHeader = req.headers['x-whatson-user'];
-  const woId = Array.isArray(woIdHeader) ? woIdHeader[0] : woIdHeader;
+  let woId = Array.isArray(woIdHeader) ? woIdHeader[0] : woIdHeader;
+
+  // Profile binding (doc 01 Item 4). A guest device may only act as the single
+  // WO profile it was bound to at pairing — X-Whatson-User is otherwise
+  // client-asserted with no proof. Owners (and open-mode LAN requests with no
+  // device) are unrestricted, so this is a no-op for existing installs.
+  const device = req.whatsonDevice;
+  if (device?.role === 'guest') {
+    const bound = device.boundWoProfileId;
+    if (!bound) {
+      res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
+      return;
+    }
+    if (woId && woId !== bound) {
+      res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
+      return;
+    }
+    woId = bound; // default a guest to its bound profile when none is requested
+  }
+
   if (woId && wo.isEnabled()) {
     const user = wo.findById(woId);
     if (user) {
