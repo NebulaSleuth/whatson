@@ -4,6 +4,16 @@ import type { ServerConfig } from '@whatson/shared';
 
 export interface AppConfig extends ServerConfig {
   port: number;
+  /**
+   * Internet-facing "remote" listener (docs/remote-access/). Off by default —
+   * when disabled the backend is byte-for-byte today's single-LAN-listener
+   * behaviour. Enabling it starts a second, consumer-routes-only listener on
+   * `remote.port`; see index.ts for the refuse-to-start prerequisites.
+   */
+  remote: {
+    enabled: boolean;
+    port: number;
+  };
 }
 
 function trimUrl(url: string | undefined): string {
@@ -26,6 +36,10 @@ let _config: AppConfig | null = null;
 function loadConfig(): AppConfig {
   return {
     port: parseInt(process.env.PORT || '3001', 10),
+    remote: {
+      enabled: (process.env.REMOTE_ACCESS || 'false').toLowerCase() === 'true',
+      port: parseInt(process.env.REMOTE_PORT || '3002', 10),
+    },
     plex: {
       url: trimUrl(process.env.PLEX_URL),
       token: (process.env.PLEX_TOKEN || '').trim(),

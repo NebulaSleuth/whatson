@@ -46,31 +46,9 @@ import { corsMiddleware, hostGuard } from './security/httpGuards.js';
 // Some module's init code may have accessed the config Proxy before dotenv ran,
 // memoizing an empty-env snapshot. Force a reload now that process.env is populated.
 reloadConfig();
-import { homeRouter } from './routes/home.js';
-import { tvRouter } from './routes/tv.js';
-import { moviesRouter } from './routes/movies.js';
-import { searchRouter } from './routes/search.js';
-import { scrobbleRouter } from './routes/scrobble.js';
-import { configRouter } from './routes/config.js';
-import { healthRouter } from './routes/health.js';
-import { artworkRouter } from './routes/artwork.js';
-import { debugRouter } from './routes/debug.js';
-import { discoverRouter } from './routes/discover.js';
-import { addRouter } from './routes/add.js';
-import { playbackRouter } from './routes/playback.js';
-import { libraryRouter } from './routes/library.js';
-import { recommendationsRouter } from './routes/recommendations.js';
-import { usersRouter } from './routes/users.js';
-import { whatsonUsersRouter } from './routes/whatsonUsers.js';
-import { liveRouter } from './routes/live.js';
-import { updateRouter } from './routes/update.js';
-import { authRouter } from './routes/auth.js';
-import { sportsRouter } from './routes/sports.js';
-import { logsRouter } from './routes/logs.js';
 import { startUpdateScheduler } from './services/updater.js';
-import { userContext } from './middleware/userContext.js';
-import { apiAuth } from './middleware/apiAuth.js';
 import { initWebSocket } from './ws.js';
+import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
 
 const app = express();
 
@@ -98,35 +76,10 @@ for (const dir of adminCandidates) {
 // Fallback: serve inline HTML if static files not found
 app.use('/setup', setupRouter);
 
-// User context middleware — sets per-user Plex token and data paths
-app.use('/api', userContext);
-
-// X-Whatson-Auth gate — enforced when ADMIN_PASSWORD_HASH is set,
-// otherwise no-op (so existing installs upgrade without breakage).
-app.use('/api', apiAuth);
-
-// Routes
-app.use('/api', usersRouter);
-app.use('/api', whatsonUsersRouter);
-app.use('/api', healthRouter);
-app.use('/api', homeRouter);
-app.use('/api', tvRouter);
-app.use('/api', moviesRouter);
-app.use('/api', searchRouter);
-app.use('/api', scrobbleRouter);
-app.use('/api', configRouter);
-app.use('/api', artworkRouter);
-app.use('/api', debugRouter);
-app.use('/api', discoverRouter);
-app.use('/api', addRouter);
-app.use('/api', playbackRouter);
-app.use('/api', libraryRouter);
-app.use('/api', recommendationsRouter);
-app.use('/api', liveRouter);
-app.use('/api', updateRouter);
-app.use('/api', authRouter);
-app.use('/api', sportsRouter);
-app.use('/api', logsRouter);
+// Mount /api middleware (userContext + apiAuth) and all routers for the LAN
+// surface — every route, including admin (config/logs/debug/update/add).
+// See server/surface.ts.
+mountApiRoutes(app, 'lan');
 
 // Serve the web SPA at /. Mounted AFTER /api/* and /setup so those
 // take precedence; the SPA fallback below catches anything else and
@@ -156,6 +109,9 @@ if (webDir) {
 } else {
   console.log('[Whats On API] Web UI dir not found — / will 404 until apps/web/dist exists or web/ is bundled.');
 }
+
+// Terminal error handler — must be last. Logs detail, returns a generic body.
+app.use(makeErrorHandler('lan'));
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);
@@ -193,3 +149,46 @@ server.listen(config.port, () => {
   console.log(`[EPG] Provider: ${config.epg.provider}, Country: ${config.epg.country}`);
   startUpdateScheduler();
 });
+
+// ── Remote listener (docs/remote-access/, M1) ─────────────────────────────
+// A second, consumer-routes-only listener for internet-facing access. Off by
+// default (REMOTE_ACCESS!=true) so the fleet is unchanged. When enabled it
+// refuses to start unless its prerequisites are met, so it can never run open.
+//
+// M1 ships the structural split + surface hardening (no admin routes, no WS,
+// generic error handler, trust proxy). Mandatory auth / roles / TLS are layered
+// on in later milestones; today it leans on apiAuth, which is why an admin
+// password is a hard prerequisite (without it apiAuth would run open).
+if (config.remote.enabled) {
+  const missing: string[] = [];
+  if (!config.auth.adminPasswordHash) {
+    missing.push('ADMIN_PASSWORD_HASH (mandatory auth for the remote surface)');
+  }
+  if (missing.length > 0) {
+    console.error(
+      `[Remote] REMOTE_ACCESS is on but the remote listener is REFUSING TO START — ` +
+        `missing prerequisites: ${missing.join('; ')}. The LAN listener is unaffected.`,
+    );
+  } else {
+    const remoteApp = express();
+    // Behind a loopback TLS terminator (BYO reverse proxy / tunnel) for now;
+    // M8 tightens this to the managed per-server cert terminator.
+    remoteApp.set('trust proxy', 'loopback');
+    remoteApp.use(corsMiddleware);
+    remoteApp.use(express.json());
+    mountApiRoutes(remoteApp, 'remote'); // consumer routes only — no admin, no setup
+    remoteApp.use(makeErrorHandler('remote'));
+    // Intentionally NO initWebSocket here — a WS upgrade bypasses apiAuth and
+    // the not-mounted invariant (see 04-implementation-plan.md H4).
+    const remoteServer = createServer(remoteApp);
+    remoteServer.on('error', (err: NodeJS.ErrnoException) => {
+      console.error(`[Remote] Listener error on port ${config.remote.port}:`, err);
+    });
+    remoteServer.listen(config.remote.port, () => {
+      console.log(
+        `[Remote] Consumer-only listener on port ${config.remote.port} — ` +
+          `admin routes not mounted, WebSocket disabled, auth mandatory.`,
+      );
+    });
+  }
+}
