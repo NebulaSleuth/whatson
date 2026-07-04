@@ -19,7 +19,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M2 — mandatory auth, roles, profile binding | ✅ shipped, live | v0.1.132 | `948a93a` |
 | M3 — cloud control plane | ✅ scaffolded + committed | — | `f790850` |
 | M4 — backend registration client | ✅ built + committed (dormant, unshipped) | — | `81b59a0` |
-| M5 — client connection manager (browse-remotely demo) | ⬜ next | — | — |
+| M5 — client connection manager | 🟡 core done (mobile racer + serverId echo); Roku + re-race listener + offline UX remain | — | `9a1dae6` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code | ⬜ | — | — |
 | M8 — DNS + certs + UPnP + IPv6 + mDNS | ⬜ | — | — |
@@ -133,9 +133,14 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    `POST /auth/redeem-grant`. Verified via a 16-check integration harness against
    the live cloud scaffold. NOT yet shipped as a release (dormant, so no rush) —
    and the cloud is NOT deployed to Azure (still runs locally only).
-4. **M5 — client connection manager** (mobile lift from the existing Plex
-   `/identity` racer; Roku parallel `ApiTask`s): candidate racing + on-device
-   cache + **serverId identity check** (P0) + "can't reach your server" state.
+4. 🟡 **M5 — client connection manager** — CORE DONE (`9a1dae6`): mobile
+   `lib/connectionRace.ts` (pure, unit-tested) + `connection.ts` + candidate/
+   serverId storage + `/api/health` serverId echo, wired into `_layout` init
+   (no-op until candidates exist). REMAINING: debounced re-race on network
+   change/foreground; the "can't reach your server" offline state (vs the
+   pair-device bounce); and the **Roku** parallel-`ApiTask` racer (L).
+   Also unbuilt: fetching `/candidates` from the cloud to populate the list
+   (needs the cloud deployed) — that's the onboarding tie-in with M7.
    → unlocks the **browse-remotely demo** (over BYO-TLS or a wildcard cert).
 5. **M6 — remote playback**: per-adapter stream+segment proxy (Item 8, new code —
    the `hlsProxy.ts` transmux is NOT reusable) + short-lived HMAC signed URLs
