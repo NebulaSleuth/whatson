@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import * as store from './store.js';
 import { config } from './config.js';
 import { verifyServerSignature } from './crypto.js';
+import { publishServerDns } from './dns.js';
 import { MSG, type CloudEnvelope, type HeartbeatPayload, type Candidate } from './types.js';
 
 /**
@@ -31,6 +32,31 @@ function normalizeIp(raw: string | undefined): string | null {
   return raw.replace(/^::ffff:/, '');
 }
 
+/** Strip a trailing `:port` from an address, handling bracketed IPv6. */
+function stripPort(addr: string): string {
+  const bracketed = addr.match(/^\[([^\]]+)\](?::\d+)?$/); // [::1] or [::1]:1234
+  if (bracketed) return bracketed[1];
+  // IPv4 with port: exactly one colon and a dotted quad before it.
+  if (addr.includes('.') && addr.split(':').length === 2) return addr.split(':')[0];
+  return addr; // bare IPv4 or bare IPv6
+}
+
+/**
+ * The client's real public IP. App Service (and any reverse proxy) terminates
+ * the socket, so `req.socket.remoteAddress` is an internal LB address
+ * (169.254.x.x) — the true client IP is the first entry of X-Forwarded-For.
+ * Falls back to the socket address for a direct (no-proxy) connection.
+ */
+function clientIp(req: { headers: Record<string, string | string[] | undefined>; socket: { remoteAddress?: string } }): string | null {
+  const xff = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(xff) ? xff[0] : xff;
+  if (raw) {
+    const first = raw.split(',')[0].trim();
+    if (first) return normalizeIp(stripPort(first));
+  }
+  return normalizeIp(req.socket.remoteAddress);
+}
+
 /** Build the candidate list from a heartbeat + the cloud-observed WAN IP. */
 function buildCandidates(hb: HeartbeatPayload, serverId: string): Candidate[] {
   const host = `${serverId}.s.${config.cloudDomain}`;
@@ -45,7 +71,7 @@ export function initCloudWebSocket(server: Server): void {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   wss.on('connection', (ws, req) => {
-    const conn: Conn = { ws, serverId: null, wanIp: normalizeIp(req.socket.remoteAddress) };
+    const conn: Conn = { ws, serverId: null, wanIp: clientIp(req) };
 
     ws.on('message', (raw) => {
       let env: CloudEnvelope;
@@ -83,6 +109,10 @@ export function initCloudWebSocket(server: Server): void {
             upnpMapped: !!hb.upnpMapped,
             appVersion: hb.appVersion ?? null,
           });
+          // M8: publish <serverId>.s.whatsontv.net -> WAN IPv4 (+ IPv6 if any) so
+          // apps can reach the backend by a cert-matching hostname. Fire-and-
+          // forget; no-op unless DNS publishing is configured (App Service MSI).
+          void publishServerDns(conn.serverId, conn.wanIp, hb.ipv6Url ?? null);
           send(ws, { v: 1, type: MSG.ACK, id: env.id, payload: { ok: true } });
           break;
         }

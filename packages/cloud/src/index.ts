@@ -3,6 +3,7 @@ import express from 'express';
 import { config } from './config.js';
 import { initCloudKey, cloudPublicKeyPem } from './crypto.js';
 import { initCloudWebSocket } from './ws.js';
+import { dnsPublishingEnabled } from './dns.js';
 import { accountsRouter } from './routes/accounts.js';
 import { serversRouter } from './routes/servers.js';
 import { invitesRouter } from './routes/invites.js';
@@ -45,4 +46,12 @@ initCloudWebSocket(server);
 
 server.listen(config.port, () => {
   console.log(`[cloud] control plane on :${config.port}  (domain ${config.cloudDomain})`);
+  // M8 boot diagnostic: report why DNS publishing is on/off so an operator can
+  // see at a glance whether the managed identity + zone config are wired.
+  console.log(
+    `[dns] publishing=${dnsPublishingEnabled()} ` +
+      `sub=${!!config.dns.subscriptionId} rg=${!!config.dns.resourceGroup} ` +
+      `zone=${config.dns.zone} msiEndpoint=${!!process.env.IDENTITY_ENDPOINT} ` +
+      `msiHeader=${!!process.env.IDENTITY_HEADER}`,
+  );
 });
