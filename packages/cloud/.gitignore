@@ -1,0 +1,8 @@
+# Runtime state — NEVER commit: holds the Ed25519 signing key + the account/
+# server/grant database.
+data/
+.env
+
+# Build output
+dist/
+node_modules/
