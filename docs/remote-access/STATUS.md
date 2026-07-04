@@ -17,7 +17,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M0 — SSRF fix, CORS, bcrypt PINs | ✅ shipped, live | v0.1.130 | `44594b5` |
 | M1 — two-listener split + surface hardening | ✅ shipped, live | v0.1.131 | `59d97da` |
 | M2 — mandatory auth, roles, profile binding | ✅ shipped, live | v0.1.132 | `948a93a` |
-| M3 — cloud control plane | ✅ scaffolded + committed | — | `f790850` |
+| M3 — cloud control plane | ✅ scaffolded + committed + **DEPLOYED to Azure** | — | `f790850` |
 | M4 — backend registration client | ✅ built + committed (dormant, unshipped) | — | `81b59a0` |
 | M5 — client connection manager | 🟡 core done (mobile racer + serverId echo); Roku + re-race listener + offline UX remain | — | `9a1dae6` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
@@ -152,6 +152,24 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    `/setup` reachability panel.
 
 ---
+
+## Cloud deployment (live)
+
+The control plane is deployed and verified:
+- **URL:** `https://whatson-cloud.azurewebsites.net` (health, `/api/cloud-key`,
+  accounts, servers, WSS `/ws` all working — App Service WebSockets verified).
+- **Azure:** Extrastrength sub, RG `whatson-cloud-rg`, App Service `whatson-cloud`
+  (B1 Linux, Node 22), Always On + WebSockets on + https-only. ~$13/mo.
+- **Deploy method:** local `tsc` build → zip of `dist/` + prod `node_modules` →
+  `az webapp deploy --type zip` (SCM build off, startup `node dist/index.js`).
+- ⚠️ **Signing key** lives in `/home/data/cloud-ed25519.pem` (persistent Azure
+  Files). Do NOT wipe `/home/data` — losing it invalidates every issued grant.
+  The pinned public key backends need is always at `GET /api/cloud-key`.
+- **Next to make it usable end-to-end:** (1) register `whatson.direct` + delegate
+  the `s.whatson.direct` DNS zone so WAN/IPv6 candidate hostnames resolve (+ M8
+  certs); (2) point a real backend at it — `CLOUD_URL=https://whatson-cloud.
+  azurewebsites.net`, `CLOUD_PUBLIC_KEY=<cloud-key>`, `REMOTE_ACCESS=true`,
+  admin password set — so it registers + heartbeats.
 
 ## Operational facts to remember
 
