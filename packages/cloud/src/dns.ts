@@ -89,6 +89,58 @@ export async function upsertRecord(name: string, type: 'A' | 'AAAA', ip: string)
   }
 }
 
+/**
+ * Upsert a TXT record `<name>.<zone>` -> `value` (short TTL). Used for the ACME
+ * DNS-01 challenge: the backend drives the cert order and holds its own key
+ * (H1 — the cloud never sees a server's TLS key); it only asks the cloud, which
+ * owns the zone, to publish `_acme-challenge.<serverId>` for validation.
+ */
+export async function upsertTxt(name: string, value: string): Promise<boolean> {
+  if (!dnsPublishingEnabled()) return false;
+  const token = await getMgmtToken();
+  if (!token) return false;
+  const { subscriptionId, resourceGroup, zone } = config.dns;
+  const url =
+    `https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}` +
+    `/providers/Microsoft.Network/dnszones/${zone}/TXT/${encodeURIComponent(name)}?api-version=2018-05-01`;
+  // Azure TXT records carry an array of strings per entry; ACME wants one value.
+  const payload = { properties: { TTL: 30, TXTRecords: [{ value: [value] }] } };
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      console.warn(`[dns] upsert TXT ${name} failed: HTTP ${res.status} ${await res.text().catch(() => '')}`);
+      return false;
+    }
+    console.log(`[dns] TXT ${name}.${zone} set`);
+    return true;
+  } catch (err) {
+    console.warn(`[dns] upsert TXT ${name} error: ${(err as Error).message}`);
+    return false;
+  }
+}
+
+/** Delete a TXT record set (ACME challenge cleanup). 404 counts as success. */
+export async function deleteTxt(name: string): Promise<boolean> {
+  if (!dnsPublishingEnabled()) return false;
+  const token = await getMgmtToken();
+  if (!token) return false;
+  const { subscriptionId, resourceGroup, zone } = config.dns;
+  const url =
+    `https://management.azure.com/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}` +
+    `/providers/Microsoft.Network/dnszones/${zone}/TXT/${encodeURIComponent(name)}?api-version=2018-05-01`;
+  try {
+    const res = await fetch(url, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+    return res.ok || res.status === 404;
+  } catch (err) {
+    console.warn(`[dns] delete TXT ${name} error: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 /** Extract the bare IPv6 address from an `https://[addr]:port` URL, or null. */
 export function ipv6FromUrl(url: string | null | undefined): string | null {
   if (!url) return null;

@@ -9,6 +9,7 @@ import {
 } from '../crypto.js';
 import { requireAccount, bearer } from '../middleware.js';
 import { probeServer } from '../probe.js';
+import { upsertTxt, deleteTxt } from '../dns.js';
 import { candidatesFor, issueGrant } from '../grants.js';
 import type { ServerRecord, DeviceRole } from '../types.js';
 
@@ -85,6 +86,42 @@ serversRouter.post('/servers/:id/claim-code', (req, res) => {
   const code = humanCode();
   const entry = store.putClaimCode(code, server.id, CLAIM_TTL_MS);
   res.json({ code: entry.code, expiresAt: entry.expiresAt });
+});
+
+// ── ACME DNS-01: backend asks the cloud to publish its challenge TXT ─────────
+// The backend drives its own cert order and holds its own key (H1); it only
+// needs the zone owner (the cloud) to publish `_acme-challenge.<serverId>`.
+// Proven by the server signing the exact token it wants published.
+
+serversRouter.post('/servers/:id/acme-challenge', async (req, res) => {
+  const server = store.getServer(String(req.params.id));
+  if (!server) {
+    res.status(404).json({ error: 'server not registered' });
+    return;
+  }
+  const token = String(req.body?.token ?? '');
+  const sig = String(req.body?.sig ?? '');
+  if (!token || !verifyServerSignature(server.pubKey, `acme-challenge:${server.id}:${token}`, sig)) {
+    res.status(401).json({ error: 'signature required' });
+    return;
+  }
+  const ok = await upsertTxt(`_acme-challenge.${server.id}`, token);
+  res.status(ok ? 200 : 502).json({ ok });
+});
+
+serversRouter.post('/servers/:id/acme-challenge/clear', async (req, res) => {
+  const server = store.getServer(String(req.params.id));
+  if (!server) {
+    res.status(404).json({ error: 'server not registered' });
+    return;
+  }
+  const sig = String(req.body?.sig ?? '');
+  if (!verifyServerSignature(server.pubKey, `acme-challenge-clear:${server.id}`, sig)) {
+    res.status(401).json({ error: 'signature required' });
+    return;
+  }
+  const ok = await deleteTxt(`_acme-challenge.${server.id}`);
+  res.status(ok ? 200 : 502).json({ ok });
 });
 
 // ── Owner: claim a server by entering its LAN-shown code ────────────────────
