@@ -17,9 +17,9 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M0 — SSRF fix, CORS, bcrypt PINs | ✅ shipped, live | v0.1.130 | `44594b5` |
 | M1 — two-listener split + surface hardening | ✅ shipped, live | v0.1.131 | `59d97da` |
 | M2 — mandatory auth, roles, profile binding | ✅ shipped, live | v0.1.132 | `948a93a` |
-| M3 — cloud control plane | 🟡 scaffolded, **uncommitted** | — | — |
-| M4 — backend registration client | ⬜ next | — | — |
-| M5 — client connection manager (browse-remotely demo) | ⬜ | — | — |
+| M3 — cloud control plane | ✅ scaffolded + committed | — | `f790850` |
+| M4 — backend registration client | ✅ built + committed (dormant, unshipped) | — | `81b59a0` |
+| M5 — client connection manager (browse-remotely demo) | ⬜ next | — | — |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code | ⬜ | — | — |
 | M8 — DNS + certs + UPnP + IPv6 + mDNS | ⬜ | — | — |
@@ -127,11 +127,12 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
 1. **Commit M3** when ready (it's additive; not in the backend installer, so it
    deploys nothing).
 2. **Pick `CLOUD_DOMAIN`** (open decision #1) — unblocks M4/M8.
-3. **M4 — backend registration client** in `packages/api`: generate the server
-   Ed25519 keypair; hold the persistent outbound WSS to the cloud; heartbeat
-   (NIC enumeration, UPnP attempt); `POST /api/auth/redeem-grant` that verifies a
-   grant against the **pinned** cloud pubkey, enforces **jti single-use**, and
-   provisions a device via `pairing.ts` (role + bound profile from the grant).
+3. ✅ **M4 — backend registration client** — DONE (`81b59a0`, dormant/unshipped).
+   `services/cloud/` = identity, registration WSS client (register + hello +
+   heartbeat + reconnect), grants (verify vs pinned key), redeemedGrants (jti),
+   `POST /auth/redeem-grant`. Verified via a 16-check integration harness against
+   the live cloud scaffold. NOT yet shipped as a release (dormant, so no rush) —
+   and the cloud is NOT deployed to Azure (still runs locally only).
 4. **M5 — client connection manager** (mobile lift from the existing Plex
    `/identity` racer; Roku parallel `ApiTask`s): candidate racing + on-device
    cache + **serverId identity check** (P0) + "can't reach your server" state.
