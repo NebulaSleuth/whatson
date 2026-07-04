@@ -22,6 +22,26 @@ let ws: WebSocket | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let backoff = 1_000;
 let stopped = true;
+// Observable status for the /setup Remote Access panel.
+let connected = false;
+let lastHeartbeatAt = 0;
+
+export interface CloudStatus {
+  /** Remote access enabled AND a cloud URL configured (registration is armed). */
+  configured: boolean;
+  /** WSS control channel is open and the cloud accepted our signed hello. */
+  connected: boolean;
+  /** Epoch ms of the last heartbeat we sent (0 = none yet this session). */
+  lastHeartbeatAt: number;
+}
+
+export function getCloudStatus(): CloudStatus {
+  return {
+    configured: Boolean(config.remote.enabled && config.cloud.url),
+    connected,
+    lastHeartbeatAt,
+  };
+}
 
 /** LAN IPv4 base URLs (one per non-internal NIC) for the candidate list. */
 function lanUrls(): string[] {
@@ -77,10 +97,15 @@ function stopHeartbeat(): void {
   }
 }
 
+function sendHeartbeat(): void {
+  lastHeartbeatAt = Date.now();
+  send({ v: 1, type: MSG.HEARTBEAT, payload: buildHeartbeat() });
+}
+
 function startHeartbeat(): void {
   if (heartbeatTimer) return;
-  send({ v: 1, type: MSG.HEARTBEAT, payload: buildHeartbeat() });
-  heartbeatTimer = setInterval(() => send({ v: 1, type: MSG.HEARTBEAT, payload: buildHeartbeat() }), HEARTBEAT_MS);
+  sendHeartbeat();
+  heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
 }
 
 /**
@@ -142,6 +167,7 @@ function connect(): void {
     const ok = (env.payload as { ok?: boolean } | undefined)?.ok === true;
     if (ok && !heartbeatTimer) {
       backoff = 1_000; // successful hello → reset backoff
+      connected = true;
       startHeartbeat();
     } else if (!ok && !heartbeatTimer) {
       console.warn('[cloud] hello rejected by cloud:', (env.payload as { error?: string })?.error);
@@ -150,6 +176,7 @@ function connect(): void {
   });
 
   ws.on('close', () => {
+    connected = false;
     stopHeartbeat();
     scheduleReconnect();
   });
@@ -161,6 +188,7 @@ function connect(): void {
 
 export function startCloudRegistration(): void {
   if (!config.remote.enabled || !config.cloud.url) return;
+  if (!stopped) return; // already running — don't open a second channel
   stopped = false;
   backoff = 1_000;
   console.log(`[cloud] registering serverId=${getServerId()} with ${config.cloud.url}`);
@@ -169,7 +197,40 @@ export function startCloudRegistration(): void {
 
 export function stopCloudRegistration(): void {
   stopped = true;
+  connected = false;
   stopHeartbeat();
   ws?.close();
   ws = null;
+}
+
+/**
+ * Ask the cloud for a one-time claim code the owner enters in their cloud
+ * account to link this server (doc 02 §4). Ensures the server is registered
+ * first (idempotent upsert). Returns `{ claimed: true }` if the cloud reports
+ * the server is already linked to an account.
+ */
+export async function requestClaimCode(): Promise<
+  { code: string; expiresAt: number | string } | { claimed: true } | { error: string }
+> {
+  if (!config.cloud.url) return { error: 'No cloud URL configured.' };
+  const serverId = getServerId();
+  try {
+    // Make sure the cloud knows this server before asking for a claim code —
+    // it 404s an unregistered server, which can happen right after enabling.
+    await registerWithCloud();
+    const res = await fetch(`${config.cloud.url}/api/servers/${serverId}/claim-code`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sig: signMessage(`claim-code:${serverId}`) }),
+    });
+    if (res.status === 409) return { claimed: true };
+    if (!res.ok) return { error: `Cloud returned HTTP ${res.status}` };
+    // Cloud returns expiresAt as an epoch-ms number; the panel's Date() handles
+    // either form, but keep the type honest.
+    const body = (await res.json()) as { code?: string; expiresAt?: number | string };
+    if (!body.code || body.expiresAt == null) return { error: 'Malformed claim-code response.' };
+    return { code: body.code, expiresAt: body.expiresAt };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }

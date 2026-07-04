@@ -43,6 +43,7 @@ import { debugRouter } from '../routes/debug.js';
 import { addRouter } from '../routes/add.js';
 import { updateRouter } from '../routes/update.js';
 import { logsRouter } from '../routes/logs.js';
+import { remoteRouter } from '../routes/remote.js';
 
 export type Surface = 'lan' | 'remote';
 
@@ -102,12 +103,14 @@ export function mountApiRoutes(app: Express, surface: Surface): void {
     app.use('/api/sonarr/add', owner);
     app.use('/api/radarr/add', owner);
     app.use('/api/update/apply', owner);
+    app.use('/api/remote', owner);
 
     app.use('/api', configRouter);
     app.use('/api', debugRouter);
     app.use('/api', addRouter);
     app.use('/api', updateRouter);
     app.use('/api', logsRouter);
+    app.use('/api', remoteRouter);
   }
 }
 

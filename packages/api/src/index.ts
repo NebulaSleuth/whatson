@@ -49,6 +49,7 @@ reloadConfig();
 import { startUpdateScheduler } from './services/updater.js';
 import { initWebSocket } from './ws.js';
 import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
+import { startRemoteListener } from './server/remoteListener.js';
 import { startCloudRegistration } from './services/cloud/registration.js';
 
 const app = express();
@@ -160,39 +161,8 @@ server.listen(config.port, () => {
 // generic error handler, trust proxy). Mandatory auth / roles / TLS are layered
 // on in later milestones; today it leans on apiAuth, which is why an admin
 // password is a hard prerequisite (without it apiAuth would run open).
-if (config.remote.enabled) {
-  const missing: string[] = [];
-  if (!config.auth.adminPasswordHash) {
-    missing.push('ADMIN_PASSWORD_HASH (mandatory auth for the remote surface)');
-  }
-  if (missing.length > 0) {
-    console.error(
-      `[Remote] REMOTE_ACCESS is on but the remote listener is REFUSING TO START — ` +
-        `missing prerequisites: ${missing.join('; ')}. The LAN listener is unaffected.`,
-    );
-  } else {
-    const remoteApp = express();
-    // Behind a loopback TLS terminator (BYO reverse proxy / tunnel) for now;
-    // M8 tightens this to the managed per-server cert terminator.
-    remoteApp.set('trust proxy', 'loopback');
-    remoteApp.use(corsMiddleware);
-    remoteApp.use(express.json());
-    mountApiRoutes(remoteApp, 'remote'); // consumer routes only — no admin, no setup
-    remoteApp.use(makeErrorHandler('remote'));
-    // Intentionally NO initWebSocket here — a WS upgrade bypasses apiAuth and
-    // the not-mounted invariant (see 04-implementation-plan.md H4).
-    const remoteServer = createServer(remoteApp);
-    remoteServer.on('error', (err: NodeJS.ErrnoException) => {
-      console.error(`[Remote] Listener error on port ${config.remote.port}:`, err);
-    });
-    remoteServer.listen(config.remote.port, () => {
-      console.log(
-        `[Remote] Consumer-only listener on port ${config.remote.port} — ` +
-          `admin routes not mounted, WebSocket disabled, auth mandatory.`,
-      );
-    });
-  }
-}
+// Runtime-toggleable via the /setup Remote Access panel; see remoteListener.ts.
+startRemoteListener();
 
 // Cloud registration client (M4). Self-guards: no-op unless remote access is
 // enabled AND a CLOUD_URL is configured, so the fleet is unaffected by default.

@@ -1,0 +1,121 @@
+import { Router } from 'express';
+import { DEFAULT_CLOUD_URL } from '@whatson/shared';
+import { config, saveConfigToEnv, reloadConfig } from '../config.js';
+import { getServerId } from '../services/cloud/identity.js';
+import {
+  getCloudStatus,
+  requestClaimCode,
+  startCloudRegistration,
+  stopCloudRegistration,
+} from '../services/cloud/registration.js';
+import { startRemoteListener, stopRemoteListener } from '../server/remoteListener.js';
+
+/**
+ * Remote Access control (docs/remote-access/) for the /setup owner UI. Turns
+ * the env-var-only remote/cloud config into one-click enable/disable, and
+ * surfaces the cloud claim code the owner enters in their cloud account.
+ *
+ * LAN-surface + owner-gated only (see server/surface.ts) — never mounted on the
+ * internet-facing remote listener.
+ */
+export const remoteRouter = Router();
+
+function statusPayload() {
+  return {
+    enabled: config.remote.enabled,
+    serverId: getServerId(),
+    cloudUrl: config.cloud.url || null,
+    remotePort: config.remote.port,
+    adminPasswordSet: Boolean(config.auth.adminPasswordHash),
+    cloud: getCloudStatus(),
+  };
+}
+
+remoteRouter.get('/remote/status', (_req, res) => {
+  res.json({ success: true, data: statusPayload() });
+});
+
+/**
+ * Enable remote access: pin the cloud key, flip REMOTE_ACCESS on, then start the
+ * remote listener + cloud registration live (no restart). Requires an admin
+ * password first — the internet-facing surface refuses to run open.
+ */
+remoteRouter.post('/remote/enable', async (req, res) => {
+  if (!config.auth.adminPasswordHash) {
+    res.status(400).json({
+      success: false,
+      error: 'Set an admin password first — the remote surface requires it and refuses to run open.',
+    });
+    return;
+  }
+
+  const cloudUrl = String(req.body?.cloudUrl || config.cloud.url || DEFAULT_CLOUD_URL)
+    .trim()
+    .replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(cloudUrl)) {
+    res.status(400).json({ success: false, error: 'Cloud URL must start with http:// or https://.' });
+    return;
+  }
+
+  // Fetch + pin the cloud's Ed25519 public key so grants are verified offline
+  // against exactly this key (docs/remote-access H1). No PEM pasting by the user.
+  let pem: string;
+  try {
+    const keyRes = await fetch(`${cloudUrl}/api/cloud-key`);
+    if (!keyRes.ok) {
+      res.status(502).json({ success: false, error: `Could not reach the cloud (HTTP ${keyRes.status}).` });
+      return;
+    }
+    pem = (await keyRes.text()).trim();
+    if (!pem.includes('BEGIN PUBLIC KEY')) {
+      res.status(502).json({ success: false, error: 'Cloud did not return a valid public key.' });
+      return;
+    }
+  } catch (err) {
+    res.status(502).json({ success: false, error: `Could not reach the cloud: ${(err as Error).message}` });
+    return;
+  }
+
+  // Persist as single-line env values (config.ts restores the PEM newlines).
+  saveConfigToEnv({
+    REMOTE_ACCESS: 'true',
+    CLOUD_URL: cloudUrl,
+    CLOUD_PUBLIC_KEY: pem.replace(/\r?\n/g, '\\n'),
+  });
+  reloadConfig();
+
+  const listener = startRemoteListener();
+  if (!listener.started) {
+    res.status(500).json({ success: false, error: `Remote listener failed to start: ${listener.reason}` });
+    return;
+  }
+  startCloudRegistration();
+
+  res.json({ success: true, data: statusPayload() });
+});
+
+/** Disable remote access: stop registration + the listener, flip the flag off. */
+remoteRouter.post('/remote/disable', (_req, res) => {
+  saveConfigToEnv({ REMOTE_ACCESS: 'false' });
+  reloadConfig();
+  stopCloudRegistration();
+  stopRemoteListener();
+  res.json({ success: true, data: statusPayload() });
+});
+
+/**
+ * Fetch a one-time cloud claim code to link this server to a cloud account.
+ * Returns { claimed: true } if the cloud already has an owner for this server.
+ */
+remoteRouter.post('/remote/claim-code', async (_req, res) => {
+  if (!config.remote.enabled || !config.cloud.url) {
+    res.status(400).json({ success: false, error: 'Enable remote access first.' });
+    return;
+  }
+  const result = await requestClaimCode();
+  if ('error' in result) {
+    res.status(502).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, data: result });
+});

@@ -4,6 +4,13 @@ export const APP_VERSION = '0.1.133';
 export const PLEX_CLIENT_IDENTIFIER = 'com.whatson.app';
 export const PLEX_PRODUCT = APP_NAME;
 
+/**
+ * Default cloud control-plane URL (docs/remote-access/). Used by the /setup
+ * Remote Access panel so owners enable remote access with one click instead of
+ * pasting a URL. Overridable via CLOUD_URL for self-hosters / testing.
+ */
+export const DEFAULT_CLOUD_URL = 'https://cloud.whatsontv.net';
+
 export const DEFAULT_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 export const ARTWORK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 

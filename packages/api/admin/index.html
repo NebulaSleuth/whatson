@@ -415,6 +415,10 @@
         </div>
         <nav class="sidebar-nav" id="sidebar-nav">
           <button type="button" class="nav-item" data-section="security">Security &amp; Devices</button>
+          <button type="button" class="nav-item" data-section="remote">
+            Remote Access
+            <span class="status-dot unconfigured" id="nav-status-remote"></span>
+          </button>
           <button type="button" class="nav-item" data-section="plex">
             Plex
             <span class="status-dot unconfigured" id="nav-status-plex"></span>
@@ -483,6 +487,60 @@
       </div>
       <button class="btn btn-secondary" onclick="changePassword()">Update password</button>
       <div id="change-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+    </div>
+    </section>
+
+    <!-- Remote Access -->
+    <section class="section" data-section="remote">
+    <div class="card" id="remote-card">
+      <div class="card-header"><h2>Remote Access</h2></div>
+      <p style="color:#aaa;margin-bottom:16px;line-height:1.5">
+        Watch from anywhere. When enabled, this server keeps an outbound connection to the
+        Whats On cloud so your apps can reach it over the internet — <strong>no port forwarding required</strong>.
+        Off by default; your local network keeps working exactly as before either way.
+      </p>
+
+      <div id="remote-status-box" style="color:#888;font-size:13px;margin-bottom:16px">Loading…</div>
+
+      <!-- No admin password yet -->
+      <div id="remote-nopass" style="display:none">
+        <p style="color:#e5a00d;font-size:14px">
+          Set an admin password first (under <strong>Security &amp; Devices</strong>) — the internet-facing
+          connection refuses to run without one.
+        </p>
+      </div>
+
+      <!-- Disabled → offer to enable -->
+      <div id="remote-disabled" style="display:none">
+        <button class="btn btn-primary" onclick="enableRemote()" id="remote-enable-btn">Enable remote access</button>
+        <div id="remote-enable-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+      </div>
+
+      <!-- Enabled → show status + claim/link + disable -->
+      <div id="remote-enabled" style="display:none">
+        <div style="background:#161616;border:1px solid #2a2a2a;border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;line-height:1.9">
+          <div><span style="color:#777">Cloud connection:</span> <span id="ri-conn"></span></div>
+          <div><span style="color:#777">Cloud URL:</span> <span id="ri-url" style="color:#bbb"></span></div>
+          <div><span style="color:#777">Server ID:</span> <span id="ri-sid" style="color:#bbb;font-family:monospace;font-size:12px"></span></div>
+          <div><span style="color:#777">Last heartbeat:</span> <span id="ri-hb" style="color:#bbb"></span></div>
+        </div>
+
+        <h3 style="margin:0 0 8px 0;color:#ccc;font-size:14px">Link this server to your account</h3>
+        <p style="color:#888;font-size:13px;margin-bottom:12px">
+          Sign in at <span style="color:#ddd">whatsontv.net</span> and enter this code to link the server
+          to your account. Then your apps can find it from anywhere.
+        </p>
+        <div id="remote-claim-box" style="margin-bottom:20px">
+          <div id="claim-code" style="font-size:32px;font-weight:700;letter-spacing:6px;color:#e5a00d;font-family:monospace;display:none"></div>
+          <div id="claim-meta" style="color:#777;font-size:12px;margin-top:4px;display:none"></div>
+          <div id="claim-linked" style="color:#77dd77;font-size:14px;display:none">✓ This server is linked to your cloud account.</div>
+          <div id="claim-err" style="color:#e5a00d;font-size:13px;display:none"></div>
+          <button class="btn btn-secondary" id="claim-refresh" onclick="loadClaimCode()">Get claim code</button>
+        </div>
+
+        <button class="btn btn-secondary" onclick="disableRemote()">Disable remote access</button>
+        <div id="remote-disable-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+      </div>
     </div>
     </section>
 
@@ -1529,6 +1587,7 @@
       if (typeof loadStatus === 'function') loadStatus();
       if (typeof loadUpdateStatus === 'function') loadUpdateStatus();
       loadDevices();
+      loadRemoteStatus();
     }
 
     async function setupAdmin() {
@@ -1645,6 +1704,109 @@
         document.getElementById('change-old').value = '';
         document.getElementById('change-new').value = '';
       } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    // ── Remote Access ──
+    // Toggles the internet-facing remote listener + cloud registration, and
+    // surfaces the claim code the owner enters in their cloud account. All
+    // owner-gated (session cookie). Dormant until the owner clicks Enable.
+    // Sets only textContent on scaffolded elements — no innerHTML.
+    async function loadRemoteStatus() {
+      const box = document.getElementById('remote-status-box');
+      const dot = document.getElementById('nav-status-remote');
+      hide('remote-nopass'); hide('remote-disabled'); hide('remote-enabled');
+      try {
+        const r = await fetch(API + '/remote/status', { credentials: 'same-origin' }).then(r => r.json());
+        if (!r.success) throw new Error(r.error || 'status failed');
+        const s = r.data;
+        if (!s.adminPasswordSet) {
+          if (dot) dot.className = 'status-dot unconfigured';
+          box.textContent = 'Remote access is off.';
+          show('remote-nopass');
+          return;
+        }
+        if (!s.enabled) {
+          if (dot) dot.className = 'status-dot unconfigured';
+          box.textContent = 'Remote access is off. One click connects this server to the Whats On cloud.';
+          show('remote-disabled');
+          return;
+        }
+        // Enabled — fill the scaffolded status rows.
+        const connected = !!(s.cloud && s.cloud.connected);
+        if (dot) dot.className = 'status-dot ' + (connected ? 'connected' : 'checking');
+        box.textContent = 'Remote access is on.';
+        const conn = document.getElementById('ri-conn');
+        conn.textContent = connected ? 'connected' : 'connecting…';
+        conn.style.color = connected ? '#77dd77' : '#e5a00d';
+        document.getElementById('ri-url').textContent = s.cloudUrl || '—';
+        document.getElementById('ri-sid').textContent = s.serverId;
+        document.getElementById('ri-hb').textContent = (s.cloud && s.cloud.lastHeartbeatAt)
+          ? new Date(s.cloud.lastHeartbeatAt).toLocaleTimeString() : '—';
+        show('remote-enabled');
+        loadClaimCode();
+      } catch (e) {
+        if (dot) dot.className = 'status-dot error';
+        box.textContent = 'Could not load remote status: ' + e.message;
+      }
+    }
+
+    async function enableRemote() {
+      const btn = document.getElementById('remote-enable-btn');
+      const msg = document.getElementById('remote-enable-msg');
+      msg.style.color = '#aaa'; msg.textContent = 'Connecting to the cloud…';
+      if (btn) btn.disabled = true;
+      try {
+        const r = await fetch(API + '/remote/enable', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify({}),
+        }).then(r => r.json());
+        if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Enable failed.'; if (btn) btn.disabled = false; return; }
+        msg.textContent = '';
+        showToast('Remote access enabled');
+        loadRemoteStatus();
+      } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; if (btn) btn.disabled = false; }
+    }
+
+    async function disableRemote() {
+      if (!confirm('Disable remote access? Your apps will only reach this server on the local network until you re-enable it.')) return;
+      const msg = document.getElementById('remote-disable-msg');
+      msg.style.color = '#aaa'; msg.textContent = 'Disabling…';
+      try {
+        const r = await fetch(API + '/remote/disable', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+        if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Disable failed.'; return; }
+        msg.textContent = '';
+        showToast('Remote access disabled');
+        loadRemoteStatus();
+      } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    async function loadClaimCode() {
+      const code = document.getElementById('claim-code');
+      const meta = document.getElementById('claim-meta');
+      const err = document.getElementById('claim-err');
+      const refresh = document.getElementById('claim-refresh');
+      hide('claim-code'); hide('claim-meta'); hide('claim-linked'); hide('claim-err');
+      refresh.disabled = true; refresh.textContent = 'Getting code…';
+      try {
+        const r = await fetch(API + '/remote/claim-code', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+        refresh.disabled = false;
+        if (!r.success) {
+          err.textContent = r.error || 'Could not get a claim code.';
+          show('claim-err'); refresh.textContent = 'Retry'; show('claim-refresh');
+          return;
+        }
+        if (r.data.claimed) {
+          show('claim-linked'); hide('claim-refresh');
+          return;
+        }
+        code.textContent = r.data.code; show('claim-code');
+        meta.textContent = r.data.expiresAt ? ('Expires ' + new Date(r.data.expiresAt).toLocaleTimeString()) : '';
+        show('claim-meta');
+        refresh.textContent = 'New code'; show('claim-refresh');
+      } catch (e) {
+        refresh.disabled = false; refresh.textContent = 'Retry'; show('claim-refresh');
+        err.textContent = 'Network error: ' + e.message; show('claim-err');
+      }
     }
 
     // ── Whats On Users ──
