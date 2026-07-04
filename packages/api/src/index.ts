@@ -40,8 +40,8 @@ console.log(
 );
 import { createServer } from 'http';
 import express from 'express';
-import cors from 'cors';
 import { config, reloadConfig } from './config.js';
+import { corsMiddleware, hostGuard } from './security/httpGuards.js';
 
 // Some module's init code may have accessed the config Proxy before dotenv ran,
 // memoizing an empty-env snapshot. Force a reload now that process.env is populated.
@@ -74,7 +74,10 @@ import { initWebSocket } from './ws.js';
 
 const app = express();
 
-app.use(cors());
+// Reject DNS-rebinding (public-domain Host headers) before anything else, then
+// apply the CORS allowlist. See security/httpGuards.ts.
+app.use(hostGuard);
+app.use(corsMiddleware);
 app.use(express.json());
 
 // Serve the admin UI — check multiple locations for the admin/ directory

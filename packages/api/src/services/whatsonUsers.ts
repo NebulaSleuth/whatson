@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createHash, randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
 
@@ -23,7 +24,11 @@ export interface WhatsOnUser {
   name: string;
   /** Key into the built-in avatar catalog (see avatars.ts). */
   avatar: string;
-  /** SHA-256 of the user's PIN, or null if no PIN is set. */
+  /**
+   * bcrypt hash of the user's PIN, or null if no PIN is set. Legacy records
+   * may hold an unsalted SHA-256 hex hash; these are upgraded to bcrypt
+   * transparently on the next successful verify (see verifyPin).
+   */
   pinHash: string | null;
   /** Plex Home user id (numeric). null = this user has no Plex content. */
   plexUserId: number | null;
@@ -82,6 +87,16 @@ function sha256(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
 
+/** A stored hash is a legacy unsalted SHA-256 if it's exactly 64 hex chars. */
+function isLegacySha256(hash: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(hash);
+}
+
+/** Hash a PIN with bcrypt (per-hash salt is automatic). */
+function hashPin(pin: string): string {
+  return bcrypt.hashSync(pin, 10);
+}
+
 // ── Feature flag ──
 
 export function isEnabled(): boolean {
@@ -122,7 +137,7 @@ export function create(input: CreateUserInput): WhatsOnUser {
     id: newId(),
     name,
     avatar: input.avatar || 'default',
-    pinHash: input.pin ? sha256(input.pin) : null,
+    pinHash: input.pin ? hashPin(input.pin) : null,
     plexUserId: input.plexUserId ?? null,
     plexUserToken: input.plexUserToken ?? null,
     jellyfinUserId: input.jellyfinUserId ?? null,
@@ -155,7 +170,7 @@ export function update(id: string, input: UpdateUserInput): WhatsOnUser | null {
     u.name = n;
   }
   if (input.avatar !== undefined) u.avatar = input.avatar;
-  if (input.pin !== undefined) u.pinHash = input.pin === null ? null : sha256(input.pin);
+  if (input.pin !== undefined) u.pinHash = input.pin === null ? null : hashPin(input.pin);
   if (input.plexUserId !== undefined) {
     // Clearing or remapping the Plex user invalidates any stored
     // per-user token. The route layer will derive a fresh one if
@@ -182,11 +197,38 @@ export function remove(id: string): boolean {
 
 // ── PIN verification ──
 
-/** Returns true if no PIN is set, or the provided pin matches. */
+/**
+ * Returns true if no PIN is set, or the provided pin matches.
+ *
+ * Legacy SHA-256 hashes still verify, and on a successful match are
+ * transparently rehashed with bcrypt and persisted, so the unsalted hash is
+ * upgraded in place the first time the user enters their PIN.
+ */
 export function verifyPin(user: WhatsOnUser, pin: string | undefined | null): boolean {
   if (!user.pinHash) return true;
   if (!pin) return false;
-  return sha256(pin) === user.pinHash;
+
+  if (isLegacySha256(user.pinHash)) {
+    if (sha256(pin) !== user.pinHash) return false;
+    // Transparent upgrade: rehash with bcrypt and write back.
+    try {
+      const state = load();
+      const stored = state.users.find((u) => u.id === user.id);
+      if (stored && stored.pinHash && isLegacySha256(stored.pinHash)) {
+        stored.pinHash = hashPin(pin);
+        save(state);
+      }
+    } catch {
+      /* upgrade is best-effort; verification already succeeded */
+    }
+    return true;
+  }
+
+  try {
+    return bcrypt.compareSync(pin, user.pinHash);
+  } catch {
+    return false;
+  }
 }
 
 /**

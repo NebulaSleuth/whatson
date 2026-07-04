@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
+import http from 'node:http';
+import https from 'node:https';
 import { Jimp, JimpMime } from 'jimp';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -9,6 +11,7 @@ import { ARTWORK_CACHE_TTL } from '@whatson/shared';
 import { config } from '../config.js';
 import { ensureSession as ensureJellyfinSession } from '../services/jellyfin.js';
 import { ensureSession as ensureEmbySession } from '../services/emby.js';
+import { assertFetchAllowed, mediaServerHosts, guardedLookup, SsrfError } from '../security/urlGuard.js';
 
 export const artworkRouter = Router();
 
@@ -41,16 +44,30 @@ function diskCachePath(key: string): string | null {
   return path.join(DISK_CACHE_DIR, `${key}.jpg`);
 }
 
+function originOf(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Build the auth headers needed to fetch a given artwork URL. Plex URLs embed
  * their token in the query string; Jellyfin requires an Authorization header
  * or an api_key query param. We do the latter so the proxy call is stateless.
+ *
+ * The Jellyfin/Emby api_key is attached ONLY when the URL's origin *exactly*
+ * matches the configured server origin. A `startsWith` prefix check (the old
+ * behaviour) let `https://jellyfin-host.evil.com/x` collect the key, which is a
+ * credential-reflection bug — see docs/remote-access/01-security-hardening.md.
  */
-async function buildFetchConfig(imageUrl: string): Promise<{ url: string; headers: Record<string, string> }> {
+async function buildFetchConfig(parsed: URL): Promise<{ url: string; headers: Record<string, string> }> {
   const headers: Record<string, string> = {
     Accept: 'image/jpeg, image/png;q=0.95, image/gif;q=0.9, image/*;q=0.6',
   };
-  let url = imageUrl;
+  let url = parsed.toString();
 
   const attach = async (ensure: () => Promise<{ accessToken: string } | null>) => {
     const session = await ensure().catch(() => null);
@@ -59,9 +76,11 @@ async function buildFetchConfig(imageUrl: string): Promise<{ url: string; header
     }
   };
 
-  if (config.jellyfin.url && imageUrl.startsWith(config.jellyfin.url)) {
+  const jellyfinOrigin = originOf(config.jellyfin.url);
+  const embyOrigin = originOf(config.emby.url);
+  if (jellyfinOrigin && parsed.origin === jellyfinOrigin) {
     await attach(ensureJellyfinSession);
-  } else if (config.emby.url && imageUrl.startsWith(config.emby.url)) {
+  } else if (embyOrigin && parsed.origin === embyOrigin) {
     await attach(ensureEmbySession);
   }
 
@@ -132,12 +151,33 @@ artworkRouter.get('/artwork', async (req, res) => {
     }
   }
 
+  // SSRF guard — reject internal/reserved targets before any outbound fetch.
+  // Cache hits above are already-validated URLs, so we only pay this on a miss.
+  let parsedUrl: URL;
   try {
-    const fetchCfg = await buildFetchConfig(imageUrl);
+    parsedUrl = await assertFetchAllowed(imageUrl);
+  } catch (err) {
+    if (err instanceof SsrfError) {
+      console.warn(`[artwork] rejected url: ${(err as Error).message}`);
+      res.status(400).send('Invalid or disallowed url');
+      return;
+    }
+    res.status(400).send('Invalid url');
+    return;
+  }
+
+  try {
+    const fetchCfg = await buildFetchConfig(parsedUrl);
+    // Connection-time guard: re-validates every redirect hop and defeats DNS
+    // rebinding by checking the resolved IP, not just the pre-flight lookup.
+    const lookup = guardedLookup(await mediaServerHosts());
     const response = await axios.get(fetchCfg.url, {
       responseType: 'arraybuffer',
       timeout: 15000,
       headers: fetchCfg.headers,
+      maxRedirects: 3,
+      httpAgent: new http.Agent({ lookup }),
+      httpsAgent: new https.Agent({ lookup }),
     });
 
     const upstreamContentType: string = response.headers['content-type'] || 'image/jpeg';
