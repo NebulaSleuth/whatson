@@ -17,6 +17,8 @@ const KEYS = {
   SHOW_BECAUSE_YOU_WATCHED: 'whatson_showBecauseYouWatched',
   LIVE_TV_CHANNELS: 'whatson_liveTvChannels',
   SUBTITLE_PREFS: 'whatson_subtitlePrefs',
+  CANDIDATES: 'whatson_candidates',
+  EXPECTED_SERVER_ID: 'whatson_expectedServerId',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -69,6 +71,43 @@ export async function setStoredAuthKey(key: string | null): Promise<void> {
     } else {
       await SecureStore.deleteItemAsync(KEYS.AUTH_KEY);
     }
+  } catch {}
+}
+
+// ── Connection candidates (M5) ──
+//
+// The on-device cache of reachable backend URLs, so the LAN keeps working when
+// the internet (and the cloud) is down — the explicit fix for Plex's offline
+// weakness. `expectedServerId` is pinned so the racer can reject a wrong server
+// on a foreign LAN.
+
+export async function getStoredCandidates(): Promise<unknown[] | null> {
+  try {
+    const json = await SecureStore.getItemAsync(KEYS.CANDIDATES);
+    return json ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredCandidates(candidates: unknown[]): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(KEYS.CANDIDATES, JSON.stringify(candidates));
+  } catch {}
+}
+
+export async function getExpectedServerId(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(KEYS.EXPECTED_SERVER_ID);
+  } catch {
+    return null;
+  }
+}
+
+export async function setExpectedServerId(id: string | null): Promise<void> {
+  try {
+    if (id) await SecureStore.setItemAsync(KEYS.EXPECTED_SERVER_ID, id);
+    else await SecureStore.deleteItemAsync(KEYS.EXPECTED_SERVER_ID);
   } catch {}
 }
 

@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
 import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey } from '@/lib/storage';
+import { resolveConnection } from '@/lib/connection';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
@@ -54,6 +55,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       if (storedUrl) {
         setApiUrl(storedUrl);
       }
+      // M5: if cached connection candidates exist (from cloud onboarding), race
+      // them and pin the best reachable one — verifying serverId so we don't
+      // attach to a stranger's device on a foreign LAN. No-op for installs
+      // without candidates (leaves the stored single apiUrl in place).
+      await resolveConnection();
       setConfigured(configured);
       useAppStore.getState().setAuthKey(authKey);
       useAppStore.getState().setRememberUser(rememberUser);
