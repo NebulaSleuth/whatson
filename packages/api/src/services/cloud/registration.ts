@@ -251,3 +251,55 @@ export async function requestClaimCode(): Promise<
     return { error: (err as Error).message };
   }
 }
+
+export type InviteBinding = 'locked' | 'locked-new' | 'open';
+
+export interface CreateInviteResult {
+  token: string;
+  url: string;
+  expiresAt: number;
+  emailed: boolean;
+}
+
+/**
+ * Mint a guest invite on the cloud for this server (M7). Server-signed — the
+ * cloud verifies our signature over `invite:<serverId>:<email>` against the
+ * public key it derived our serverId from, so no cloud account/password is
+ * needed here. The cloud returns the accept URL (link-first) and emails it too
+ * when Mailgun is configured. `email` is normalized to match the signature.
+ */
+export async function createInvite(opts: {
+  email: string;
+  binding: InviteBinding;
+  boundWoProfileId?: string | null;
+  newUserName?: string | null;
+  label?: string | null;
+  expiresInHours?: number;
+}): Promise<CreateInviteResult | { error: string }> {
+  if (!config.cloud.url) return { error: 'No cloud URL configured.' };
+  const serverId = getServerId();
+  const email = opts.email.trim().toLowerCase();
+  try {
+    await registerWithCloud();
+    const res = await fetch(`${config.cloud.url}/api/servers/${serverId}/invites`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        binding: opts.binding,
+        boundWoProfileId: opts.boundWoProfileId ?? null,
+        newUserName: opts.newUserName ?? null,
+        label: opts.label ?? null,
+        expiresInHours: opts.expiresInHours,
+        sig: signMessage(`invite:${serverId}:${email}`),
+      }),
+    });
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => ({}))) as { error?: string };
+      return { error: detail.error || `Cloud returned HTTP ${res.status}` };
+    }
+    return (await res.json()) as CreateInviteResult;
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+}

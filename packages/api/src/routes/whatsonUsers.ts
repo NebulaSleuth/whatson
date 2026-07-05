@@ -10,17 +10,26 @@ import * as emby from '../services/emby.js';
 export const whatsonUsersRouter = Router();
 
 whatsonUsersRouter.get('/whatson-users/config', (_req, res) => {
-  res.json({ success: true, data: { enabled: wo.isEnabled() } });
+  res.json({ success: true, data: { enabled: wo.isEnabled(), guestMode: wo.getGuestMode() } });
 });
 
 whatsonUsersRouter.post('/whatson-users/config', (req, res) => {
-  const { enabled } = req.body || {};
-  if (typeof enabled !== 'boolean') {
-    res.status(400).json({ success: false, error: 'enabled must be a boolean' });
-    return;
+  const { enabled, guestMode } = req.body || {};
+  if (enabled !== undefined) {
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ success: false, error: 'enabled must be a boolean' });
+      return;
+    }
+    wo.setEnabled(enabled);
   }
-  wo.setEnabled(enabled);
-  res.json({ success: true, data: { enabled } });
+  if (guestMode !== undefined) {
+    if (guestMode !== 'open' && guestMode !== 'closed') {
+      res.status(400).json({ success: false, error: "guestMode must be 'open' or 'closed'" });
+      return;
+    }
+    wo.setGuestMode(guestMode);
+  }
+  res.json({ success: true, data: { enabled: wo.isEnabled(), guestMode: wo.getGuestMode() } });
 });
 
 whatsonUsersRouter.get('/whatson-users/avatars', (_req, res) => {

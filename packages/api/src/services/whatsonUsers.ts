@@ -46,12 +46,22 @@ export interface WhatsOnUser {
   embyUserId: string | null;
 }
 
+/**
+ * Guest access mode (M7 remote invites):
+ *  - `closed` — each invite is tied to a specific Whats On user the admin
+ *    picks (or a new one the guest creates); the guest is locked to it.
+ *  - `open` — an invited guest isn't locked; on each app open they pick which
+ *    Whats On user to watch as (and may create a new one), like the household.
+ */
+export type GuestMode = 'open' | 'closed';
+
 interface WhatsOnUsersFile {
   enabled: boolean;
+  guestMode?: GuestMode;
   users: WhatsOnUser[];
 }
 
-const EMPTY: WhatsOnUsersFile = { enabled: false, users: [] };
+const EMPTY: WhatsOnUsersFile = { enabled: false, guestMode: 'closed', users: [] };
 
 function file(): string {
   return join(DATA_DIR, 'whatsonUsers.json');
@@ -67,6 +77,7 @@ function load(): WhatsOnUsersFile {
     const parsed = JSON.parse(readFileSync(file(), 'utf-8')) as WhatsOnUsersFile;
     return {
       enabled: parsed.enabled === true,
+      guestMode: parsed.guestMode === 'open' ? 'open' : 'closed',
       users: Array.isArray(parsed.users) ? parsed.users : [],
     };
   } catch {
@@ -106,6 +117,16 @@ export function isEnabled(): boolean {
 export function setEnabled(enabled: boolean): void {
   const state = load();
   state.enabled = enabled;
+  save(state);
+}
+
+export function getGuestMode(): GuestMode {
+  return load().guestMode === 'open' ? 'open' : 'closed';
+}
+
+export function setGuestMode(mode: GuestMode): void {
+  const state = load();
+  state.guestMode = mode === 'open' ? 'open' : 'closed';
   save(state);
 }
 

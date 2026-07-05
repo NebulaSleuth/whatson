@@ -555,6 +555,53 @@
           </div>
         </div>
 
+        <h3 style="margin:24px 0 8px 0;color:#ccc;font-size:14px">Invite viewers</h3>
+        <p style="color:#888;font-size:13px;margin-bottom:12px">
+          Invite someone by email. They create their own Whats On account, then connect their
+          devices — no need for them to ever be on this network.
+        </p>
+
+        <div style="background:#161616;border:1px solid #2a2a2a;border-radius:8px;padding:12px 16px;margin-bottom:16px">
+          <div style="color:#ccc;font-size:13px;margin-bottom:8px">When a guest opens the app:</div>
+          <label style="display:block;font-size:13px;color:#bbb;margin-bottom:6px;cursor:pointer">
+            <input type="radio" name="guest-mode" value="open" onchange="setGuestMode('open')" />
+            <strong>Open</strong> — they pick which viewer to watch as each time (like your household).
+          </label>
+          <label style="display:block;font-size:13px;color:#bbb;cursor:pointer">
+            <input type="radio" name="guest-mode" value="closed" onchange="setGuestMode('closed')" />
+            <strong>Closed</strong> — each invite is locked to one viewer you choose below.
+          </label>
+          <div id="guest-mode-msg" style="color:#888;font-size:12px;margin-top:6px"></div>
+        </div>
+
+        <div class="field" style="margin-bottom:10px">
+          <label>Viewer's email</label>
+          <input type="email" id="invite-email" placeholder="friend@example.com" />
+        </div>
+
+        <div class="field" id="invite-viewer-field" style="margin-bottom:10px;display:none">
+          <label>Watch as</label>
+          <select id="invite-viewer" onchange="onInviteViewerChange()"><option value="">Loading viewers…</option></select>
+          <div class="hint">Pick an existing viewer, or “New viewer” to let them set up their own.</div>
+        </div>
+
+        <div class="field" id="invite-newname-field" style="margin-bottom:10px;display:none">
+          <label>Suggested name (optional)</label>
+          <input type="text" id="invite-newname" placeholder="e.g. Alex" />
+          <div class="hint">They'll confirm this and choose an avatar in the app on first launch.</div>
+        </div>
+
+        <button class="btn btn-primary" id="invite-btn" onclick="sendInvite()">Send invite</button>
+        <div id="invite-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+        <div id="invite-result" style="display:none;margin-top:12px;background:#12180f;border:1px solid #2a3a1a;border-radius:8px;padding:12px 16px">
+          <div style="color:#9fca7f;font-size:13px;margin-bottom:8px" id="invite-result-msg"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="invite-link" readonly style="flex:1;font-size:12px;font-family:monospace" onclick="this.select()" />
+            <button class="btn btn-secondary" onclick="copyInviteLink()">Copy</button>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #2a2a2a;margin:24px 0 16px"></div>
         <button class="btn btn-secondary" onclick="disableRemote()">Disable remote access</button>
         <div id="remote-disable-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
       </div>
@@ -1766,6 +1813,7 @@
         else { certEl.textContent = 'not issued yet'; certEl.style.color = '#888'; }
         document.getElementById('ri-port').textContent = s.remotePort || '3002';
         show('remote-enabled');
+        loadInviteUi();
         // While the cert is being obtained (or absent right after enable),
         // re-poll so the operator sees it flip to "valid" without a manual refresh.
         if (cert.obtaining || typeof cert.daysRemaining !== 'number') {
@@ -1833,6 +1881,113 @@
         btn.disabled = false; btn.textContent = 'Retry';
         err.textContent = 'Network error: ' + e.message; show('link-err');
       }
+    }
+
+    // ── Invite viewers (M7) ──
+    // Guest mode (open/closed) governs whether an invite is locked to one
+    // viewer. Closed mode reveals a viewer picker (existing WO users + "New
+    // viewer"). Sending mints a cloud invite; the link is always shown (and
+    // emailed too when the cloud has Mailgun configured).
+    let inviteViewersLoaded = false;
+
+    async function loadInviteUi() {
+      try {
+        const r = await fetch(API + '/whatson-users/config', { credentials: 'same-origin' }).then(r => r.json());
+        const mode = (r.success && r.data && r.data.guestMode === 'open') ? 'open' : 'closed';
+        const radio = document.querySelector('input[name="guest-mode"][value="' + mode + '"]');
+        if (radio) radio.checked = true;
+        applyGuestModeUi(mode);
+      } catch (_) { applyGuestModeUi('closed'); }
+    }
+
+    function applyGuestModeUi(mode) {
+      const closed = mode === 'closed';
+      document.getElementById('invite-viewer-field').style.display = closed ? '' : 'none';
+      if (closed) { loadInviteViewers(); onInviteViewerChange(); }
+      else { document.getElementById('invite-newname-field').style.display = 'none'; }
+      document.getElementById('guest-mode-msg').textContent = closed
+        ? 'Each invite below binds the guest to the viewer you pick.'
+        : 'Guests choose (or create) their viewer in the app — no per-invite selection needed.';
+    }
+
+    async function setGuestMode(mode) {
+      const msg = document.getElementById('guest-mode-msg');
+      msg.textContent = 'Saving…';
+      try {
+        const r = await fetch(API + '/whatson-users/config', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify({ guestMode: mode }),
+        }).then(r => r.json());
+        if (!r.success) { msg.textContent = r.error || 'Could not save.'; return; }
+        applyGuestModeUi(mode);
+      } catch (e) { msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    async function loadInviteViewers() {
+      const sel = document.getElementById('invite-viewer');
+      try {
+        const r = await fetch(API + '/whatson-users', { credentials: 'same-origin' }).then(r => r.json());
+        const users = (r.success && Array.isArray(r.data)) ? r.data : [];
+        sel.textContent = '';
+        for (const u of users) {
+          const o = document.createElement('option');
+          o.value = u.id; o.textContent = u.name;
+          sel.appendChild(o);
+        }
+        const nu = document.createElement('option');
+        nu.value = '__new__'; nu.textContent = users.length ? '➕ New viewer (they set up their own)' : '➕ New viewer';
+        sel.appendChild(nu);
+        inviteViewersLoaded = true;
+      } catch (_) {
+        sel.textContent = '';
+        const o = document.createElement('option'); o.value = '__new__'; o.textContent = '➕ New viewer';
+        sel.appendChild(o);
+      }
+    }
+
+    function onInviteViewerChange() {
+      const isNew = document.getElementById('invite-viewer').value === '__new__';
+      document.getElementById('invite-newname-field').style.display = isNew ? '' : 'none';
+    }
+
+    async function sendInvite() {
+      const email = document.getElementById('invite-email').value.trim();
+      const msg = document.getElementById('invite-msg');
+      const btn = document.getElementById('invite-btn');
+      hide('invite-result');
+      if (!email) { msg.style.color = '#ff7777'; msg.textContent = 'Enter the viewer’s email.'; return; }
+      const mode = document.querySelector('input[name="guest-mode"]:checked');
+      const closed = mode && mode.value === 'closed';
+      const body = { email };
+      if (closed) {
+        const viewer = document.getElementById('invite-viewer').value;
+        if (!viewer) { msg.style.color = '#ff7777'; msg.textContent = 'Choose a viewer.'; return; }
+        if (viewer === '__new__') { body.newUser = true; body.newUserName = document.getElementById('invite-newname').value.trim(); }
+        else { body.boundWoProfileId = viewer; }
+      }
+      msg.style.color = '#aaa'; msg.textContent = 'Creating invite…'; btn.disabled = true;
+      try {
+        const r = await fetch(API + '/remote/invite', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify(body),
+        }).then(r => r.json());
+        btn.disabled = false;
+        if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Could not create the invite.'; return; }
+        msg.textContent = '';
+        document.getElementById('invite-link').value = r.data.url;
+        document.getElementById('invite-result-msg').textContent = r.data.emailed
+          ? '✓ Invite emailed to ' + email + '. You can also share this link:'
+          : 'Invite created. Share this link with ' + email + ':';
+        show('invite-result');
+        document.getElementById('invite-email').value = '';
+      } catch (e) { btn.disabled = false; msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
+    }
+
+    function copyInviteLink() {
+      const el = document.getElementById('invite-link');
+      el.select();
+      try { navigator.clipboard.writeText(el.value); showToast('Invite link copied'); }
+      catch (_) { document.execCommand('copy'); showToast('Invite link copied'); }
     }
 
     // ── Whats On Users ──
