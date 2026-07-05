@@ -47,22 +47,33 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
   const woIdHeader = req.headers['x-whatson-user'];
   let woId = Array.isArray(woIdHeader) ? woIdHeader[0] : woIdHeader;
 
-  // Profile binding (doc 01 Item 4). A guest device may only act as the single
-  // WO profile it was bound to at pairing — X-Whatson-User is otherwise
+  // Profile binding (doc 01 Item 4 + M7 guest modes). A guest device's access to
+  // WO profiles depends on how it was invited — X-Whatson-User is otherwise
   // client-asserted with no proof. Owners (and open-mode LAN requests with no
   // device) are unrestricted, so this is a no-op for existing installs.
   const device = req.whatsonDevice;
   if (device?.role === 'guest') {
-    const bound = device.boundWoProfileId;
-    if (!bound) {
-      res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
-      return;
+    const binding = device.guestBinding ?? 'locked';
+    if (binding === 'open') {
+      // Open-mode guest (M7): not confined. They pick which WO user to watch as
+      // each session, like the household — leave the client-asserted woId (which
+      // may be absent until they pick). No profile lock.
+    } else {
+      // 'locked' / 'locked-new': confined to the single bound profile.
+      const bound = device.boundWoProfileId;
+      if (!bound) {
+        // A confined guest with no bound profile can't act as anyone yet. A
+        // 'locked-new' guest lands here until it creates its profile in-app
+        // (Phase 4b allowlists the create-profile endpoint).
+        res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
+        return;
+      }
+      if (woId && woId !== bound) {
+        res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
+        return;
+      }
+      woId = bound; // default a guest to its bound profile when none is requested
     }
-    if (woId && woId !== bound) {
-      res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
-      return;
-    }
-    woId = bound; // default a guest to its bound profile when none is requested
   }
 
   if (woId && wo.isEnabled()) {

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import * as crypto from 'crypto';
+import type { GuestBinding } from './cloud/types.js';
 
 /**
  * Manages the device-pairing flow: short code generation, polling,
@@ -73,6 +74,14 @@ export interface PairedDevice {
    * (enforced in userContext). null for owners (any profile).
    */
   boundWoProfileId: string | null;
+  /**
+   * For guest devices, how their profile is determined (M7). `locked` (default
+   * for legacy guest records) = confined to `boundWoProfileId`; `open` = not
+   * confined (picks any WO user, like the household); `locked-new` = must create
+   * a WO user in-app, then it's bound and this flips to `locked`. Undefined for
+   * owners.
+   */
+  guestBinding?: GuestBinding;
   /** ISO timestamp. */
   createdAt: string;
   /** ISO timestamp of last seen X-Whatson-Auth match. */
@@ -104,6 +113,11 @@ async function loadPaired(): Promise<PairedDevice[]> {
     }
     if (d.boundWoProfileId === undefined) {
       d.boundWoProfileId = null;
+      migrated = true;
+    }
+    // Guest records predating M7 bindings were all bound-to-a-profile.
+    if (d.role === 'guest' && d.guestBinding === undefined) {
+      d.guestBinding = 'locked';
       migrated = true;
     }
   }
@@ -222,6 +236,7 @@ export async function completePair(
 export async function provisionDevice(opts: {
   role: DeviceRole;
   boundWoProfileId?: string | null;
+  guestBinding?: GuestBinding;
   label?: string;
 }): Promise<{ key: string; deviceId: string }> {
   const key = genKey();
@@ -233,11 +248,29 @@ export async function provisionDevice(opts: {
     label: opts.label || 'Remote device',
     role: opts.role,
     boundWoProfileId: opts.boundWoProfileId ?? null,
+    // Guests default to 'locked' (a bound-profile grant) when the grant predates
+    // M7 bindings; owners carry no binding.
+    guestBinding: opts.role === 'guest' ? (opts.guestBinding ?? 'locked') : undefined,
     createdAt: new Date().toISOString(),
     lastSeenAt: null,
   });
   await savePaired();
   return { key, deviceId: id };
+}
+
+/**
+ * Bind a guest device to the Whats On profile it just created in-app
+ * (`locked-new` → `locked`). Returns false if the device is unknown. Used by
+ * the guest create-profile endpoint (M7 Phase 4).
+ */
+export async function bindDeviceProfile(deviceId: string, woProfileId: string): Promise<boolean> {
+  const list = await loadPaired();
+  const d = list.find((x) => x.id === deviceId);
+  if (!d) return false;
+  d.boundWoProfileId = woProfileId;
+  d.guestBinding = 'locked';
+  await savePaired();
+  return true;
 }
 
 export function getPendingPair(): { code: string; expiresAt: number; deviceLabel: string | null } | null {
