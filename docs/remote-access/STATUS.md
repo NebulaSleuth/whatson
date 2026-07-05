@@ -50,23 +50,30 @@ As of 2026-07-05 the whole "watch from anywhere" system works and is shipped:
    call via `createInvite()`); `guestMode` persisted in `whatsonUsers.json`. api typechecks;
    guestMode round-trip unit test 5/5; live :3001 untouched.
 
-**⏭️ Phase 4 — REMAINING (needs a mobile rebuild to verify):** the *consumption* side of
-`open` + `locked-new`. Today the **closed/existing-viewer path works end-to-end** (grant →
-existing backend guest binding → app uses the bound profile). To finish the other two:
-- **Backend**: mirror `guestBinding`+`newUserName` into `packages/api/.../cloud/types.ts`
-  `GrantPayload`; store `guestBinding` on `PairedDevice` (`pairing.ts` `provisionDevice`);
-  `auth.ts` redeem-grant returns it; **`userContext.ts` (line ~55) currently 403s a guest
-  with a null bound profile** — must instead: `open` → don't lock (allow any WO user like
-  the household); `locked-new` before creation → allow only a new create-user endpoint.
-- **Backend**: a guest create-WO-user endpoint (name+avatar) that binds the device + calls
-  the cloud `membership/profile` back-fill.
-- **Mobile**: redeem-grant response branches on `guestBinding` — `open` → existing
-  select-user screen; `locked-new` → new create-profile screen (name + avatar from the
-  backend catalog); `locked` → use bound profile (already works).
+**✅ Phase 4 — DONE (code complete; APKs rebuilt+installed):** the *consumption* side.
+- **Backend 4a** (`9428b4b`): `GrantPayload` carries `guestBinding`+`newUserName`;
+  `PairedDevice.guestBinding` (+ `provisionDevice`, legacy→'locked' migration,
+  `bindDeviceProfile`); `auth.ts` redeem-grant returns them; **`userContext.ts` is now
+  binding-aware** — `open` guests are unconfined (pick any WO user, like the household);
+  `locked`/`locked-new` stay confined. Gate unit test 8/8, provisionDevice 4/4.
+- **Backend 4b** (`970c811`): an unmapped WO user now inherits the server's default content
+  (scope null) so a new viewer sees everything with its own watched state; `POST
+  /whatson-users/guest-profile` (guest-only, allowlisted in userContext for a bound-less
+  `locked-new` device) creates the viewer + binds a locked-new device. Unit test 5/5.
+- **Mobile 4b** (`c3d3fff`): `cloud-signin` routes by binding — `locked-new` → new
+  `create-profile.tsx` (name+avatar → `createGuestProfile` → sign in + cloud
+  `membership/profile` backfill); `open` → `select-whatson-user`; `locked`/owner → home.
+  Mobile typechecks; phone+TV APKs rebuilt + installed on Pixel + SHIELD.
 
-Mailgun (mxa/mxb.mailgun.org + SPF/DKIM/DMARC) ready; set `MAILGUN_API_KEY` on the cloud to
-turn on email. Cloud must be redeployed (`az webapp deploy` zip) to pick up Phases 1–2, and
-a backend release shipped for Phase 3.
+**⏭️ TO GO LIVE (deploy chain — nothing is running the new code yet):**
+1. Redeploy the **cloud** (`az webapp deploy` zip of `dist/` + prod `node_modules`) for
+   Phases 1–2 + the invite/membership/device-code changes.
+2. Ship a **backend release** (bump `package.json` + `constants.ts` APP_VERSION, installer,
+   `gh release`) for Phases 3–4a–4b; the fleet auto-updates.
+3. Optionally set `MAILGUN_API_KEY`+`MAILGUN_DOMAIN` on the cloud App Service to turn on
+   emailed invites (works link-first without it).
+Only then can the guest invite flow be exercised end-to-end on the installed apps.
+Mailgun (mxa/mxb.mailgun.org + SPF/DKIM/DMARC) ready.
 
 ---
 
@@ -86,7 +93,7 @@ Client apps: mobile has the connection racer + device-code onboarding; Roku unto
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback | ✅ **DONE + PROD-VERIFIED on phone/cellular** (Jellyfin/Emby HLS proxy incl. player HLS-detection fix; Plex relay; live TV backend-served HTTPS) | v0.1.140 | `streamProxy` |
-| M7 — remote onboarding | 🟢 owner self-access + cloud web UI + one-click server linking (v0.1.141) + device-code onboarding DONE. **Guest invites: infra BUILT + tested (Phases 1–3 — two-mode open/closed, cloud invite/membership, /setup invite UI, guest self-approve; closed/existing works E2E)**; Phase 4 (open + new-viewer consumption: backend binding-awareness + mobile create-profile) remains | v0.1.141 + cloud + mobile | `0ef4813`,`25acb3d`,`9d54394` |
+| M7 — remote onboarding | ✅ **guest invites BUILT + tested end of code (Phases 1–4)** — two-mode open/closed, cloud invite/membership + guest self-approve, /setup invite UI, backend binding-aware (open/locked/locked-new), mobile create-profile screen. All unit/integration green; APKs (phone+TV) rebuilt+installed. **Needs deploy to go live** (cloud zip redeploy + backend release). | v0.1.141 + cloud + mobile | `0ef4813`,`25acb3d`,`9d54394`,`9428b4b`,`970c811`,`c3d3fff` |
 | M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
