@@ -47,18 +47,23 @@
       if (r.status === 401) { clearToken(); location.replace('/login?next=/link'); return; }
       const sel = document.getElementById('server');
       sel.textContent = '';
-      const servers = (r.body && r.body.servers) || [];
+      // Owned servers AND servers this account is a guest of — a guest approves
+      // their own devices from the same page (the server derives the right role).
+      const owned = (r.body && r.body.servers) || [];
+      const guest = (r.body && r.body.guestServers) || [];
+      const servers = [...owned, ...guest];
       if (!servers.length) {
         const o = document.createElement('option');
-        o.value = ''; o.textContent = 'No linked servers — link one first';
+        o.value = ''; o.textContent = 'No servers yet — accept an invite or link a server first';
         sel.appendChild(o);
-        setMsg('You have no linked servers yet. Link a server on your account page first.', 'err');
+        setMsg('You have no servers yet. Accept an invite, or link your own server on your account page.', 'err');
         return;
       }
       for (const s of servers) {
         const o = document.createElement('option');
         o.value = s.serverId;
-        o.textContent = s.label || s.serverId.slice(0, 12) + '…';
+        const name = s.label || s.serverId.slice(0, 12) + '…';
+        o.textContent = s.role === 'guest' ? name + ' (guest)' : name;
         sel.appendChild(o);
       }
     }
@@ -70,7 +75,8 @@
       if (!userCode) { setMsg('Enter the device code.', 'err'); return; }
       if (!serverId) { setMsg('Choose a server.', 'err'); return; }
       btn.disabled = true; setMsg('Approving…', '');
-      const r = await apiPost('/device-code/approve', { userCode, serverId, role: 'owner' });
+      // Role is derived server-side from whether you own or are a guest of this server.
+      const r = await apiPost('/device-code/approve', { userCode, serverId });
       btn.disabled = false;
       if (!r.ok) { setMsg(r.body.error || 'Could not approve that code.', 'err'); return; }
       setMsg('Approved! Your device will connect in a few seconds — you can close this page.', 'ok');

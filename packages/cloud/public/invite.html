@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Accept your invite · Whats On</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="nav">
+    <div class="brand"><a href="/" style="color:inherit;text-decoration:none">Whats<span>On</span></a></div>
+  </div>
+
+  <div class="container">
+    <div class="card" id="card">
+      <p class="muted" id="loading">Loading your invite…</p>
+
+      <!-- Populated once the invite loads -->
+      <div id="invite" hidden>
+        <h2 id="headline">You're invited</h2>
+        <p class="sub" id="sub"></p>
+
+        <!-- Auth block (shown when signed out) -->
+        <div id="auth" hidden>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+          <button class="btn block mt" id="submit-btn" onclick="submitAuth()">Create account &amp; accept</button>
+          <p class="center mt muted" style="font-size:14px">
+            <span id="toggle-text">Already have an account?</span>
+            <a href="#" id="toggle-link" onclick="toggleMode(event)">Sign in</a>
+          </p>
+        </div>
+
+        <!-- Accept block (shown when already signed in) -->
+        <div id="accept" hidden>
+          <p class="sub" id="accept-as"></p>
+          <button class="btn block mt" id="accept-btn" onclick="accept()">Accept invite</button>
+          <p class="center mt muted" style="font-size:14px">
+            <a href="#" onclick="switchAccount(event)">Use a different account</a>
+          </p>
+        </div>
+
+        <div class="msg" id="msg"></div>
+      </div>
+
+      <!-- Success -->
+      <div id="done" hidden>
+        <h2>You're all set 🎉</h2>
+        <p class="sub" id="done-sub"></p>
+        <ol class="steps">
+          <li>Open the <strong>Whats On</strong> app on your TV or phone.</li>
+          <li>Choose <strong>Sign in with Whats On</strong> — it shows a short code.</li>
+          <li>Enter that code at <a href="/link">whatsontv.net/link</a> and approve it.</li>
+          <li id="profile-step" hidden>The app will ask you to set up your profile the first time.</li>
+        </ol>
+        <a class="btn block mt" href="/link">Go to the approval page</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('token') || '';
+    let mode = 'signup';        // or 'login'
+    let invite = null;
+
+    if (!token) { fail('This invite link is missing its code.'); }
+    else loadInvite();
+
+    function fail(text) {
+      document.getElementById('loading').hidden = true;
+      const inv = document.getElementById('invite');
+      inv.hidden = false;
+      document.getElementById('headline').textContent = 'Invite unavailable';
+      document.getElementById('sub').textContent = text;
+    }
+
+    async function loadInvite() {
+      const r = await apiGet('/invites/' + encodeURIComponent(token));
+      if (!r.ok) { fail(r.body.error === 'invalid or expired invite' ? 'This invite has expired or already been used.' : (r.body.error || 'This invite could not be found.')); return; }
+      invite = r.body;
+      document.getElementById('loading').hidden = true;
+      document.getElementById('invite').hidden = false;
+      document.getElementById('headline').textContent = "You're invited to " + invite.serverLabel;
+      document.getElementById('sub').textContent = invite.createsProfile
+        ? "Create your account below. You'll set up your viewing profile in the app after you connect a device."
+        : "Create your account below to start watching on " + invite.serverLabel + ".";
+
+      if (invite.redeemed) { fail('This invite has already been accepted.'); return; }
+
+      if (getToken()) showAccept();
+      else showAuth();
+    }
+
+    function showAuth() {
+      document.getElementById('accept').hidden = true;
+      document.getElementById('auth').hidden = false;
+      const emailEl = document.getElementById('email');
+      if (invite.email) { emailEl.value = invite.email; }
+      document.getElementById(invite.email ? 'password' : 'email').focus();
+    }
+
+    async function showAccept() {
+      document.getElementById('auth').hidden = true;
+      document.getElementById('accept').hidden = false;
+      const me = await apiGet('/accounts/me');
+      if (me.status === 401) { clearToken(); showAuth(); return; }
+      document.getElementById('accept-as').textContent = 'Signed in as ' + (me.body.email || 'your account') + '.';
+    }
+
+    function switchAccount(e) { if (e) e.preventDefault(); clearToken(); mode = 'login'; syncMode(); showAuth(); }
+
+    function toggleMode(e) { if (e) e.preventDefault(); mode = mode === 'signup' ? 'login' : 'signup'; syncMode(); }
+    function syncMode() {
+      const signup = mode === 'signup';
+      document.getElementById('submit-btn').textContent = signup ? 'Create account & accept' : 'Sign in & accept';
+      document.getElementById('toggle-text').textContent = signup ? 'Already have an account?' : 'Need an account?';
+      document.getElementById('toggle-link').textContent = signup ? 'Sign in' : 'Create one';
+      document.getElementById('password').setAttribute('autocomplete', signup ? 'new-password' : 'current-password');
+      setMsg('', '');
+    }
+
+    async function submitAuth() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('submit-btn');
+      if (!email || !password) { setMsg('Enter your email and password.', 'err'); return; }
+      if (mode === 'signup' && password.length < 8) { setMsg('Password must be at least 8 characters.', 'err'); return; }
+      btn.disabled = true; setMsg(mode === 'signup' ? 'Creating your account…' : 'Signing in…', '');
+      const r = await apiPost(mode === 'signup' ? '/accounts' : '/accounts/login', { email, password });
+      if (!r.ok) { setMsg(r.body.error || 'Something went wrong.', 'err'); btn.disabled = false; return; }
+      setToken(r.body.token);
+      await accept();
+      btn.disabled = false;
+    }
+
+    async function accept() {
+      setMsg('Accepting your invite…', '');
+      const r = await apiPost('/invites/redeem', { token });
+      if (r.status === 401) { clearToken(); setMsg('Please sign in again.', 'err'); showAuth(); return; }
+      if (!r.ok) { setMsg(r.body.error || 'Could not accept this invite.', 'err'); return; }
+      document.getElementById('invite').hidden = true;
+      const done = document.getElementById('done');
+      done.hidden = false;
+      document.getElementById('done-sub').textContent = "You've joined " + (r.body.serverLabel || invite.serverLabel) + '.';
+      if (invite.createsProfile) document.getElementById('profile-step').hidden = false;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !document.getElementById('auth').hidden) submitAuth();
+    });
+  </script>
+</body>
+</html>

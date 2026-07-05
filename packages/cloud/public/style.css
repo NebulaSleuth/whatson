@@ -93,6 +93,10 @@ input:focus { outline: none; border-color: var(--gold-dim); }
 .badge.on { color: var(--green); }
 .footer { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 24px; }
 
+.steps { margin: 16px 0 0; padding-left: 20px; color: var(--text); font-size: 14px; }
+.steps li { margin: 8px 0; padding-left: 4px; }
+.steps li::marker { color: var(--gold); font-weight: 700; }
+
 @media (max-width: 520px) {
   .hero h1 { font-size: 34px; }
   .hero { padding-top: 40px; }
