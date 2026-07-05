@@ -23,7 +23,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
 | M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
-| M8 — secure data path | 🟡 **8a DNS + 8b per-server DNS-01 TLS DONE** (A/AAAA publish; backend ACME cert via cloud-assisted DNS-01; HTTPS remote listener; auto-renew); remaining: IPv4 forward (UPnP), stable IPv6 (pinhole), reachability panel | — | `dfd8875`, `eea8cff`, `c944430` |
+| M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
 ---
@@ -202,10 +202,21 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
      "DNS Zone Contributor" on the zone to the MSI principal (had to use a REST
      PUT — the CLI `role assignment create` hit a MissingSubscription quirk);
      app settings `CLOUD_DNS_SUBSCRIPTION_ID` + `CLOUD_DNS_RESOURCE_GROUP`.
-   - **IPv4 (primary):** the A record is in place. STILL NEEDS a **port forward**
-     on the remote port — automate via **UPnP/NAT-PMP** where the router allows,
-     else guide the owner. IPv4 reaches essentially every client, so this is the
-     "works everywhere" path — **for non-CGNAT servers**.
+   - **✅ 8c — WAN candidate emission DONE & PROD-VERIFIED (`5e8b526`, v0.1.136).**
+     Cloud emits the WAN candidate `https://<id>.s.whatsontv.net:<port>` when the
+     backend reports `certReady` (heartbeat now carries `certReady`+`remotePort`).
+     **Verified end-to-end:** with the owner's port forwarded, an independent
+     external fetch (Anthropic infra) reached `:3002` with a valid trusted cert,
+     and the cloud logs `candidates=[lan,lan,ipv6,wan]`. **KEY LEARNING:** the
+     cloud's OWN reachability probe is unreliable (Azure egress → this home gets
+     ECONNRESET/timeout though the port is open to other networks) — reachability
+     is **per-client-path**, so emission is NOT gated on it; the client racer is
+     the authoritative test and a dead candidate falls through to LAN. The cloud
+     probe (`probeWanReachable`, IPv4-forced + SNI + serverId-checked) is kept as
+     an advisory diagnostic only.
+   - **IPv4 (primary):** the A record is in place. Port forward is still needed —
+     the owner did it **manually** today; remaining polish is to **automate** via
+     **UPnP/NAT-PMP** where the router allows, else guide the owner.
    - **IPv6 (for CGNAT + where available):** AAAA is published, but from the
      backend's current best-effort v6 which can be a **stable-address bug**
      (`netsh` Public/Preferred on Windows — today's address can be a
