@@ -22,19 +22,51 @@ As of 2026-07-05 the whole "watch from anywhere" system works and is shipped:
 - Backend releases **v0.1.130 → v0.1.141** shipped + auto-installed (dormant unless remote
   access enabled). Cloud on Azure App Service. Mailgun email configured.
 
-### ⏭️ RESUME TOMORROW — one piece left: **M7 invite flow (guests)**
-Invite a guest by email → they make their OWN account → pick a profile (a Whats On User +
-avatar, or a Plex user) → their devices onboard via the same device-code flow, bound as a
-`guest`. To build:
-1. **Cloud `/invite/:token` page** (`public/invite.html`) — accept invite, sign up (email
-   prefilled), `POST /invites/redeem`, pick profile.
-2. **`/setup` "Invite a viewer"** — admin enters email → cloud creates invite + Mailgun
-   sends the link. (`POST /invites` exists; needs email-send wiring + admin UI.)
-3. **Profile binding** — grant carries `role:'guest'` + `boundWoProfileId`; backend
-   `provisionDevice` already honors it. Settle open decision #3 (auto-create WO profile
-   vs pre-create) at redeem.
-Cloud invite/account endpoints are scaffolded; Mailgun (mxa/mxb.mailgun.org + SPF/DKIM/
-DMARC) ready. Throwaway `webui-test@whatsontv.net` account is in the cloud store (harmless).
+### M7 invite flow (guests) — **infrastructure BUILT (Phases 1–3); Phase 4 (open/new-user consumption) remains**
+
+**Decided design (2026-07-05):** two admin-selected guest modes.
+- **Closed** — each invite is locked to a specific Whats On user the admin picks (or a
+  "new viewer" the guest creates). Guest is bound to that profile.
+- **Open** — an invited guest isn't locked; on each app open they pick which Whats On user
+  to watch as (and may create a new one), like the household.
+- "New viewer" exists in both: the guest fills in name + avatar **in-app on first launch**
+  (kept off the cloud web page so the cloud stays starved — it only carries the binding).
+- Email is **link-first** (copyable link in /setup always) + Mailgun auto-send once
+  `MAILGUN_API_KEY`+`MAILGUN_DOMAIN` are set on the cloud App Service.
+
+**Built + tested (commits 0ef4813, 25acb3d, 9d54394):**
+1. **Cloud** (`packages/cloud`): server-signed `POST /servers/:id/invites` (no cloud
+   password), public `GET /invites/:token`, `POST /invites/redeem` → **GuestMembership**,
+   `device-code/approve` now lets guest MEMBERS self-approve their own devices (role
+   derived server-side, never trusted), `/accounts/me` returns `guestServers`,
+   `POST /servers/:id/membership/profile` back-fills a locked-new profile. Mailgun mailer
+   (fetch, dormant w/o key). `Invite`/`GuestMembership` records; `GrantPayload` +
+   `guestBinding`+`newUserName`. **`packages/cloud/test/m7-invite-flow.mjs` = 25/25** (all
+   three bindings + negatives). `npm test -w packages/cloud`.
+2. **Cloud web** (`packages/cloud/public`): `invite.html` accept page (own-account signup/
+   login → redeem → next steps); `link.html` now lists guest servers.
+3. **Backend /setup**: guest-mode toggle + "Invite viewers" card (email, viewer picker,
+   copyable link) in the Remote Access panel; `POST /remote/invite` (server-signs the cloud
+   call via `createInvite()`); `guestMode` persisted in `whatsonUsers.json`. api typechecks;
+   guestMode round-trip unit test 5/5; live :3001 untouched.
+
+**⏭️ Phase 4 — REMAINING (needs a mobile rebuild to verify):** the *consumption* side of
+`open` + `locked-new`. Today the **closed/existing-viewer path works end-to-end** (grant →
+existing backend guest binding → app uses the bound profile). To finish the other two:
+- **Backend**: mirror `guestBinding`+`newUserName` into `packages/api/.../cloud/types.ts`
+  `GrantPayload`; store `guestBinding` on `PairedDevice` (`pairing.ts` `provisionDevice`);
+  `auth.ts` redeem-grant returns it; **`userContext.ts` (line ~55) currently 403s a guest
+  with a null bound profile** — must instead: `open` → don't lock (allow any WO user like
+  the household); `locked-new` before creation → allow only a new create-user endpoint.
+- **Backend**: a guest create-WO-user endpoint (name+avatar) that binds the device + calls
+  the cloud `membership/profile` back-fill.
+- **Mobile**: redeem-grant response branches on `guestBinding` — `open` → existing
+  select-user screen; `locked-new` → new create-profile screen (name + avatar from the
+  backend catalog); `locked` → use bound profile (already works).
+
+Mailgun (mxa/mxb.mailgun.org + SPF/DKIM/DMARC) ready; set `MAILGUN_API_KEY` on the cloud to
+turn on email. Cloud must be redeployed (`az webapp deploy` zip) to pick up Phases 1–2, and
+a backend release shipped for Phase 3.
 
 ---
 
@@ -54,7 +86,7 @@ Client apps: mobile has the connection racer + device-code onboarding; Roku unto
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback | ✅ **DONE + PROD-VERIFIED on phone/cellular** (Jellyfin/Emby HLS proxy incl. player HLS-detection fix; Plex relay; live TV backend-served HTTPS) | v0.1.140 | `streamProxy` |
-| M7 — remote onboarding | 🟢 owner self-access + cloud web UI + **one-click server linking (v0.1.141) + Sign-in-with-Whats-On device-code onboarding (mobile)** DONE; remaining: invite flow for guests | v0.1.141 + cloud + mobile | M7 |
+| M7 — remote onboarding | 🟢 owner self-access + cloud web UI + one-click server linking (v0.1.141) + device-code onboarding DONE. **Guest invites: infra BUILT + tested (Phases 1–3 — two-mode open/closed, cloud invite/membership, /setup invite UI, guest self-approve; closed/existing works E2E)**; Phase 4 (open + new-viewer consumption: backend binding-awareness + mobile create-profile) remains | v0.1.141 + cloud + mobile | `0ef4813`,`25acb3d`,`9d54394` |
 | M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
