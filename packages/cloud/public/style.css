@@ -77,6 +77,15 @@ input:focus { outline: none; border-color: var(--gold-dim); }
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 34px; letter-spacing: 8px; color: var(--gold); font-weight: 700; text-align: center;
 }
+.code-inputs { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.code-inputs input {
+  width: 150px; text-align: center; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 32px; letter-spacing: 8px; text-transform: uppercase; padding: 14px 4px 14px 12px; font-weight: 700;
+}
+.code-inputs .dash { color: var(--muted); font-size: 30px; font-weight: 700; }
+@media (max-width: 460px) {
+  .code-inputs input { width: 120px; font-size: 26px; letter-spacing: 5px; }
+}
 .server-item { display: flex; justify-content: space-between; align-items: center;
   padding: 12px 0; border-bottom: 1px solid var(--border); }
 .server-item:last-child { border-bottom: none; }

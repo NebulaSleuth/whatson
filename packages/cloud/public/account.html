@@ -25,8 +25,12 @@
         On your server's <strong>Setup → Remote Access</strong> page, get its link code, then enter it here to
         connect it to your account.
       </p>
-      <label for="claim">Server link code</label>
-      <input id="claim" type="text" placeholder="ABCD-1234" autocapitalize="characters" autocomplete="off" />
+      <label>Server link code</label>
+      <div class="code-inputs">
+        <input id="claim1" type="text" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD" aria-label="code first part" />
+        <span class="dash">–</span>
+        <input id="claim2" type="text" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="1234" aria-label="code second part" />
+      </div>
       <button class="btn mt" id="claim-btn" onclick="claimServer()">Link server</button>
       <div class="msg" id="msg"></div>
     </div>
@@ -48,6 +52,8 @@
     const LINK_KEY = 'whatson_link_code';
     const urlLink = new URLSearchParams(location.search).get('link');
     if (urlLink) { try { sessionStorage.setItem(LINK_KEY, urlLink); } catch {} }
+
+    const readClaim = wireCodeInput('claim1', 'claim2', null, false);
 
     if (requireAuth()) loadAccount();
 
@@ -108,15 +114,15 @@
     }
 
     async function claimServer() {
-      const code = document.getElementById('claim').value.trim().toUpperCase();
+      const code = readClaim();
       const btn = document.getElementById('claim-btn');
-      if (!code) { setMsg('Enter the server link code.', 'err'); return; }
+      if (!code || code.length < 9) { setMsg('Enter the full server link code.', 'err'); return; }
       btn.disabled = true; setMsg('Linking…', '');
       const r = await apiPost('/servers/claim', { code });
       btn.disabled = false;
       if (!r.ok) { setMsg(r.body.error || 'Could not link that code.', 'err'); return; }
       setMsg('Server linked!', 'ok');
-      document.getElementById('claim').value = '';
+      document.getElementById('claim1').value = ''; document.getElementById('claim2').value = '';
       loadAccount();
     }
   </script>

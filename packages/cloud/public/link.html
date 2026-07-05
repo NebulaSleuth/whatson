@@ -17,8 +17,12 @@
       <h2>Approve a device</h2>
       <p class="sub">Enter the code shown on your TV or phone, and choose which server it should connect to.</p>
 
-      <label for="code">Device code</label>
-      <input id="code" type="text" placeholder="WXYZ-1234" autocapitalize="characters" autocomplete="off" />
+      <label>Device code</label>
+      <div class="code-inputs">
+        <input id="code1" type="text" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="WXYZ" aria-label="code first part" />
+        <span class="dash">–</span>
+        <input id="code2" type="text" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="1234" aria-label="code second part" />
+      </div>
 
       <label for="server">Server</label>
       <select id="server" style="width:100%;padding:12px 14px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:9px;font-size:15px">
@@ -32,10 +36,11 @@
 
   <script src="/app.js"></script>
   <script>
-    if (requireAuth()) loadServers();
+    const readCode = wireCodeInput('code1', 'code2');
     // Pre-fill the code if it came in via ?user_code= (RFC 8628 verification_uri_complete)
     const pre = new URLSearchParams(location.search).get('user_code');
-    if (pre) document.getElementById('code').value = pre;
+    if (pre) fillCodeInput('code1', 'code2', pre);
+    if (requireAuth()) loadServers();
 
     async function loadServers() {
       const r = await apiGet('/accounts/me');
@@ -59,7 +64,7 @@
     }
 
     async function approve() {
-      const userCode = document.getElementById('code').value.trim().toUpperCase();
+      const userCode = readCode();
       const serverId = document.getElementById('server').value;
       const btn = document.getElementById('approve-btn');
       if (!userCode) { setMsg('Enter the device code.', 'err'); return; }
