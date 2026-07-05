@@ -1,16 +1,48 @@
 # Remote Access — Implementation Status & Resume Point
 
-**Last updated:** 2026-07-04
+**Last updated:** 2026-07-05
 **Plan of record:** [`04-implementation-plan.md`](04-implementation-plan.md) (milestones, risk register, effort table)
-**Deeper session history:** MemPalace wing `claude_sessions`/`conversations`, source `session/2026-07-04`
+**Deeper session history:** MemPalace wing `claude_sessions`/`conversations`, sources `session/2026-07-04` + `session/2026-07-05`
 
 ---
 
-## TL;DR — where we are
+## TL;DR — REMOTE ACCESS WORKS END-TO-END (prod-verified on real phone/cellular)
+
+As of 2026-07-05 the whole "watch from anywhere" system works and is shipped:
+- **Playback anywhere** — Plex (its relay), Jellyfin/Emby (M6 stream proxy), live TV
+  (backend-served HTTPS) — all verified on the owner's phone over cellular.
+- **Per-server production TLS** — `<id>.s.whatsontv.net:3002`, Let's Encrypt via ACME
+  DNS-01, cloud-published A/AAAA, valid cert everywhere.
+- **Owner self-access** — LAN-paired devices race LAN↔WAN candidates automatically.
+- **Cloud web UI + marketing** — live at **https://whatsontv.net** (apex; GoDaddy Website
+  Builder disconnected). Account signup/login, `/account` (link a server), `/link` (approve
+  a device), two-box code entry.
+- **Onboard a NEVER-on-LAN device** — "Sign in with Whats On" device-code flow in the app
+  + one-click "Link to my account" in `/setup`. **Verified working.**
+- Backend releases **v0.1.130 → v0.1.141** shipped + auto-installed (dormant unless remote
+  access enabled). Cloud on Azure App Service. Mailgun email configured.
+
+### ⏭️ RESUME TOMORROW — one piece left: **M7 invite flow (guests)**
+Invite a guest by email → they make their OWN account → pick a profile (a Whats On User +
+avatar, or a Plex user) → their devices onboard via the same device-code flow, bound as a
+`guest`. To build:
+1. **Cloud `/invite/:token` page** (`public/invite.html`) — accept invite, sign up (email
+   prefilled), `POST /invites/redeem`, pick profile.
+2. **`/setup` "Invite a viewer"** — admin enters email → cloud creates invite + Mailgun
+   sends the link. (`POST /invites` exists; needs email-send wiring + admin UI.)
+3. **Profile binding** — grant carries `role:'guest'` + `boundWoProfileId`; backend
+   `provisionDevice` already honors it. Settle open decision #3 (auto-create WO profile
+   vs pre-create) at redeem.
+Cloud invite/account endpoints are scaffolded; Mailgun (mxa/mxb.mailgun.org + SPF/DKIM/
+DMARC) ready. Throwaway `webui-test@whatsontv.net` account is in the cloud store (harmless).
+
+---
+
+## Historical context (M0–M2 detail below still accurate)
 
 Backend security hardening (doc 01) is **shipped and live on the fleet** through M2.
-The cloud control plane (doc 02, M3) is **scaffolded and runs but is uncommitted**.
-Client apps (mobile/Roku) are **untouched** so far — client work doesn't start until M5.
+The cloud control plane (doc 02, M3) is **deployed to Azure**.
+Client apps: mobile has the connection racer + device-code onboarding; Roku untouched.
 
 | Milestone | Status | Version | Commit |
 |-----------|--------|---------|--------|
