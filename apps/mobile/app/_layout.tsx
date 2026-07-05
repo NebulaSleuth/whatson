@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
 import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey } from '@/lib/storage';
-import { resolveConnection } from '@/lib/connection';
+import { resolveConnection, updateCandidates } from '@/lib/connection';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
 
@@ -133,6 +133,18 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }, 100);
         return;
       }
+
+      // M7: we're paired + reachable — learn this server's connection candidates
+      // (LAN + WAN hostname) and cache them, so the racer can reach the server
+      // from anywhere later (the foreground re-race picks whichever answers).
+      // Best-effort; typically runs while on the home LAN.
+      try {
+        const cands = await api.getRemoteCandidates();
+        if (cands.candidates?.length) {
+          await updateCandidates(cands.candidates as any, cands.serverId);
+          console.log(`[Init] cached ${cands.candidates.length} connection candidate(s)`);
+        }
+      } catch {}
 
       // Discover whether the operator has enabled Whats On Users. When
       // on, this replaces the legacy Plex-only picker with a unified

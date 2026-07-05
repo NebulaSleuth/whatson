@@ -44,8 +44,16 @@ export function getCloudStatus(): CloudStatus {
   };
 }
 
+// The server's cert-matching public hostname (`<serverId>.s.<domain>`), learned
+// from the cloud register response. Used to build the WAN candidate the app
+// races. Null until the first successful registration.
+let cloudHostname: string | null = null;
+export function getCloudHostname(): string | null {
+  return cloudHostname;
+}
+
 /** LAN IPv4 base URLs (one per non-internal NIC) for the candidate list. */
-function lanUrls(): string[] {
+export function lanUrls(): string[] {
   const urls: string[] = [];
   const ifaces = networkInterfaces();
   for (const infos of Object.values(ifaces)) {
@@ -131,6 +139,8 @@ async function registerWithCloud(): Promise<boolean> {
       console.warn(`[cloud] server registration failed: HTTP ${res.status}`);
       return false;
     }
+    const body = (await res.json().catch(() => null)) as { hostname?: string } | null;
+    if (body?.hostname) cloudHostname = body.hostname;
     return true;
   } catch (err) {
     console.warn(`[cloud] server registration error: ${(err as Error).message}`);

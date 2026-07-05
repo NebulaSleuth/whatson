@@ -28,7 +28,11 @@ export type ConnectionStatus = 'connected' | 'unreachable' | 'no-candidates';
 /** Pin a winning candidate as the active base URL + derive connection type. */
 export function pinCandidate(candidate: Candidate): void {
   const store = useAppStore.getState();
-  store.setApiUrl(candidate.url);
+  // Candidate URLs are base (e.g. http://host:3001); the app's apiUrl convention
+  // includes the /api suffix (fetchApi does `${apiUrl}${path}`), while the racer
+  // appends /api/health itself. Normalise so pinning doesn't drop /api.
+  const apiUrl = candidate.url.replace(/\/+$/, '').replace(/\/api$/, '') + '/api';
+  store.setApiUrl(apiUrl);
   store.setPlexConnectionType(candidate.kind === 'lan' ? 'local' : 'remote');
 }
 

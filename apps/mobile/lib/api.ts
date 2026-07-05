@@ -317,6 +317,15 @@ export const api = {
   getAuthProviders: () =>
     fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean }>('/auth/providers'),
 
+  // Connection candidates for this server (M7 owner self-access): LAN URLs +
+  // the WAN hostname, so the app can reach the server from anywhere. Cached and
+  // raced by lib/connection.ts. Best-effort — fetched while on the LAN.
+  getRemoteCandidates: () =>
+    fetchApi<{ serverId: string; candidates: Array<{ kind: 'lan' | 'wan' | 'ipv6'; url: string; priority: number }> }>(
+      '/candidates',
+      { timeoutMs: 6000 },
+    ),
+
   // Device pairing — see packages/api/src/routes/auth.ts. Open endpoints
   // (no auth header required) so unpaired clients can onboard.
   // 8s timeout — the pair screen is the only place users can recover
