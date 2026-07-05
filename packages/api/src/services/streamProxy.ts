@@ -34,9 +34,25 @@ function b64urlDecode(s: string): string {
   return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 }
 
+/**
+ * The target's basename (e.g. `master.m3u8`, `0.ts`, `init.mp4`), sanitised for
+ * use as a path segment. Players (ExoPlayer) detect HLS vs progressive from the
+ * URL extension, so the proxy path MUST end in the real extension — otherwise
+ * ExoPlayer treats an .m3u8 as a progressive file and fails to extract it.
+ */
+function targetBasename(target: string): string {
+  try {
+    const base = new URL(target).pathname.split('/').filter(Boolean).pop() || '';
+    const safe = base.replace(/[^a-zA-Z0-9._-]/g, '');
+    return safe || 'stream';
+  } catch {
+    return 'stream';
+  }
+}
+
 /** App-facing proxy URL for a Jellyfin/Emby target. `base` = `<proto>://<host>`. */
 export function buildProxyUrl(target: string, base: string, auth: string): string {
-  return `${base}/api/stream/proxy?u=${b64urlEncode(target)}&auth=${encodeURIComponent(auth)}`;
+  return `${base}/api/stream/proxy/${targetBasename(target)}?u=${b64urlEncode(target)}&auth=${encodeURIComponent(auth)}`;
 }
 
 /** Rewrite a URI inside a playlist to route through the proxy (if proxiable). */

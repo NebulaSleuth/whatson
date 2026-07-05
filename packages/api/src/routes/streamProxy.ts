@@ -8,4 +8,7 @@ import { handleStreamProxy } from '../services/streamProxy.js';
  */
 export const streamProxyRouter = Router();
 
-streamProxyRouter.get('/stream/proxy', handleStreamProxy);
+// The `:file` segment is cosmetic — it only carries the real extension
+// (master.m3u8 / 0.ts / init.mp4) so the player detects HLS vs progressive.
+// The actual upstream target is the `u` query param.
+streamProxyRouter.get('/stream/proxy/:file', handleStreamProxy);
