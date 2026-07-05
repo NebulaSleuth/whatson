@@ -21,7 +21,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M4 — backend registration client | ✅ built + **shipped v0.1.133** (dormant) | v0.1.133 | `81b59a0`, `1602be4` |
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
-| M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
+| M6 — remote playback | 🟢 **Jellyfin/Emby HLS proxy DONE** (v0.1.139); Plex works via its own relay (no proxy needed). Follow-up: HMAC-signed URLs vs device-key-in-URL; subtitle-file proxying | v0.1.139 | `streamProxy` |
 | M7 — remote onboarding | 🟡 **M7-1 owner self-access DONE** (`GET /api/candidates` + app caches/races LAN+WAN, v0.1.137); remaining: account/invite web UI + guest device-code client | v0.1.137 | M7-1 commit |
 | M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
