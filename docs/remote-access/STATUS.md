@@ -22,7 +22,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback | ✅ **DONE + PROD-VERIFIED on phone/cellular** (Jellyfin/Emby HLS proxy incl. player HLS-detection fix; Plex relay; live TV backend-served HTTPS) | v0.1.140 | `streamProxy` |
-| M7 — remote onboarding | 🟡 owner self-access DONE + **cloud web UI first pass LIVE** (marketing/login/account/link on www.whatsontv.net, auth verified); remaining: re-add server-link code to /setup panel + mobile device-code sign-in + invite flow | v0.1.137 + cloud | web-ui |
+| M7 — remote onboarding | 🟢 owner self-access + cloud web UI + **one-click server linking (v0.1.141) + Sign-in-with-Whats-On device-code onboarding (mobile)** DONE; remaining: invite flow for guests | v0.1.141 + cloud + mobile | M7 |
 | M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
