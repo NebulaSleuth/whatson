@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { ContentSource } from '@whatson/shared';
 import { notifyDataChanged } from '../ws.js';
 import { getAdapterForSource } from '../services/adapters/registry.js';
+import { isProxiableTarget, buildProxyUrl } from '../services/streamProxy.js';
 
 export const playbackRouter = Router();
 
@@ -41,6 +42,24 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
       `sub=${opts.subtitleStreamID ?? 'auto'} forceTranscode=${opts.forceTranscode}`,
     );
     const data = await adapter.getPlaybackInfo(ratingKey, opts);
+
+    // M6: Jellyfin/Emby have no relay of their own, so their stream URL points
+    // at the LAN media server. When the client is remote, route the HLS through
+    // our proxy on the internet-facing listener so it's reachable off-network.
+    // (Plex is untouched — it resolves to its own remote/relay connection.)
+    if (
+      req.plexConnectionType === 'remote' &&
+      (source === 'jellyfin' || source === 'emby') &&
+      data.streamUrl &&
+      isProxiableTarget(data.streamUrl)
+    ) {
+      const authKey = String(req.headers['x-whatson-auth'] || req.query.auth || '');
+      const base = `${req.protocol}://${req.headers.host}`;
+      const original = data.streamUrl;
+      data.streamUrl = buildProxyUrl(original, base, authKey);
+      console.log(`[playback] proxied remote ${source} stream via ${req.headers.host}`);
+    }
+
     const ms = Date.now() - startedAt;
     let streamHost = '?';
     try { streamHost = new URL(data.streamUrl).host; } catch {}

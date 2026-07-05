@@ -37,6 +37,7 @@ import { usersRouter } from '../routes/users.js';
 import { whatsonUsersRouter } from '../routes/whatsonUsers.js';
 import { authRouter } from '../routes/auth.js';
 import { candidatesRouter } from '../routes/candidates.js';
+import { streamProxyRouter } from '../routes/streamProxy.js';
 
 // Admin routers — LAN surface only. Never mounted on the remote listener.
 import { configRouter } from '../routes/config.js';
@@ -86,6 +87,7 @@ export function mountApiRoutes(app: Express, surface: Surface): void {
   app.use('/api', authRouter);
   app.use('/api', sportsRouter);
   app.use('/api', candidatesRouter);
+  app.use('/api', streamProxyRouter);
 
   // Admin routes — LAN surface only. Unreachable on the remote listener AND
   // (belt-and-suspenders) gated to owner devices / admin sessions via
