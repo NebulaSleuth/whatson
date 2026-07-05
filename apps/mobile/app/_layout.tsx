@@ -304,6 +304,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="pair-device" options={{ animation: 'fade' }} />
+          <Stack.Screen name="cloud-signin" options={{ animation: 'fade' }} />
           <Stack.Screen name="select-user" options={{ animation: 'fade' }} />
           <Stack.Screen name="select-whatson-user" options={{ animation: 'fade' }} />
           <Stack.Screen name="show-detail" options={{ animation: 'slide_from_right' }} />

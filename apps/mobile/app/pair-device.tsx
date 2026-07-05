@@ -234,6 +234,23 @@ export default function PairDeviceScreen() {
           </Pressable>
         </View>
 
+        <Pressable
+          onPress={() => router.push('/cloud-signin' as any)}
+          focusable
+          style={({ pressed, focused }) => [
+            styles.button,
+            styles.buttonSecondary,
+            { alignSelf: 'flex-start', marginTop: spacing.md },
+            pressed && styles.buttonPressed,
+            focused && styles.buttonFocused,
+          ]}>
+          <Text style={styles.buttonText}>Sign in with Whats On</Text>
+        </Pressable>
+        <Text style={styles.hint}>
+          Away from home, or on a device that's never been on this network? Sign in with your Whats On
+          account — approve it at whatsontv.net, no server address needed.
+        </Text>
+
         {editingUrl && (
           <View style={styles.urlEdit}>
             <Pressable

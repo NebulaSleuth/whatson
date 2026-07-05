@@ -534,9 +534,25 @@
         </div>
 
         <div style="background:#12180f;border:1px solid #2a3a1a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#9fca7f;line-height:1.6">
-          ✓ Remote access is active. Your paired devices can reach this server from anywhere —
-          no further setup needed (they pick up the remote address automatically).
-          <div style="color:#777;margin-top:6px">Sharing access with other people (accounts &amp; invites) is coming soon.</div>
+          ✓ Remote access is active. Devices already paired on this network reach the server from
+          anywhere automatically.
+        </div>
+
+        <h3 style="margin:0 0 8px 0;color:#ccc;font-size:14px">Link to your account</h3>
+        <p style="color:#888;font-size:13px;margin-bottom:12px">
+          Link this server to a Whats On account to connect devices that were <em>never</em> on this
+          network — a new phone while traveling, or a friend's device. Click below: we'll open
+          <strong style="color:#ddd">whatsontv.net</strong>, and once you sign in it links automatically.
+        </p>
+        <div id="link-box" style="margin-bottom:20px">
+          <button class="btn btn-primary" id="link-btn" onclick="linkAccount()">Link to my account →</button>
+          <div id="link-linked" style="color:#77dd77;font-size:14px;display:none;margin-top:10px">✓ This server is linked to your account.</div>
+          <div id="link-err" style="color:#e5a00d;font-size:13px;display:none;margin-top:10px"></div>
+          <div id="link-fallback" style="display:none;margin-top:12px;font-size:13px;color:#888">
+            If a new tab didn't open, go to <strong style="color:#ddd">whatsontv.net → Link a server</strong>
+            and enter this code:
+            <div id="link-code" style="font-size:26px;font-weight:700;letter-spacing:4px;color:#e5a00d;font-family:monospace;margin-top:6px"></div>
+          </div>
         </div>
 
         <button class="btn btn-secondary" onclick="disableRemote()">Disable remote access</button>
@@ -1794,8 +1810,30 @@
       } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
     }
 
-    // (Claim-code / cloud-account linking UI removed until the whatsontv.net
-    // account site ships — M7-full. Owner devices use candidates directly.)
+    // One-click link: mint a one-time code and open the account site with it so
+    // it links automatically once the owner signs in (or creates an account).
+    // The code is shown as a fallback if the popup was blocked.
+    async function linkAccount() {
+      const btn = document.getElementById('link-btn');
+      const err = document.getElementById('link-err');
+      hide('link-err'); hide('link-linked'); hide('link-fallback');
+      btn.disabled = true; btn.textContent = 'Getting code…';
+      try {
+        const r = await fetch(API + '/remote/claim-code', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+        btn.disabled = false; btn.textContent = 'Link to my account →';
+        if (!r.success) { err.textContent = r.error || 'Could not get a code.'; show('link-err'); return; }
+        if (r.data.claimed) { show('link-linked'); hide('link-btn'); return; }
+        const code = r.data.code;
+        const accountUrl = r.data.accountUrl || 'https://whatsontv.net/account';
+        window.open(accountUrl + '?link=' + encodeURIComponent(code), '_blank');
+        document.getElementById('link-code').textContent = code;
+        show('link-fallback');
+        btn.textContent = 'Open again';
+      } catch (e) {
+        btn.disabled = false; btn.textContent = 'Retry';
+        err.textContent = 'Network error: ' + e.message; show('link-err');
+      }
+    }
 
     // ── Whats On Users ──
     //

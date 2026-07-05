@@ -42,6 +42,13 @@
 
   <script src="/app.js"></script>
   <script>
+    // A ?link=CODE param (from the server's "Link to my account" button) is
+    // stashed BEFORE the auth redirect, so it survives sign-in / sign-up and
+    // auto-links once we're back here authenticated.
+    const LINK_KEY = 'whatson_link_code';
+    const urlLink = new URLSearchParams(location.search).get('link');
+    if (urlLink) { try { sessionStorage.setItem(LINK_KEY, urlLink); } catch {} }
+
     if (requireAuth()) loadAccount();
 
     async function loadAccount() {
@@ -50,6 +57,23 @@
       if (!r.ok) { document.getElementById('acct-email').textContent = 'Could not load your account.'; return; }
       document.getElementById('acct-email').textContent = 'Signed in as ' + r.body.email;
       renderServers(r.body.servers || []);
+      await maybeAutoLink();
+    }
+
+    async function maybeAutoLink() {
+      let code = null;
+      try { code = sessionStorage.getItem(LINK_KEY); } catch {}
+      if (!code) return;
+      try { sessionStorage.removeItem(LINK_KEY); } catch {}
+      history.replaceState({}, '', '/account'); // clean the URL
+      setMsg('Linking your server…', '');
+      const r = await apiPost('/servers/claim', { code });
+      if (!r.ok) {
+        setMsg((r.body.error || 'That link code was invalid or expired') + ' — get a fresh one on your server.', 'err');
+        return;
+      }
+      setMsg('Server linked! 🎉', 'ok');
+      loadAccount();
     }
 
     function renderServers(servers) {

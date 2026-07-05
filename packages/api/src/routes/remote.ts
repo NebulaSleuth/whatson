@@ -130,5 +130,8 @@ remoteRouter.post('/remote/claim-code', async (_req, res) => {
     res.status(502).json({ success: false, error: result.error });
     return;
   }
-  res.json({ success: true, data: result });
+  // The account site lives on the apex; the control plane is on `cloud.<apex>`.
+  // Hand the panel a deep link so "Link to my account" can auto-fill the code.
+  const accountUrl = (config.cloud.url || '').replace(/\/\/cloud\./i, '//') + '/account';
+  res.json({ success: true, data: { ...result, accountUrl } });
 });
