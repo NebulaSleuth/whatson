@@ -12,7 +12,10 @@ import { requireAccount, bearer } from '../middleware.js';
 import { probeServer } from '../probe.js';
 import { upsertTxt, deleteTxt } from '../dns.js';
 import { candidatesFor, issueGrant } from '../grants.js';
-import type { ServerRecord, DeviceRole } from '../types.js';
+import { randomToken } from '../crypto.js';
+import { sendInviteEmail } from '../mailer.js';
+import { mailEnabled } from '../config.js';
+import type { ServerRecord, DeviceRole, InviteBinding } from '../types.js';
 
 /**
  * Server registry, claim, candidates, and grant issuance (doc 02 §2, §4, §5).
@@ -175,6 +178,83 @@ serversRouter.get('/servers/:id/candidates', (req, res) => {
     return;
   }
   res.json(candidatesFor(server));
+});
+
+// ── Backend (/setup): mint a guest invite, server-signed (M7) ───────────────
+// The backend holds the server keypair, so it can create invites for its own
+// server without the owner's cloud password — it signs `invite:<serverId>:<email>`.
+// Returns the accept URL always (link-first); emails it too when Mailgun is on.
+
+serversRouter.post('/servers/:id/invites', async (req, res) => {
+  const server = store.getServer(String(req.params.id));
+  if (!server) {
+    res.status(404).json({ error: 'server not registered' });
+    return;
+  }
+  if (!server.ownerAccountId) {
+    res.status(409).json({ error: 'server not yet claimed by an owner' });
+    return;
+  }
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const sig = String(req.body?.sig ?? '');
+  if (!verifyServerSignature(server.pubKey, `invite:${server.id}:${email}`, sig)) {
+    res.status(401).json({ error: 'signature required' });
+    return;
+  }
+
+  const binding: InviteBinding =
+    req.body?.binding === 'open' ? 'open' : req.body?.binding === 'locked-new' ? 'locked-new' : 'locked';
+  const boundWoProfileId = binding === 'locked' ? String(req.body?.boundWoProfileId ?? '') || null : null;
+  if (binding === 'locked' && !boundWoProfileId) {
+    res.status(400).json({ error: 'boundWoProfileId required for a locked invite' });
+    return;
+  }
+  const hours = Math.min(Math.max(Number(req.body?.expiresInHours ?? 168), 1), 720);
+  const invite = store.createInvite({
+    token: randomToken(24),
+    serverId: server.id,
+    email: email || null,
+    binding,
+    boundWoProfileId,
+    newUserName: String(req.body?.newUserName ?? '') || null,
+    label: String(req.body?.label ?? '') || null,
+    role: 'guest',
+    expiresAt: Date.now() + hours * 3600_000,
+  });
+
+  const url = `${config.webUiBase}/invite?token=${invite.token}`;
+  let emailed = false;
+  if (email && mailEnabled()) {
+    const r = await sendInviteEmail({ to: email, serverLabel: server.label || 'your server', inviteUrl: url });
+    emailed = r.sent;
+    if (!r.sent) console.warn(`[cloud] invite email to ${email} not sent: ${r.error}`);
+  }
+  res.status(201).json({ token: invite.token, url, expiresAt: invite.expiresAt, emailed });
+});
+
+// ── Guest device: report the WO user it created for a `locked-new` membership ─
+// Authed by the grant's cloud token (the device already holds one). Binds the
+// membership so the guest's OTHER devices land on the same profile.
+
+serversRouter.post('/servers/:id/membership/profile', (req, res) => {
+  const token = bearer(req);
+  const grant = token ? store.getGrantByCloudToken(token) : null;
+  if (!grant || grant.serverId !== String(req.params.id)) {
+    res.status(401).json({ error: 'not authorized for this server' });
+    return;
+  }
+  const boundWoProfileId = String(req.body?.boundWoProfileId ?? '');
+  if (!boundWoProfileId) {
+    res.status(400).json({ error: 'boundWoProfileId required' });
+    return;
+  }
+  const membership = store.findMembership(grant.accountId, grant.serverId);
+  if (!membership) {
+    res.status(404).json({ error: 'membership not found' });
+    return;
+  }
+  store.setMembershipProfile(membership.id, boundWoProfileId);
+  res.json({ ok: true });
 });
 
 // ── Owner: mint a grant for one of their own devices (invite flow is M7) ────

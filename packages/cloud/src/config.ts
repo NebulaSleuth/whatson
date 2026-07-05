@@ -40,4 +40,21 @@ export const config = {
   grantTtl: parseInt(process.env.GRANT_TTL || '600', 10),
   /** Account session-token lifetime (seconds). */
   sessionTtl: parseInt(process.env.SESSION_TTL || '2592000', 10),
+  /**
+   * Mailgun transactional email (M7 invites). Dormant until MAILGUN_API_KEY +
+   * MAILGUN_DOMAIN are set — invites still work (the owner copies the link from
+   * /setup), they just aren't auto-emailed. `apiBase` switches to the EU host
+   * for EU-region Mailgun accounts. `from` defaults to no-reply@<domain>.
+   */
+  mailgun: {
+    apiKey: process.env.MAILGUN_API_KEY || '',
+    domain: process.env.MAILGUN_DOMAIN || '',
+    apiBase: process.env.MAILGUN_API_BASE || 'https://api.mailgun.net',
+    from: process.env.MAILGUN_FROM || '',
+  },
 } as const;
+
+/** True when Mailgun is configured enough to actually send. */
+export function mailEnabled(): boolean {
+  return !!(config.mailgun.apiKey && config.mailgun.domain);
+}

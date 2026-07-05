@@ -1,41 +1,47 @@
 import { Router } from 'express';
 import * as store from '../store.js';
-import { randomToken } from '../crypto.js';
 import { requireAccount } from '../middleware.js';
-import { issueGrant } from '../grants.js';
 
 /**
- * Guest invites (doc 02 §4.3). Owner mints a token (optionally bound to a WO
- * profile); the guest redeems it in-app to receive a signed grant + candidates.
- *
- * M3 scaffold: the happy path works end to end. Full M7 hardening — invite
- * management UI, auto-vs-pre-create profile decision (doc 02 §10), and tighter
- * rate limiting — is layered on later.
+ * Guest invites — accept side (doc 02 §4.3, M7). The owner mints an invite from
+ * /setup (server-signed: POST /servers/:id/invites). The guest then:
+ *   1. GET /invites/:token  — public lookup to render the accept page.
+ *   2. creates/logs-in to their OWN cloud account (accountsRouter).
+ *   3. POST /invites/redeem — binds their account to the server as a guest
+ *      (a GuestMembership). NO grant is issued here — the guest's DEVICES
+ *      onboard separately via the device-code flow, which now honors guest
+ *      memberships so they can self-approve without the owner.
  */
 export const invitesRouter = Router();
 
-invitesRouter.post('/invites', requireAccount, (req, res) => {
-  const serverId = String(req.body?.serverId ?? '');
-  const server = store.getServer(serverId);
-  if (!server || server.ownerAccountId !== req.accountId) {
-    res.status(404).json({ error: 'server not found' });
+/** Public: describe an invite so the accept page can render (no secrets). */
+invitesRouter.get('/invites/:token', (req, res) => {
+  const invite = store.getInvite(String(req.params.token));
+  if (!invite || invite.expiresAt < Date.now()) {
+    res.status(404).json({ error: 'invalid or expired invite' });
     return;
   }
-  const hours = Math.min(Math.max(Number(req.body?.expiresInHours ?? 72), 1), 720);
-  const invite = store.createInvite({
-    token: randomToken(24),
-    serverId,
-    boundWoProfileId: String(req.body?.boundWoProfileId ?? '') || null,
-    label: String(req.body?.label ?? '') || null,
-    role: 'guest',
-    expiresAt: Date.now() + hours * 3600_000,
+  const server = store.getServer(invite.serverId);
+  if (!server || !server.enabled || server.revokedAt !== null) {
+    res.status(404).json({ error: 'server unavailable' });
+    return;
+  }
+  res.json({
+    serverLabel: server.label || 'a Whats On server',
+    email: invite.email,
+    binding: invite.binding,
+    newUserName: invite.newUserName,
+    // A `locked-new` or `open` invite means the guest will set up / choose their
+    // profile in the app; the accept page uses this to set expectations.
+    createsProfile: invite.binding !== 'locked',
+    redeemed: invite.redeemedAt !== null,
+    expiresAt: invite.expiresAt,
   });
-  res.status(201).json({ token: invite.token, expiresAt: invite.expiresAt });
 });
 
-invitesRouter.post('/invites/redeem', (req, res) => {
-  const token = String(req.body?.token ?? '');
-  const invite = store.getInvite(token);
+/** Redeem with the guest's own account session → create a standing membership. */
+invitesRouter.post('/invites/redeem', requireAccount, (req, res) => {
+  const invite = store.getInvite(String(req.body?.token ?? ''));
   if (!invite || invite.expiresAt < Date.now()) {
     res.status(400).json({ error: 'invalid or expired invite' });
     return;
@@ -49,8 +55,26 @@ invitesRouter.post('/invites/redeem', (req, res) => {
     res.status(404).json({ error: 'server unavailable' });
     return;
   }
-  // A guest gets a lightweight cloud identity scoped to this one server.
-  const guestAccountId = `guest_${randomToken(8)}`;
-  store.markInviteRedeemed(token, guestAccountId);
-  res.json(issueGrant(server, guestAccountId, 'guest', invite.boundWoProfileId));
+
+  // Idempotent-ish: if this account already has a membership here, reuse it.
+  const existing = store.findMembership(req.accountId!, server.id);
+  const membership =
+    existing ??
+    store.createMembership({
+      accountId: req.accountId!,
+      serverId: server.id,
+      binding: invite.binding,
+      boundWoProfileId: invite.boundWoProfileId,
+      newUserName: invite.newUserName,
+    });
+
+  store.markInviteRedeemed(invite.token, req.accountId!);
+  res.json({
+    serverId: server.id,
+    serverLabel: server.label || 'a Whats On server',
+    membershipId: membership.id,
+    binding: membership.binding,
+    // Next step for the guest: onboard a device via the device-code flow.
+    next: 'device-code',
+  });
 });

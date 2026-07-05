@@ -56,6 +56,20 @@ accountsRouter.get('/accounts/me', requireAccount, (req, res) => {
     label: s.label,
     enabled: s.enabled,
     lastHeartbeatAt: s.lastHeartbeatAt,
+    role: 'owner' as const,
   }));
-  res.json({ accountId: account.id, email: account.email, servers });
+  // Servers this account is a GUEST of (M7) — shown alongside owned servers so
+  // a guest can self-approve their own devices from the same /link page.
+  const guestServers = store.findMembershipsByAccount(account.id).map((m) => {
+    const s = store.getServer(m.serverId);
+    return {
+      serverId: m.serverId,
+      label: s?.label ?? null,
+      enabled: s?.enabled ?? false,
+      lastHeartbeatAt: s?.lastHeartbeatAt ?? null,
+      role: 'guest' as const,
+      binding: m.binding,
+    };
+  });
+  res.json({ accountId: account.id, email: account.email, servers, guestServers });
 });
