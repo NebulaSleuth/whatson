@@ -149,14 +149,14 @@ React Native + Expo with `react-native-tvos` fork. One codebase ships phone and 
 
 ### Build variants
 
-`app.config.ts` is dynamic — the `WHATSON_TV` environment variable switches everything:
+`app.config.ts` is dynamic — the `WHATSON_TV` environment variable switches assets and the leanback flag. **The store identifier is now unified** across phone + TV on each platform (`com.extrastrength.whatsontv`); `WHATSON_TV` no longer changes the package/bundle, only assets + `androidTVRequired`:
 
-| Variant | Android package | iOS bundle | Assets |
-|---------|-----------------|------------|--------|
-| Phone (default) | `com.whatson.app` | `com.whatson.app` | Standard icons |
-| TV (`WHATSON_TV=1`) | `com.whatson.tv` | `com.whatson.tv` | TV banner + Apple TV Top Shelf 1280×768 → 4640×1440 |
+| Variant | Android package | iOS/tvOS bundle | Display name | Assets |
+|---------|-----------------|-----------------|--------------|--------|
+| Phone (default) | `com.extrastrength.whatsontv` | `com.extrastrength.whatsontv` | Android: `What's On TV` · Apple: `What's On TV Player` | Standard icons |
+| TV (`WHATSON_TV=1`) | `com.extrastrength.whatsontv` | `com.extrastrength.whatsontv` | same | TV banner + Apple TV Top Shelf 1280×768 → 4640×1440 |
 
-TV build sets `androidTVRequired: true`. Azure DevOps pipeline produces a separate signed AAB for each.
+App Store display name is `What's On TV Player` (via `ios.infoPlist.CFBundleDisplayName`) because `What's On TV` was already taken on Apple; Google Play uses `What's On TV`. iOS + tvOS share one bundle ID (Apple Universal Purchase = one product across both). TV build sets `androidTVRequired: true`. Azure DevOps pipeline produces a separate signed AAB for each. Note: `PLEX_CLIENT_IDENTIFIER` in `packages/shared/src/constants.ts` is a Plex protocol identifier, **not** the store package — it is intentionally left as-is so existing Plex device auth doesn't reset.
 
 ### Routing (`app/`)
 
@@ -248,8 +248,8 @@ Four stages, manual trigger only:
 
 1. **Backend** — TypeScript typecheck + build
 2. **BackendInstaller** — standalone binary + `.deb` + `.rpm`
-3. **Mobile** — signed phone AAB (`com.whatson.app`)
-4. **TV** — signed TV AAB (`com.whatson.tv`)
+3. **Mobile** — signed phone AAB (`com.extrastrength.whatsontv`)
+4. **TV** — signed TV AAB (`com.extrastrength.whatsontv`)
 
 Installs Java 17 + Android SDK (platform 36, build-tools 36.0.0). Keystore comes from pipeline secrets. `scripts/patch-signing.py` patches Gradle for CI signing.
 

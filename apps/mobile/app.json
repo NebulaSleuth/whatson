@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Whats On",
+    "name": "What's On TV",
     "slug": "whatson",
     "version": "0.1.0",
     "orientation": "default",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.whatson.app",
+      "bundleIdentifier": "com.extrastrength.whatsontv",
       "infoPlist": {
         "LSApplicationQueriesSchemes": ["plex", "plexapp", "nflx", "hulu", "aiv"]
       }
@@ -25,7 +25,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F0F0F"
       },
-      "package": "com.whatson.app"
+      "package": "com.extrastrength.whatsontv"
     },
     "plugins": [
       "expo-router",

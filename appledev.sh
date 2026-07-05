@@ -107,7 +107,7 @@ debug() {
     echo "  $0 metro --clear  — start with cache cleared"
     echo ""
     echo "View device logs:"
-    echo "  xcrun simctl spawn booted log stream --predicate 'subsystem == \"com.extrastrength.whatson\"'"
+    echo "  xcrun simctl spawn booted log stream --predicate 'subsystem == \"com.extrastrength.whatsontv\"'"
     echo ""
     echo "Open React Native debugger (in simulator, press Cmd+D):"
     echo "  - 'Open Debugger' opens Chrome DevTools"
@@ -237,10 +237,10 @@ xcode_tips() {
     echo "  (requires restart)"
     echo ""
     echo "App configuration:"
-    echo "  Bundle ID:       com.whatson.tv"
+    echo "  Bundle ID:       com.extrastrength.whatsontv"
     echo "  tvOS target:     15.1+"
     echo "  Architecture:    arm64"
-    echo "  Display name:    Whats On TV"
+    echo "  Display name:    What's On TV Player"
 }
 
 # =============================================================================

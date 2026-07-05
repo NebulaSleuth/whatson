@@ -33,7 +33,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   const base: ExpoConfig = {
     ...config,
-    name: 'Whats On TV',
+    // Android + tvOS-Android home-screen label. Apple overrides via
+    // ios.infoPlist.CFBundleDisplayName below (App Store name is
+    // "What's On TV Player" — plain "What's On TV" was taken).
+    name: "What's On TV",
     slug: 'whatson',
     version: '0.1.0',
     orientation: 'default',
@@ -47,19 +50,25 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       backgroundColor: '#0F0F0F',
     },
     ios: {
+      // Single bundle ID across iOS + tvOS (Apple Universal Purchase — one
+      // App Store product spanning both platforms).
       supportsTablet: true,
-      bundleIdentifier: isTV ? 'com.extrastrength.whatson' : 'com.whatson.app',
+      bundleIdentifier: 'com.extrastrength.whatsontv',
       infoPlist: {
+        // App Store listing name; "What's On TV" was unavailable on Apple.
+        CFBundleDisplayName: "What's On TV Player",
         LSApplicationQueriesSchemes: ['plex', 'plexapp', 'nflx', 'hulu', 'aiv'],
         ...(isTV ? { UIRequiredDeviceCapabilities: ['arm64'] } : {}),
       },
     },
     android: {
+      // Single package across phone + Android TV (one Play listing serves
+      // both form factors; WHATSON_TV still switches assets + leanback flag).
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#0F0F0F',
       },
-      package: isTV ? 'com.whatson.tv' : 'com.whatson.app',
+      package: 'com.extrastrength.whatsontv',
     },
     plugins: [
       ['expo-router', { root: './app' }],

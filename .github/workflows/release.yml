@@ -96,8 +96,8 @@ jobs:
           if-no-files-found: error
 
   # ─── Mobile: Android phone + TV (single matrix job) ───
-  # Phone (WHATSON_TV=0) → com.whatson.app
-  # TV    (WHATSON_TV=1) → com.whatson.tv
+  # Phone (WHATSON_TV=0) and TV (WHATSON_TV=1) both → com.extrastrength.whatsontv
+  # (WHATSON_TV switches assets + leanback flag only, not the package)
   mobile-android:
     runs-on: ubuntu-latest
     # Map keystore secrets up to job-level env so `if:` expressions

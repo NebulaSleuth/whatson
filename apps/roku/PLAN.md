@@ -6,7 +6,7 @@ This document is the architecture and delivery plan for the Roku client. It assu
 
 ## 1. Goals — Roku must match Android TV / tvOS
 
-**The Android TV (`com.whatson.tv`) and tvOS apps are the design reference.**
+**The Android TV and tvOS apps (`com.extrastrength.whatsontv`) are the design reference.**
 Every screen, every interaction, every default value the Roku channel ships
 should match what the user sees on those builds. When the implementation
 forces a divergence (Roku platform constraint, missing SceneGraph primitive),

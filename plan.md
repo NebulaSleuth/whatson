@@ -416,7 +416,7 @@ interface ServerConfig {
 
 #### 2.13 — Separate Phone & TV Build Configurations ✅ COMPLETE
 - [x] Dynamic `app.config.ts` with `WHATSON_TV` environment variable
-- [x] Separate packages: `com.whatson.app` (phone) vs `com.whatson.tv` (TV)
+- [x] Unified package: `com.extrastrength.whatsontv` (phone + TV; `WHATSON_TV` switches assets + leanback flag only)
 - [x] TV build: `androidTVRequired=true`, TV banner asset (320x180px)
 - [x] Phone build: standard mobile config
 - [x] `WHATSON_TV=1 npx expo run:android` for TV build
@@ -424,8 +424,8 @@ interface ServerConfig {
 #### 2.14 — CI/CD Pipeline (Azure DevOps) ✅ COMPLETE
 - [x] Multi-stage pipeline: backend build → Linux installers → phone AAB → TV AAB
 - [x] Backend standalone executable + Linux packages (.deb, .rpm) via fpm
-- [x] Signed Android AAB for phone (`com.whatson.app`)
-- [x] Signed Android AAB for TV (`com.whatson.tv`)
+- [x] Signed Android AAB for phone (`com.extrastrength.whatsontv`)
+- [x] Signed Android AAB for TV (`com.extrastrength.whatsontv`)
 - [x] Auto-install Java 17 + Android SDK (platform 36, build-tools 36.0.0)
 - [x] Keystore signing via pipeline secrets
 - [x] Python script for Gradle signing patch (`scripts/patch-signing.py`)
