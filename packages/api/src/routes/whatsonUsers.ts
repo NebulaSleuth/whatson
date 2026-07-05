@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as wo from '../services/whatsonUsers.js';
 import * as plexUsers from '../services/users.js';
 import { listAvatars, getAvatar, getAvatarPng } from '../services/avatars.js';
+import { bindDeviceProfile } from '../services/pairing.js';
 import { jellyfinAdapter } from '../services/adapters/jellyfin.js';
 import { embyAdapter } from '../services/adapters/emby.js';
 import * as jellyfin from '../services/jellyfin.js';
@@ -60,6 +61,45 @@ whatsonUsersRouter.get('/whatson-users/avatars/:file', (req, res) => {
 whatsonUsersRouter.get('/whatson-users', (_req, res) => {
   const users = wo.listAll().map(wo.toPublic);
   res.json({ success: true, data: users });
+});
+
+/**
+ * Guest self-service viewer creation (M7 Phase 4b). A guest device whose invite
+ * said "new viewer" (binding 'locked-new') or an open-mode guest adding a viewer
+ * creates a Whats On user here — name + avatar only, no service mapping, so it
+ * inherits the server's default content with its own watched state (userContext
+ * treats an unmapped WO user as "inherit default"). For a 'locked-new' device we
+ * then bind the device to the new viewer so it's confined to it going forward.
+ *
+ * Guest-reachable: userContext allowlists this exact path for a bound-less
+ * 'locked-new' guest; owners use the admin create route instead.
+ */
+whatsonUsersRouter.post('/whatson-users/guest-profile', async (req, res) => {
+  const device = req.whatsonDevice;
+  if (!device || device.role !== 'guest') {
+    res.status(403).json({ success: false, error: 'Only a guest device can create its own viewer.' });
+    return;
+  }
+  if (!wo.isEnabled()) {
+    res.status(400).json({ success: false, error: 'Whats On Users is not enabled on this server.' });
+    return;
+  }
+  const name = String(req.body?.name ?? '').trim();
+  if (!name) {
+    res.status(400).json({ success: false, error: 'A name is required.' });
+    return;
+  }
+  // Fall back to the default avatar if the key isn't in the catalog.
+  const requested = String(req.body?.avatar ?? '').trim();
+  const avatar = getAvatar(requested).key;
+
+  const user = wo.create({ name, avatar });
+  // A 'locked-new' guest gets locked to the viewer it just made; an 'open' guest
+  // stays free to pick any viewer (this one now among them).
+  if (device.guestBinding === 'locked-new') {
+    await bindDeviceProfile(device.id, user.id);
+  }
+  res.json({ success: true, data: wo.toPublic(user) });
 });
 
 /**

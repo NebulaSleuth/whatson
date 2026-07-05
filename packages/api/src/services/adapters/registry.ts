@@ -50,6 +50,11 @@ export function setActiveUserScope(scope: WhatsOnUserScope | null): void {
   activeScope = scope;
 }
 
+/** Current per-request scope (null = inherit every configured adapter). */
+export function getActiveUserScope(): WhatsOnUserScope | null {
+  return activeScope;
+}
+
 function isAdapterMappedForScope(kind: MediaServerKind, scope: WhatsOnUserScope): boolean {
   switch (kind) {
     case 'plex':     return scope.plexUserId !== null;

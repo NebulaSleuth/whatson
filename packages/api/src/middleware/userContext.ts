@@ -63,16 +63,23 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
       const bound = device.boundWoProfileId;
       if (!bound) {
         // A confined guest with no bound profile can't act as anyone yet. A
-        // 'locked-new' guest lands here until it creates its profile in-app
-        // (Phase 4b allowlists the create-profile endpoint).
-        res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
-        return;
+        // 'locked-new' guest is allowed to reach ONLY the create-profile
+        // endpoint (to make its viewer, then it's bound); everything else 403s.
+        const path = (req.originalUrl || req.path || '').split('?')[0];
+        const isCreateProfile =
+          binding === 'locked-new' && path.endsWith('/whatson-users/guest-profile');
+        if (!isCreateProfile) {
+          res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
+          return;
+        }
+        // Fall through with no woId — the create endpoint reads req.whatsonDevice.
+      } else {
+        if (woId && woId !== bound) {
+          res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
+          return;
+        }
+        woId = bound; // default a guest to its bound profile when none is requested
       }
-      if (woId && woId !== bound) {
-        res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
-        return;
-      }
-      woId = bound; // default a guest to its bound profile when none is requested
     }
   }
 
@@ -91,12 +98,21 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
       // stable string id.
       setRequestUserId(user.id);
       // Aggregator + routes that iterate getConfiguredAdapters() will
-      // now see only the adapters this WO user is mapped to.
-      setActiveUserScope({
-        plexUserId: user.plexUserId,
-        jellyfinUserId: user.jellyfinUserId,
-        embyUserId: user.embyUserId,
-      });
+      // now see only the adapters this WO user is mapped to. A user with NO
+      // service mappings (e.g. a guest's self-created "new viewer", M7)
+      // inherits the server's default content — scope null = every configured
+      // adapter — while still getting its own watched state (keyed above).
+      const hasAnyMapping =
+        user.plexUserId !== null || user.jellyfinUserId !== null || user.embyUserId !== null;
+      setActiveUserScope(
+        hasAnyMapping
+          ? {
+              plexUserId: user.plexUserId,
+              jellyfinUserId: user.jellyfinUserId,
+              embyUserId: user.embyUserId,
+            }
+          : null,
+      );
       // Populate the Plex per-user token. The cache is in-memory only,
       // so after every backend restart the first request for a given WO
       // user will miss it — seed from the on-disk plexUserToken (set
