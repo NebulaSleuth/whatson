@@ -1,5 +1,5 @@
 export const APP_NAME = 'Whats On';
-export const APP_VERSION = '0.1.140';
+export const APP_VERSION = '0.1.141';
 
 export const PLEX_CLIENT_IDENTIFIER = 'com.whatson.app';
 export const PLEX_PRODUCT = APP_NAME;
