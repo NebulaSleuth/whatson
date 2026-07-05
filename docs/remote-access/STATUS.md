@@ -22,7 +22,7 @@ Client apps (mobile/Roku) are **untouched** so far — client work doesn't start
 | M5 — client connection manager | 🟡 core done + race tests + foreground re-race; Roku racer + offline UX + cloud /candidates fetch (domain-gated) remain | — | `9a1dae6`, `49445fe` |
 | /setup Remote Access panel | ✅ built + **shipped v0.1.134** (one-click enable + claim code; dormant) | v0.1.134 | `7ef94bd` |
 | M6 — remote playback (stream proxy + signed URLs) | ⬜ | — | — |
-| M7 — invites + guest roles + device-code (cloud scaffolded; account web UI + client sign-in remain) | ⬜ | — | — |
+| M7 — remote onboarding | 🟡 **M7-1 owner self-access DONE** (`GET /api/candidates` + app caches/races LAN+WAN, v0.1.137); remaining: account/invite web UI + guest device-code client | v0.1.137 | M7-1 commit |
 | M8 — secure data path | 🟢 **8a DNS + 8b TLS + 8c WAN-candidate emission DONE & PROD-VERIFIED** (`https://<id>.s.whatsontv.net:3002` externally reachable w/ trusted cert; cloud emits `[lan,ipv6,wan]`); remaining polish: UPnP/pinhole auto (user forwards manually today), stable-IPv6, reachability panel | v0.1.135/136 | `dfd8875`,`eea8cff`,`c944430`,`5e8b526` |
 | relay (CGNAT + v4-only client fallback) | ⬜ deferred — future **paid** feature, costly egress | — | — |
 
@@ -176,7 +176,18 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
    and fights iOS ATS / Android cleartext). Signed URLs mean no reusable secret
    ever rides a media request; TLS (M8 per-server cert) makes every platform
    accept the stream.
-6. **M7** — invites + self-service accounts + device-code (cloud invites/accounts
+   **✅ M7-1 — owner self-access DONE (v0.1.137).** The simplest path to remote
+   viewing for the owner's OWN devices: they already hold auth keys that work on
+   the remote listener, so no cloud account is needed. Backend `GET /api/candidates`
+   (consumer surface) returns LAN URLs + the WAN hostname
+   (`https://<id>.s.whatsontv.net:<port>`, when remote on + cert held); the app
+   caches them on init (on the LAN) via `updateCandidates()` and the built
+   foreground racer picks whichever answers (LAN home, WAN away). Fixed a latent
+   M5 bug: `pinCandidate` now appends `/api` (candidate URLs are base; the app's
+   apiUrl includes `/api`). Needs: backend on 0.1.137 + a fresh mobile build.
+   Verification limited by auth-gating (can't curl `/candidates` without a key).
+
+6. **M7 (full)** — invites + self-service accounts + device-code (cloud invites/accounts
    scaffolded; needs the `whatsontv.net` web UI + app "sign in to cloud" screens).
    **Refined flow (decided):** admin invites a viewer by email → viewer clicks
    link → creates their OWN cloud account (email + password) → picks their in-app
