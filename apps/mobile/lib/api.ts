@@ -464,6 +464,20 @@ export const api = {
       body: JSON.stringify(pin ? { pin } : {}),
     }),
 
+  // Guest self-service viewer creation (M7). The device's auth key identifies
+  // the guest; the backend creates a bare Whats On user (no service mapping →
+  // inherits default content) and, for a 'locked-new' device, binds it.
+  createGuestProfile: (name: string, avatar: string) =>
+    fetchApi<{
+      id: string;
+      name: string;
+      avatar: string;
+      hasPin: boolean;
+    }>('/whatson-users/guest-profile', {
+      method: 'POST',
+      body: JSON.stringify({ name, avatar }),
+    }),
+
   // Sonarr/Radarr add
   getSonarrProfiles: () => fetchApi<Array<{ id: number; name: string }>>('/sonarr/profiles'),
   getSonarrRootFolders: () => fetchApi<Array<{ id: number; path: string }>>('/sonarr/rootfolders'),

@@ -62,9 +62,19 @@ export default function CloudSignInScreen() {
       stopPolling();
       if (r.status === 'approved') {
         setPhase('connecting');
-        const ok = await redeemGrantViaCandidates(r.grant, r.candidates);
-        if (ok) {
-          router.replace('/' as any);
+        const result = await redeemGrantViaCandidates(r.grant, r.candidates, r.cloudToken);
+        if (result.ok) {
+          // Route by how the guest's profile is decided (M7):
+          //  - locked-new → set up a new viewer (name + avatar)
+          //  - open       → pick which viewer to watch as (Who's Watching?)
+          //  - locked / owner → straight in (backend enforces the bound profile)
+          if (result.guestBinding === 'locked-new') {
+            router.replace(`/create-profile?name=${encodeURIComponent(result.newUserName || '')}` as any);
+          } else if (result.guestBinding === 'open') {
+            router.replace('/select-whatson-user' as any);
+          } else {
+            router.replace('/' as any);
+          }
         } else {
           setErrorMsg(
             "Approved — but this device can't reach your server from here yet. Make sure remote " +
