@@ -222,8 +222,13 @@ Run it: `npm run dev -w packages/cloud` (see `packages/cloud/README.md`).
      wildcard (a leaked backend can't compromise others). **Verified against
      Let's Encrypt STAGING end-to-end** (register→order→dns-01 via cloud→validate
      →finalize = valid PEM cert for `<id>.s.whatsontv.net`, ~27s; TLS listener
-     serves it, rejects plaintext). Production runs on the real backend at enable.
-     `acme-client` confirmed to bundle into the esbuild standalone build.
+     serves it, rejects plaintext). `acme-client` bundles into the esbuild
+     standalone build. **✅ PRODUCTION-VALIDATED (shipped v0.1.135):** the user's
+     real backend (`8afc87…`) already had remote on, so the 0.1.135 auto-update
+     obtained a real cert — `:3002` now serves HTTPS with a Let's Encrypt cert
+     for `8afc87….s.whatsontv.net` chaining to ISRG Root X1 (`Verify return
+     code: 0 (ok)`), A record → the real public IP. LAN-reachable; internet needs
+     8c (port forward). LAN `:3001` untouched, no re-pair (admin pw already set).
    - **BUG to fix:** `registration.ts ipv6Url()` currently emits
      `https://[literal-v6]:port`, which FAILS cert validation (cert is for the
      hostname, not an IP literal). Switch to AAAA-record + hostname candidates.
