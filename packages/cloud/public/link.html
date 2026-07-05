@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Approve a device · Whats On</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="nav">
+    <div class="brand"><a href="/" style="color:inherit;text-decoration:none">Whats<span>On</span></a></div>
+    <div><a class="btn secondary" href="/account">Account</a></div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>Approve a device</h2>
+      <p class="sub">Enter the code shown on your TV or phone, and choose which server it should connect to.</p>
+
+      <label for="code">Device code</label>
+      <input id="code" type="text" placeholder="WXYZ-1234" autocapitalize="characters" autocomplete="off" />
+
+      <label for="server">Server</label>
+      <select id="server" style="width:100%;padding:12px 14px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:9px;font-size:15px">
+        <option value="">Loading your servers…</option>
+      </select>
+
+      <button class="btn block mt" id="approve-btn" onclick="approve()">Approve device</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    if (requireAuth()) loadServers();
+    // Pre-fill the code if it came in via ?user_code= (RFC 8628 verification_uri_complete)
+    const pre = new URLSearchParams(location.search).get('user_code');
+    if (pre) document.getElementById('code').value = pre;
+
+    async function loadServers() {
+      const r = await apiGet('/accounts/me');
+      if (r.status === 401) { clearToken(); location.replace('/login?next=/link'); return; }
+      const sel = document.getElementById('server');
+      sel.textContent = '';
+      const servers = (r.body && r.body.servers) || [];
+      if (!servers.length) {
+        const o = document.createElement('option');
+        o.value = ''; o.textContent = 'No linked servers — link one first';
+        sel.appendChild(o);
+        setMsg('You have no linked servers yet. Link a server on your account page first.', 'err');
+        return;
+      }
+      for (const s of servers) {
+        const o = document.createElement('option');
+        o.value = s.serverId;
+        o.textContent = s.label || s.serverId.slice(0, 12) + '…';
+        sel.appendChild(o);
+      }
+    }
+
+    async function approve() {
+      const userCode = document.getElementById('code').value.trim().toUpperCase();
+      const serverId = document.getElementById('server').value;
+      const btn = document.getElementById('approve-btn');
+      if (!userCode) { setMsg('Enter the device code.', 'err'); return; }
+      if (!serverId) { setMsg('Choose a server.', 'err'); return; }
+      btn.disabled = true; setMsg('Approving…', '');
+      const r = await apiPost('/device-code/approve', { userCode, serverId, role: 'owner' });
+      btn.disabled = false;
+      if (!r.ok) { setMsg(r.body.error || 'Could not approve that code.', 'err'); return; }
+      setMsg('Approved! Your device will connect in a few seconds — you can close this page.', 'ok');
+      document.getElementById('approve-btn').disabled = true;
+    }
+  </script>
+</body>
+</html>

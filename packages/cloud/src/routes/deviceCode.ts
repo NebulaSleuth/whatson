@@ -47,7 +47,7 @@ deviceCodeRouter.post('/device-code', (req, res) => {
   res.status(201).json({
     deviceCode,
     userCode,
-    verificationUri: `https://${config.cloudDomain}/link`,
+    verificationUri: `${config.webUiBase}/link`,
     interval: POLL_INTERVAL_S,
     expiresIn: DEVICE_CODE_TTL_MS / 1000,
   });

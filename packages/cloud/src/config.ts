@@ -14,6 +14,12 @@ export const config = {
    * per-server machinery lives on the `s.` subdomain — one domain, no conflict.
    */
   cloudDomain: process.env.CLOUD_DOMAIN || 'whatsontv.net',
+  /**
+   * Public base URL of the web UI (account / link / invite pages + marketing).
+   * The apex is hijacked by a GoDaddy Website Builder we can't disconnect, so we
+   * serve on `www` (a clean CNAME → App Service). Overridable via WEB_UI_BASE.
+   */
+  webUiBase: process.env.WEB_UI_BASE || 'https://www.whatsontv.net',
   dataDir: process.env.CLOUD_DATA_DIR || join(process.cwd(), 'data'),
   /**
    * Azure DNS publishing (M8). When a server heartbeats, the cloud writes an

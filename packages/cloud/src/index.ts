@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { join } from 'node:path';
 import express from 'express';
 import { config } from './config.js';
 import { initCloudKey, cloudPublicKeyPem } from './crypto.js';
@@ -34,6 +35,11 @@ app.use('/api', accountsRouter);
 app.use('/api', serversRouter);
 app.use('/api', invitesRouter);
 app.use('/api', deviceCodeRouter);
+
+// Web UI (marketing + account/login/link/invite pages). Static files from
+// ./public, with extensionless routing so /login → login.html, /link →
+// link.html, / → index.html. Served after the API so /api/* wins.
+app.use(express.static(join(process.cwd(), 'public'), { extensions: ['html'] }));
 
 // Terminal error handler — generic body, detail server-side.
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your account · Whats On</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="nav">
+    <div class="brand"><a href="/" style="color:inherit;text-decoration:none">Whats<span>On</span></a></div>
+    <div><a class="btn secondary" href="#" onclick="signOut();return false">Sign out</a></div>
+  </div>
+
+  <div class="container wide">
+    <div class="card">
+      <h2>Your servers</h2>
+      <p class="sub" id="acct-email">Loading…</p>
+      <div id="servers"><p class="muted">Loading your servers…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Link a server</h2>
+      <p class="sub">
+        On your server's <strong>Setup → Remote Access</strong> page, get its link code, then enter it here to
+        connect it to your account.
+      </p>
+      <label for="claim">Server link code</label>
+      <input id="claim" type="text" placeholder="ABCD-1234" autocapitalize="characters" autocomplete="off" />
+      <button class="btn mt" id="claim-btn" onclick="claimServer()">Link server</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Connect a device</h2>
+      <p class="sub" style="margin:0">
+        On a new TV or phone, choose <strong>Sign in with Whats On</strong> in the app. It'll show a short code —
+        enter it at <a href="/link">whatsontv.net/link</a> to approve it.
+      </p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    if (requireAuth()) loadAccount();
+
+    async function loadAccount() {
+      const r = await apiGet('/accounts/me');
+      if (r.status === 401) { clearToken(); location.replace('/login'); return; }
+      if (!r.ok) { document.getElementById('acct-email').textContent = 'Could not load your account.'; return; }
+      document.getElementById('acct-email').textContent = 'Signed in as ' + r.body.email;
+      renderServers(r.body.servers || []);
+    }
+
+    function renderServers(servers) {
+      const box = document.getElementById('servers');
+      box.textContent = '';
+      if (!servers.length) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = "No servers linked yet — use “Link a server” below.";
+        box.appendChild(p);
+        return;
+      }
+      for (const s of servers) {
+        const row = document.createElement('div');
+        row.className = 'server-item';
+        const left = document.createElement('div');
+        const name = document.createElement('div');
+        name.textContent = s.label || s.serverId.slice(0, 12) + '…';
+        const meta = document.createElement('div');
+        meta.className = 'muted';
+        meta.style.fontSize = '12px';
+        meta.textContent = s.lastHeartbeatAt
+          ? 'last seen ' + new Date(s.lastHeartbeatAt).toLocaleString()
+          : 'never connected';
+        left.appendChild(name); left.appendChild(meta);
+        const badge = document.createElement('span');
+        badge.className = 'badge' + (s.enabled ? ' on' : '');
+        badge.textContent = s.enabled ? 'active' : 'disabled';
+        row.appendChild(left); row.appendChild(badge);
+        box.appendChild(row);
+      }
+    }
+
+    async function claimServer() {
+      const code = document.getElementById('claim').value.trim().toUpperCase();
+      const btn = document.getElementById('claim-btn');
+      if (!code) { setMsg('Enter the server link code.', 'err'); return; }
+      btn.disabled = true; setMsg('Linking…', '');
+      const r = await apiPost('/servers/claim', { code });
+      btn.disabled = false;
+      if (!r.ok) { setMsg(r.body.error || 'Could not link that code.', 'err'); return; }
+      setMsg('Server linked!', 'ok');
+      document.getElementById('claim').value = '';
+      loadAccount();
+    }
+  </script>
+</body>
+</html>
