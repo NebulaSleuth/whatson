@@ -16,10 +16,11 @@ export const config = {
   cloudDomain: process.env.CLOUD_DOMAIN || 'whatsontv.net',
   /**
    * Public base URL of the web UI (account / link / invite pages + marketing).
-   * The apex is hijacked by a GoDaddy Website Builder we can't disconnect, so we
-   * serve on `www` (a clean CNAME → App Service). Overridable via WEB_UI_BASE.
+   * The bare apex is canonical (the GoDaddy Website Builder that was hijacking it
+   * has been disconnected); `www` also resolves to the same app. Override via
+   * WEB_UI_BASE.
    */
-  webUiBase: process.env.WEB_UI_BASE || 'https://www.whatsontv.net',
+  webUiBase: process.env.WEB_UI_BASE || 'https://whatsontv.net',
   dataDir: process.env.CLOUD_DATA_DIR || join(process.cwd(), 'data'),
   /**
    * Azure DNS publishing (M8). When a server heartbeats, the cloud writes an
