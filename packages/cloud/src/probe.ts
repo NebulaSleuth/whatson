@@ -1,3 +1,4 @@
+import https from 'node:https';
 import type { ServerRecord } from './types.js';
 
 /**
@@ -19,6 +20,68 @@ export async function probeUrl(baseUrl: string, timeoutMs = 4000): Promise<boole
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * External reachability probe for the WAN **IPv4** HTTPS path (M8/8c). Connects
+ * to the observed IPv4 explicitly — NOT the hostname — because the hostname also
+ * has an AAAA record, and the cloud's egress may prefer IPv6 (which the owner
+ * hasn't necessarily pinholed), giving a false negative. `servername` is set to
+ * the hostname so the per-server cert still validates by name.
+ *
+ * Returns true only if the port answers, the cert validates, AND the health
+ * body echoes the EXPECTED serverId — so a stranger on that IP:port can't be
+ * mistaken for the real server.
+ */
+export function probeWanReachable(
+  ipv4: string,
+  host: string,
+  port: number,
+  expectedServerId: string,
+  timeoutMs = 10_000,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: boolean) => {
+      if (!done) {
+        done = true;
+        resolve(v);
+      }
+    };
+    const req = https.request(
+      { host: ipv4, port, path: '/api/health', method: 'GET', servername: host, timeout: timeoutMs },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          finish(false);
+          return;
+        }
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => {
+          if (data.length < 10_000) data += c;
+        });
+        res.on('end', () => {
+          try {
+            const b = JSON.parse(data) as { serverId?: string; data?: { serverId?: string } };
+            finish((b?.data?.serverId ?? b?.serverId ?? null) === expectedServerId);
+          } catch {
+            finish(false);
+          }
+        });
+      },
+    );
+    req.on('error', (e) => {
+      console.warn(`[probe] ${ipv4}:${port} error: ${(e as NodeJS.ErrnoException).code ?? e.message}`);
+      finish(false);
+    });
+    req.on('timeout', () => {
+      console.warn(`[probe] ${ipv4}:${port} timeout after ${timeoutMs}ms`);
+      req.destroy();
+      finish(false);
+    });
+    req.end();
+  });
 }
 
 export interface ReachabilityReport {

@@ -103,7 +103,7 @@ export function findServersByOwner(accountId: string): ServerRecord[] {
 
 export function updateServerHeartbeat(
   serverId: string,
-  patch: Partial<Pick<ServerRecord, 'candidates' | 'observedWanIp' | 'ipv6Url' | 'upnpMapped' | 'appVersion'>>,
+  patch: Partial<Pick<ServerRecord, 'candidates' | 'observedWanIp' | 'ipv6Url' | 'upnpMapped' | 'appVersion' | 'remotePort'>>,
 ): ServerRecord | null {
   const d = load();
   const s = d.servers.find((x) => x.id === serverId);
@@ -111,6 +111,16 @@ export function updateServerHeartbeat(
   Object.assign(s, patch, { lastHeartbeatAt: new Date().toISOString() });
   persist();
   return s;
+}
+
+/** Record the cloud's external reachability probe result for a server. */
+export function setServerReachability(serverId: string, wanReachable: boolean): void {
+  const d = load();
+  const s = d.servers.find((x) => x.id === serverId);
+  if (!s) return;
+  s.wanReachable = wanReachable;
+  s.wanReachableCheckedAt = new Date().toISOString();
+  persist();
 }
 
 // ── Claim codes ──────────────────────────────────────────────────────────────

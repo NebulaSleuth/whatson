@@ -4,6 +4,7 @@ import * as store from './store.js';
 import { config } from './config.js';
 import { verifyServerSignature } from './crypto.js';
 import { publishServerDns } from './dns.js';
+import { probeWanReachable } from './probe.js';
 import { MSG, type CloudEnvelope, type HeartbeatPayload, type Candidate } from './types.js';
 
 /**
@@ -57,14 +58,49 @@ function clientIp(req: { headers: Record<string, string | string[] | undefined>;
   return normalizeIp(req.socket.remoteAddress);
 }
 
-/** Build the candidate list from a heartbeat + the cloud-observed WAN IP. */
-function buildCandidates(hb: HeartbeatPayload, serverId: string): Candidate[] {
+const DEFAULT_REMOTE_PORT = 3002;
+
+/**
+ * Build the candidate list. The WAN/IPv6 candidates are emitted whenever the
+ * backend has a working HTTPS listener (`certReady`) and we have its public IP —
+ * NOT gated on the cloud's own reachability probe. Reachability is per-client-
+ * path (the cloud's egress to a home differs from a phone-on-cellular's), so the
+ * authoritative test is the client's racer; a dead candidate just falls through
+ * to LAN. The cloud probe (`wanReachable`) is kept as an advisory diagnostic.
+ */
+function buildCandidates(hb: HeartbeatPayload, serverId: string, wanIpV4: string | null): Candidate[] {
   const host = `${serverId}.s.${config.cloudDomain}`;
+  const port = hb.remotePort ?? DEFAULT_REMOTE_PORT;
   const candidates: Candidate[] = [];
   for (const url of hb.lanUrls ?? []) candidates.push({ kind: 'lan', url, priority: 0 });
-  if (hb.ipv6Url) candidates.push({ kind: 'ipv6', url: `https://${host}`, priority: 1 });
-  if (hb.wanPortForwarded) candidates.push({ kind: 'wan', url: `https://${host}:3002`, priority: 2 });
+  if (hb.certReady && hb.ipv6Url) candidates.push({ kind: 'ipv6', url: `https://${host}:${port}`, priority: 1 });
+  if (hb.certReady && wanIpV4) candidates.push({ kind: 'wan', url: `https://${host}:${port}`, priority: 2 });
   return candidates;
+}
+
+const PROBE_OK_MS = 5 * 60 * 1000; // reachable: re-confirm every 5 min
+const PROBE_RETRY_MS = 60 * 1000; // not-yet-reachable: retry every minute so it
+// converges quickly once the owner opens the port
+const PROBE_TIMEOUT_MS = 10_000; // /api/health tests upstreams; be generous over a residential link
+
+/**
+ * Probe the WAN path from the cloud (throttled) and store the result, so the
+ * NEXT heartbeat's candidate list includes the WAN candidate once the port is
+ * confirmed open. Fire-and-forget.
+ */
+async function maybeProbeReachability(serverId: string, remotePort: number): Promise<void> {
+  const s = store.getServer(serverId);
+  if (!s) return;
+  // Need an observed IPv4 to probe the WAN path (we force IPv4 — see probe.ts).
+  const ipv4 = s.observedWanIp;
+  if (!ipv4 || ipv4.includes(':')) return;
+  const last = s.wanReachableCheckedAt ? Date.parse(s.wanReachableCheckedAt) : 0;
+  const throttle = s.wanReachable ? PROBE_OK_MS : PROBE_RETRY_MS;
+  if (Number.isFinite(last) && Date.now() - last < throttle) return;
+  const host = `${serverId}.s.${config.cloudDomain}`;
+  const reachable = await probeWanReachable(ipv4, host, remotePort, serverId, PROBE_TIMEOUT_MS);
+  store.setServerReachability(serverId, reachable);
+  console.log(`[probe] ${host}(${ipv4}):${remotePort} wanReachable=${reachable}`);
 }
 
 export function initCloudWebSocket(server: Server): void {
@@ -102,17 +138,24 @@ export function initCloudWebSocket(server: Server): void {
             return;
           }
           const hb = env.payload as HeartbeatPayload;
+          const remotePort = hb.remotePort ?? DEFAULT_REMOTE_PORT;
+          const wanIpV4 = conn.wanIp && !conn.wanIp.includes(':') ? conn.wanIp : null;
+          const candidates = buildCandidates(hb, conn.serverId, wanIpV4);
           store.updateServerHeartbeat(conn.serverId, {
-            candidates: buildCandidates(hb, conn.serverId),
+            candidates,
             observedWanIp: conn.wanIp,
             ipv6Url: hb.ipv6Url ?? null,
             upnpMapped: !!hb.upnpMapped,
             appVersion: hb.appVersion ?? null,
+            remotePort,
           });
+          console.log(`[hb] ${conn.serverId.slice(0, 8)} candidates=[${candidates.map((c) => c.kind).join(',')}]`);
           // M8: publish <serverId>.s.whatsontv.net -> WAN IPv4 (+ IPv6 if any) so
           // apps can reach the backend by a cert-matching hostname. Fire-and-
           // forget; no-op unless DNS publishing is configured (App Service MSI).
           void publishServerDns(conn.serverId, conn.wanIp, hb.ipv6Url ?? null);
+          // M8/8c: confirm the WAN port is actually open from outside (throttled).
+          void maybeProbeReachability(conn.serverId, remotePort);
           send(ws, { v: 1, type: MSG.ACK, id: env.id, payload: { ok: true } });
           break;
         }

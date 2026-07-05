@@ -70,6 +70,10 @@ export interface HeartbeatPayload {
   ipv6Url?: string | null;
   wanPortForwarded?: boolean;
   upnpMapped?: boolean;
+  /** The backend's internet-facing remote listener port (default 3002). */
+  remotePort?: number;
+  /** True when the backend holds a valid TLS cert (its :port serves HTTPS). */
+  certReady?: boolean;
   appVersion?: string;
   ts: number;
 }
@@ -112,6 +116,11 @@ export interface ServerRecord {
   ipv6Url: string | null;
   upnpMapped: boolean;
   appVersion: string | null;
+  /** Backend's remote listener port (for building the WAN candidate URL). */
+  remotePort?: number | null;
+  /** Cloud's external probe result: is the WAN HTTPS port actually reachable? */
+  wanReachable?: boolean;
+  wanReachableCheckedAt?: string | null;
 }
 
 export interface Invite {

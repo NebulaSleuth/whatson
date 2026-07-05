@@ -3,6 +3,7 @@ import { networkInterfaces } from 'node:os';
 import { APP_VERSION } from '@whatson/shared';
 import { config } from '../../config.js';
 import { getServerId, getPublicKeyPem, signMessage } from './identity.js';
+import { certDaysRemaining } from './acme.js';
 import { MSG, type CloudEnvelope, type HeartbeatPayload } from './types.js';
 
 /**
@@ -78,9 +79,15 @@ function buildHeartbeat(): HeartbeatPayload {
     serverId: getServerId(),
     lanUrls: lanUrls(),
     ipv6Url: ipv6Url(),
-    // UPnP / port-forward detection is M8; report unknown-as-false for now.
+    // The cloud now DETECTS WAN reachability itself via an external probe
+    // (M8/8c) rather than trusting a backend self-report, so wanPortForwarded is
+    // advisory only. We report the remote port so the cloud builds the right URL.
     wanPortForwarded: false,
     upnpMapped: false,
+    remotePort: config.remote.port,
+    // Tells the cloud our :port serves valid HTTPS, so it can emit the WAN/IPv6
+    // candidate. Reachability from any given client is the client racer's call.
+    certReady: certDaysRemaining() !== null,
     appVersion: APP_VERSION,
     ts: Date.now(),
   };

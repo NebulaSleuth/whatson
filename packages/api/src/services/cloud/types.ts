@@ -36,6 +36,10 @@ export interface HeartbeatPayload {
   ipv6Url?: string | null;
   wanPortForwarded?: boolean;
   upnpMapped?: boolean;
+  /** Internet-facing remote listener port (default 3002). */
+  remotePort?: number;
+  /** True when a valid TLS cert is held (the remote listener serves HTTPS). */
+  certReady?: boolean;
   appVersion?: string;
   ts: number;
 }
