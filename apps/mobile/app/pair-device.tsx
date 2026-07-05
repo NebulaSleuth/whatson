@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { setStoredApiUrl, setStoredAuthKey } from '@/lib/storage';
+import { updateCandidates } from '@/lib/connection';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /**
@@ -125,6 +126,19 @@ export default function PairDeviceScreen() {
         setStatusText('Paired! Continuing…');
         await setStoredAuthKey(res.key);
         setAuthKey(res.key);
+        // M7: cache this server's connection candidates NOW — we're on the LAN
+        // and just got our key. Without this, candidates were only cached on a
+        // *later* on-LAN launch, so pairing then immediately going off-network
+        // (the natural flow) left the app with nothing to race → pair screen.
+        try {
+          const cands = await api.getRemoteCandidates();
+          if (cands.candidates?.length) {
+            await updateCandidates(cands.candidates as any, cands.serverId);
+            console.log(`[Pair] cached ${cands.candidates.length} connection candidate(s)`);
+          }
+        } catch (err) {
+          console.warn('[Pair] candidate cache failed:', (err as Error).message);
+        }
         // Slight delay so the success message is readable.
         setTimeout(() => router.replace('/' as any), 400);
       }
