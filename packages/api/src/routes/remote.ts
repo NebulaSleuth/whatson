@@ -60,6 +60,11 @@ remoteRouter.post('/remote/enable', async (req, res) => {
     return;
   }
 
+  // Remote listen port (owner forwards it 1:1). Default 3002; validate range.
+  const portNum = Number(req.body?.remotePort);
+  const remotePort =
+    Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535 ? portNum : config.remote.port;
+
   // Fetch + pin the cloud's Ed25519 public key so grants are verified offline
   // against exactly this key (docs/remote-access H1). No PEM pasting by the user.
   let pem: string;
@@ -82,6 +87,7 @@ remoteRouter.post('/remote/enable', async (req, res) => {
   // Persist as single-line env values (config.ts restores the PEM newlines).
   saveConfigToEnv({
     REMOTE_ACCESS: 'true',
+    REMOTE_PORT: String(remotePort),
     CLOUD_URL: cloudUrl,
     CLOUD_PUBLIC_KEY: pem.replace(/\r?\n/g, '\\n'),
   });

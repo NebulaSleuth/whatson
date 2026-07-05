@@ -513,6 +513,11 @@
 
       <!-- Disabled → offer to enable -->
       <div id="remote-disabled" style="display:none">
+        <div class="field" style="max-width:220px;margin-bottom:12px">
+          <label>Remote port</label>
+          <input type="number" id="remote-port-input" placeholder="3002" value="3002" min="1" max="65535" />
+          <div class="hint">Forward this port (1:1) on your router. Most people leave it at 3002.</div>
+        </div>
         <button class="btn btn-primary" onclick="enableRemote()" id="remote-enable-btn">Enable remote access</button>
         <div id="remote-enable-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
       </div>
@@ -525,19 +530,13 @@
           <div><span style="color:#777">Server ID:</span> <span id="ri-sid" style="color:#bbb;font-family:monospace;font-size:12px"></span></div>
           <div><span style="color:#777">Last heartbeat:</span> <span id="ri-hb" style="color:#bbb"></span></div>
           <div><span style="color:#777">TLS certificate:</span> <span id="ri-cert" style="color:#bbb"></span></div>
+          <div><span style="color:#777">Remote port:</span> <span id="ri-port" style="color:#bbb"></span></div>
         </div>
 
-        <h3 style="margin:0 0 8px 0;color:#ccc;font-size:14px">Link this server to your account</h3>
-        <p style="color:#888;font-size:13px;margin-bottom:12px">
-          Sign in at <span style="color:#ddd">whatsontv.net</span> and enter this code to link the server
-          to your account. Then your apps can find it from anywhere.
-        </p>
-        <div id="remote-claim-box" style="margin-bottom:20px">
-          <div id="claim-code" style="font-size:32px;font-weight:700;letter-spacing:6px;color:#e5a00d;font-family:monospace;display:none"></div>
-          <div id="claim-meta" style="color:#777;font-size:12px;margin-top:4px;display:none"></div>
-          <div id="claim-linked" style="color:#77dd77;font-size:14px;display:none">✓ This server is linked to your cloud account.</div>
-          <div id="claim-err" style="color:#e5a00d;font-size:13px;display:none"></div>
-          <button class="btn btn-secondary" id="claim-refresh" onclick="loadClaimCode()">Get claim code</button>
+        <div style="background:#12180f;border:1px solid #2a3a1a;border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#9fca7f;line-height:1.6">
+          ✓ Remote access is active. Your paired devices can reach this server from anywhere —
+          no further setup needed (they pick up the remote address automatically).
+          <div style="color:#777;margin-top:6px">Sharing access with other people (accounts &amp; invites) is coming soon.</div>
         </div>
 
         <button class="btn btn-secondary" onclick="disableRemote()">Disable remote access</button>
@@ -1749,8 +1748,8 @@
         if (cert.obtaining) { certEl.textContent = 'obtaining…'; certEl.style.color = '#e5a00d'; }
         else if (typeof cert.daysRemaining === 'number') { certEl.textContent = 'valid · ' + cert.daysRemaining + ' days left'; certEl.style.color = '#77dd77'; }
         else { certEl.textContent = 'not issued yet'; certEl.style.color = '#888'; }
+        document.getElementById('ri-port').textContent = s.remotePort || '3002';
         show('remote-enabled');
-        loadClaimCode();
         // While the cert is being obtained (or absent right after enable),
         // re-poll so the operator sees it flip to "valid" without a manual refresh.
         if (cert.obtaining || typeof cert.daysRemaining !== 'number') {
@@ -1768,10 +1767,12 @@
       const msg = document.getElementById('remote-enable-msg');
       msg.style.color = '#aaa'; msg.textContent = 'Connecting to the cloud…';
       if (btn) btn.disabled = true;
+      const portVal = parseInt(document.getElementById('remote-port-input').value, 10);
+      const remotePort = (Number.isFinite(portVal) && portVal >= 1 && portVal <= 65535) ? portVal : 3002;
       try {
         const r = await fetch(API + '/remote/enable', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin', body: JSON.stringify({}),
+          credentials: 'same-origin', body: JSON.stringify({ remotePort }),
         }).then(r => r.json());
         if (!r.success) { msg.style.color = '#ff7777'; msg.textContent = r.error || 'Enable failed.'; if (btn) btn.disabled = false; return; }
         msg.textContent = '';
@@ -1793,34 +1794,8 @@
       } catch (e) { msg.style.color = '#ff7777'; msg.textContent = 'Network error: ' + e.message; }
     }
 
-    async function loadClaimCode() {
-      const code = document.getElementById('claim-code');
-      const meta = document.getElementById('claim-meta');
-      const err = document.getElementById('claim-err');
-      const refresh = document.getElementById('claim-refresh');
-      hide('claim-code'); hide('claim-meta'); hide('claim-linked'); hide('claim-err');
-      refresh.disabled = true; refresh.textContent = 'Getting code…';
-      try {
-        const r = await fetch(API + '/remote/claim-code', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
-        refresh.disabled = false;
-        if (!r.success) {
-          err.textContent = r.error || 'Could not get a claim code.';
-          show('claim-err'); refresh.textContent = 'Retry'; show('claim-refresh');
-          return;
-        }
-        if (r.data.claimed) {
-          show('claim-linked'); hide('claim-refresh');
-          return;
-        }
-        code.textContent = r.data.code; show('claim-code');
-        meta.textContent = r.data.expiresAt ? ('Expires ' + new Date(r.data.expiresAt).toLocaleTimeString()) : '';
-        show('claim-meta');
-        refresh.textContent = 'New code'; show('claim-refresh');
-      } catch (e) {
-        refresh.disabled = false; refresh.textContent = 'Retry'; show('claim-refresh');
-        err.textContent = 'Network error: ' + e.message; show('claim-err');
-      }
-    }
+    // (Claim-code / cloud-account linking UI removed until the whatsontv.net
+    // account site ships — M7-full. Owner devices use candidates directly.)
 
     // ── Whats On Users ──
     //
