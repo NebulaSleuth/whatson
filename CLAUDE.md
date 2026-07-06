@@ -4,6 +4,8 @@ A cross-platform "what should I watch tonight?" app that unifies Plex, Sonarr, R
 
 See `plan.md` for mobile phase-by-phase status, `apps/roku/PLAN.md` for the Roku roadmap, and `docs/emby-jellyfin-playback.md` for the Emby/Jellyfin playback quirks history — every load-bearing line in `embyLike.ts` exists because of a specific bug, so read that before changing playback code. This file describes the architecture that is actually in code.
 
+**Active workstream:** `docs/user-model/` — the unified user model (users = people; Whats On owns identity, subsystems are content sources; replaces the M7 guest/viewer/binding model). Start at `docs/user-model/STATUS.md` for the resume point, then `00-vision.md` (decided model) + `01-implementation.md` (build blueprint). This supersedes the remote-access M7 guest flow (`docs/remote-access/STATUS.md`), whose infrastructure (cloud control plane, per-server TLS, device-code) carries forward.
+
 ---
 
 ## Monorepo Layout
