@@ -41,6 +41,9 @@ verified. The next step is the **Phase A data-model refactor** (not started).
   **Verified 9/9** vs real Plex.
 - **Phase A #2 — provisionUser wired** (`5f66b6a`): create provisions real JF/Emby
   users (libraries), delete cleans up managed ones. Verified 6/6.
+- **Phase A #3 — PIN session token** (`f93ac12`): `/select` mints an AES-GCM
+  per-user token; userContext enforces it (soft default / `WHATSON_STRICT_PIN`
+  hard). Verified 9/9 both modes. Mobile still to send `X-Whatson-Session`.
 - **Phase B foundations** (`c32ba19`):
   - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
     env or generated `data/whatson-secret.key`). **Verified 5/5.**
@@ -75,9 +78,10 @@ The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
    jellyfinCreate/embyCreate provisions a real JF/Emby user (generated password,
    libraries) stored as a managed mapping; DELETE cleans up managed subsystem users.
    Verified 6/6 (merge); live route E2E pending the JF/Emby password.
-3. **Per-user PIN session token** (impl §2.3) — `/select` returns a short-lived
-   token; `userContext` requires it for PIN-protected users so `X-Whatson-User`
-   isn't client-trusted. Load-bearing under fully-shared.
+3. ✅ **Per-user PIN session token** (`f93ac12`) — `/select` returns an AES-GCM
+   sessionToken; `userContext` verifies `X-Whatson-Session` for PIN-protected
+   users. Soft by default; `WHATSON_STRICT_PIN=1` → hard 401. Verified 9/9 both
+   modes. **Mobile follow-up:** capture + send the token, then flip strict on.
 4. **Unwind M7 bits** (can trail): `pairing.ts` drop `guestBinding`/
    `boundWoProfileId`; `userContext.ts` remove binding branches + "inherit default";
    remove the `enabled` toggle + `guestMode` from service + admin UI.
