@@ -252,8 +252,6 @@ export async function requestClaimCode(): Promise<
   }
 }
 
-export type InviteBinding = 'locked' | 'locked-new' | 'open';
-
 export interface CreateInviteResult {
   token: string;
   url: string;
@@ -262,18 +260,16 @@ export interface CreateInviteResult {
 }
 
 /**
- * Mint a guest invite on the cloud for this server (M7). Server-signed — the
- * cloud verifies our signature over `invite:<serverId>:<email>` against the
- * public key it derived our serverId from, so no cloud account/password is
- * needed here. The cloud returns the accept URL (link-first) and emails it too
- * when Mailgun is configured. `email` is normalized to match the signature.
+ * Mint an invite on the cloud for this server (unified user model). Server-signed
+ * — the cloud verifies our signature over `invite:<serverId>:<email>` against the
+ * public key it derived our serverId from, so no cloud account/password is needed
+ * here. The invite grants server access only (identity is the shared picker). The
+ * cloud returns the accept URL (link-first) + emails it when Mailgun is configured.
  */
 export async function createInvite(opts: {
   email: string;
-  binding: InviteBinding;
-  boundWoProfileId?: string | null;
-  newUserName?: string | null;
   label?: string | null;
+  provisioningRef?: string | null;
   expiresInHours?: number;
 }): Promise<CreateInviteResult | { error: string }> {
   if (!config.cloud.url) return { error: 'No cloud URL configured.' };
@@ -286,10 +282,8 @@ export async function createInvite(opts: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         email,
-        binding: opts.binding,
-        boundWoProfileId: opts.boundWoProfileId ?? null,
-        newUserName: opts.newUserName ?? null,
         label: opts.label ?? null,
+        provisioningRef: opts.provisioningRef ?? null,
         expiresInHours: opts.expiresInHours,
         sig: signMessage(`invite:${serverId}:${email}`),
       }),

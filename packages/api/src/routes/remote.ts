@@ -8,9 +8,7 @@ import {
   createInvite,
   startCloudRegistration,
   stopCloudRegistration,
-  type InviteBinding,
 } from '../services/cloud/registration.js';
-import * as wo from '../services/whatsonUsers.js';
 import { startRemoteListener, stopRemoteListener } from '../server/remoteListener.js';
 import { certDaysRemaining } from '../services/cloud/acme.js';
 import { startCertManager, stopCertManager, isObtainingCert } from '../services/cloud/certManager.js';
@@ -140,10 +138,10 @@ remoteRouter.post('/remote/claim-code', async (_req, res) => {
 });
 
 /**
- * Mint a guest invite (M7). The /setup UI collects an email + (in closed mode)
- * which Whats On user the guest is bound to, or "new user". The binding is
- * validated against the current guest mode + the WO users on this server; the
- * cloud call is server-signed inside createInvite().
+ * Mint an invite (unified user model). It grants the redeeming cloud account
+ * access to this server; identity is picked from the shared "Who's Watching?"
+ * picker in the app — no per-user binding. The cloud call is server-signed inside
+ * createInvite().
  */
 remoteRouter.post('/remote/invite', async (req, res) => {
   if (!config.remote.enabled || !config.cloud.url) {
@@ -156,39 +154,8 @@ remoteRouter.post('/remote/invite', async (req, res) => {
     return;
   }
 
-  const mode = wo.getGuestMode();
-  let binding: InviteBinding;
-  let boundWoProfileId: string | null = null;
-  let newUserName: string | null = null;
-
-  if (mode === 'open') {
-    // Open mode: the guest picks (or creates) their user in the app each session.
-    binding = 'open';
-  } else {
-    // Closed mode: bind to a chosen existing user, or have the guest create one.
-    const wantNew = req.body?.newUser === true || String(req.body?.boundWoProfileId ?? '') === '__new__';
-    if (wantNew) {
-      binding = 'locked-new';
-      newUserName = String(req.body?.newUserName ?? '').trim() || null;
-    } else {
-      binding = 'locked';
-      boundWoProfileId = String(req.body?.boundWoProfileId ?? '').trim() || null;
-      if (!boundWoProfileId) {
-        res.status(400).json({ success: false, error: 'Choose a viewer profile, or select "New viewer".' });
-        return;
-      }
-      if (!wo.findById(boundWoProfileId)) {
-        res.status(400).json({ success: false, error: 'That viewer profile no longer exists.' });
-        return;
-      }
-    }
-  }
-
   const result = await createInvite({
     email,
-    binding,
-    boundWoProfileId,
-    newUserName,
     label: String(req.body?.label ?? '') || null,
     expiresInHours: Number(req.body?.expiresInHours) || undefined,
   });
@@ -196,5 +163,5 @@ remoteRouter.post('/remote/invite', async (req, res) => {
     res.status(502).json({ success: false, error: result.error });
     return;
   }
-  res.json({ success: true, data: { ...result, mode, binding } });
+  res.json({ success: true, data: result });
 });
