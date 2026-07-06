@@ -80,19 +80,19 @@ async function run() {
   r = await api('POST', '/api/servers/claim', { code: claimCode, label: 'Living Room' }, ownerToken);
   ok(r.status === 200 && r.body.serverId === serverId, 'owner claims server');
 
-  // 3. server-signed invite (closed / locked to an existing WO user)
+  // 3. server-signed invite (unified user model — access only, no binding)
   const email = 'guest@example.com';
   r = await api('POST', `/api/servers/${serverId}/invites`, {
-    email, binding: 'locked', boundWoProfileId: 'wo-abc123', sig: sign(`invite:${serverId}:${email}`),
+    email, sig: sign(`invite:${serverId}:${email}`),
   });
-  ok(r.status === 201 && r.body.token && r.body.url.includes('/invite?token='), 'owner mints locked invite');
+  ok(r.status === 201 && r.body.token && r.body.url.includes('/invite?token='), 'owner mints invite');
   ok(r.body.emailed === false, 'invite not emailed (mailgun dormant)');
   const token = r.body.token;
 
   // 4. public invite lookup
   r = await api('GET', `/api/invites/${token}`);
   ok(r.status === 200 && r.body.serverLabel === 'Living Room' && r.body.email === email, 'guest reads invite');
-  ok(r.body.binding === 'locked' && r.body.createsProfile === false, 'invite reports locked binding');
+  ok(!('binding' in r.body), 'invite has no binding (retired)');
 
   // 5. guest signs up + redeems
   r = await api('POST', '/api/accounts', { email, password: 'guestpass1' });
@@ -119,10 +119,10 @@ async function run() {
   r = await api('POST', '/api/device-code/poll', { deviceCode });
   ok(r.status === 200 && r.body.status === 'approved' && r.body.grant, 'poll returns approved grant');
 
-  // 8. the signed grant is a locked guest grant
+  // 8. the signed grant is a well-formed guest grant with NO binding fields
   const g = decodeGrant(r.body.grant);
-  ok(g.role === 'guest' && g.boundWoProfileId === 'wo-abc123' && g.guestBinding === 'locked', 'grant is locked guest');
-  ok(g.serverId === serverId && g.v === 1 && g.exp > g.iat, 'grant envelope well-formed');
+  ok(g.role === 'guest' && g.serverId === serverId && g.v === 1 && g.exp > g.iat, 'grant is a well-formed guest grant');
+  ok(!('boundWoProfileId' in g) && !('guestBinding' in g) && !('newUserName' in g), 'grant carries no binding/profile fields (retired)');
 
   // 9. a NON-member cannot approve for this server
   r = await api('POST', '/api/accounts', { email: 'stranger@example.com', password: 'strangerp1' });
@@ -132,26 +132,13 @@ async function run() {
   r = await api('POST', '/api/device-code/approve', { userCode: dc2.userCode, serverId }, strangerToken);
   ok(r.status === 404, 'stranger cannot approve for a server they are not a member of');
 
-  // 10. locked-new + open bindings carry through to the grant
-  for (const [binding, extra] of [['locked-new', { newUserName: 'Sam' }], ['open', {}]]) {
-    const em = `g-${binding}@example.com`;
-    r = await api('POST', `/api/servers/${serverId}/invites`, {
-      email: em, binding, ...extra, sig: sign(`invite:${serverId}:${em}`),
-    });
-    ok(r.status === 201, `mint ${binding} invite`);
-    const tk = r.body.token;
-    r = await api('POST', '/api/accounts', { email: em, password: 'password12' });
-    const gt = r.body.token;
-    await api('POST', '/api/invites/redeem', { token: tk }, gt);
-    r = await api('POST', '/api/device-code', { serverId });
-    const dc = r.body;
-    await api('POST', '/api/device-code/approve', { userCode: dc.userCode, serverId }, gt);
-    r = await api('POST', '/api/device-code/poll', { deviceCode: dc.deviceCode });
-    const gg = decodeGrant(r.body.grant);
-    ok(gg.guestBinding === binding, `${binding} grant carries binding`);
-    if (binding === 'locked-new') ok(gg.newUserName === 'Sam', 'locked-new grant carries suggested name');
-    if (binding === 'open') ok(gg.boundWoProfileId === null, 'open grant has no bound profile');
-  }
+  // 10. owner self-approves their OWN device as an owner grant
+  r = await api('POST', '/api/device-code', { serverId });
+  const dc3 = r.body;
+  r = await api('POST', '/api/device-code/approve', { userCode: dc3.userCode, serverId }, ownerToken);
+  ok(r.status === 200 && r.body.role === 'owner', 'owner self-approves as owner');
+  r = await api('POST', '/api/device-code/poll', { deviceCode: dc3.deviceCode });
+  ok(r.status === 200 && decodeGrant(r.body.grant).role === 'owner', 'owner grant has role owner');
 
   console.log(`\nAll ${passed} checks passed ✅`);
 }

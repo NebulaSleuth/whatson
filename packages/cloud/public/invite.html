@@ -84,9 +84,8 @@
       document.getElementById('loading').hidden = true;
       document.getElementById('invite').hidden = false;
       document.getElementById('headline').textContent = "You're invited to " + invite.serverLabel;
-      document.getElementById('sub').textContent = invite.createsProfile
-        ? "Create your account below. You'll set up your viewing profile in the app after you connect a device."
-        : "Create your account below to start watching on " + invite.serverLabel + ".";
+      document.getElementById('sub').textContent =
+        "Create your account below. You'll pick (or set up) your profile in the app once you connect a device.";
 
       if (invite.redeemed) { fail('This invite has already been accepted.'); return; }
 
@@ -145,7 +144,7 @@
       const done = document.getElementById('done');
       done.hidden = false;
       document.getElementById('done-sub').textContent = "You've joined " + (r.body.serverLabel || invite.serverLabel) + '.';
-      if (invite.createsProfile) document.getElementById('profile-step').hidden = false;
+      document.getElementById('profile-step').hidden = false;
     }
 
     document.addEventListener('keydown', (e) => {

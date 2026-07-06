@@ -68,7 +68,6 @@ accountsRouter.get('/accounts/me', requireAccount, (req, res) => {
       enabled: s?.enabled ?? false,
       lastHeartbeatAt: s?.lastHeartbeatAt ?? null,
       role: 'guest' as const,
-      binding: m.binding,
     };
   });
   res.json({ accountId: account.id, email: account.email, servers, guestServers });

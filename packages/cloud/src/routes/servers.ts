@@ -15,7 +15,7 @@ import { candidatesFor, issueGrant } from '../grants.js';
 import { randomToken } from '../crypto.js';
 import { sendInviteEmail } from '../mailer.js';
 import { mailEnabled } from '../config.js';
-import type { ServerRecord, DeviceRole, InviteBinding } from '../types.js';
+import type { ServerRecord, DeviceRole } from '../types.js';
 
 /**
  * Server registry, claim, candidates, and grant issuance (doc 02 §2, §4, §5).
@@ -202,23 +202,15 @@ serversRouter.post('/servers/:id/invites', async (req, res) => {
     return;
   }
 
-  const binding: InviteBinding =
-    req.body?.binding === 'open' ? 'open' : req.body?.binding === 'locked-new' ? 'locked-new' : 'locked';
-  const boundWoProfileId = binding === 'locked' ? String(req.body?.boundWoProfileId ?? '') || null : null;
-  if (binding === 'locked' && !boundWoProfileId) {
-    res.status(400).json({ error: 'boundWoProfileId required for a locked invite' });
-    return;
-  }
   const hours = Math.min(Math.max(Number(req.body?.expiresInHours ?? 168), 1), 720);
   const invite = store.createInvite({
     token: randomToken(24),
     serverId: server.id,
     email: email || null,
-    binding,
-    boundWoProfileId,
-    newUserName: String(req.body?.newUserName ?? '') || null,
     label: String(req.body?.label ?? '') || null,
     role: 'guest',
+    // Opaque backend provisioning spec pointer (libraries etc.); cloud stores it blindly.
+    provisioningRef: String(req.body?.provisioningRef ?? '') || null,
     expiresAt: Date.now() + hours * 3600_000,
   });
 
@@ -232,32 +224,7 @@ serversRouter.post('/servers/:id/invites', async (req, res) => {
   res.status(201).json({ token: invite.token, url, expiresAt: invite.expiresAt, emailed });
 });
 
-// ── Guest device: report the WO user it created for a `locked-new` membership ─
-// Authed by the grant's cloud token (the device already holds one). Binds the
-// membership so the guest's OTHER devices land on the same profile.
-
-serversRouter.post('/servers/:id/membership/profile', (req, res) => {
-  const token = bearer(req);
-  const grant = token ? store.getGrantByCloudToken(token) : null;
-  if (!grant || grant.serverId !== String(req.params.id)) {
-    res.status(401).json({ error: 'not authorized for this server' });
-    return;
-  }
-  const boundWoProfileId = String(req.body?.boundWoProfileId ?? '');
-  if (!boundWoProfileId) {
-    res.status(400).json({ error: 'boundWoProfileId required' });
-    return;
-  }
-  const membership = store.findMembership(grant.accountId, grant.serverId);
-  if (!membership) {
-    res.status(404).json({ error: 'membership not found' });
-    return;
-  }
-  store.setMembershipProfile(membership.id, boundWoProfileId);
-  res.json({ ok: true });
-});
-
-// ── Owner: mint a grant for one of their own devices (invite flow is M7) ────
+// ── Owner: mint a grant for one of their own devices ────────────────────────
 
 serversRouter.post('/servers/:id/grant', requireAccount, (req, res) => {
   const server = store.getServer(String(req.params.id));
@@ -266,8 +233,7 @@ serversRouter.post('/servers/:id/grant', requireAccount, (req, res) => {
     return;
   }
   const role: DeviceRole = req.body?.role === 'guest' ? 'guest' : 'owner';
-  const boundWoProfileId = role === 'guest' ? (String(req.body?.boundWoProfileId ?? '') || null) : null;
-  res.json(issueGrant(server, req.accountId!, role, boundWoProfileId));
+  res.json(issueGrant(server, req.accountId!, role));
 });
 
 // ── Owner: reachability diagnostics + enable/disable ────────────────────────

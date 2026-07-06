@@ -68,21 +68,16 @@ deviceCodeRouter.post('/device-code/approve', requireAccount, (req, res) => {
     return;
   }
   // Role is DERIVED from the caller's relationship to the server, never trusted
-  // from the client: the owner mints an owner grant; a guest member self-approves
-  // their own device as a guest with their membership's binding (M7).
+  // from the client: the owner mints an owner grant; a member self-approves their
+  // own device as a guest. No per-user binding — identity is the backend picker.
   const isOwner = server.ownerAccountId === req.accountId;
-  const membership = isOwner ? null : store.findMembership(req.accountId!, serverId);
-  if (!isOwner && !membership) {
+  const isMember = !isOwner && !!store.findMembership(req.accountId!, serverId);
+  if (!isOwner && !isMember) {
     res.status(404).json({ error: 'server not found' });
     return;
   }
   const role: DeviceRole = isOwner ? 'owner' : 'guest';
-  entry.result = isOwner
-    ? issueGrant(server, req.accountId!, 'owner', null)
-    : issueGrant(server, req.accountId!, 'guest', membership!.boundWoProfileId, {
-        binding: membership!.binding,
-        newUserName: membership!.newUserName,
-      });
+  entry.result = issueGrant(server, req.accountId!, role);
   entry.status = 'approved';
   res.json({ ok: true, role });
 });

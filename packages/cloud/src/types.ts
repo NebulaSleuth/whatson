@@ -44,18 +44,12 @@ export interface GrantPayload {
   v: 1;
   serverId: string;
   accountId: string;
-  role: DeviceRole;
-  boundWoProfileId: string | null;
   /**
-   * Guest access shape (M7). Absent/`undefined` on owner grants and on
-   * pre-M7 guest grants (which the backend treats as `'locked'` for
-   * back-compat). `'locked'` = bound to `boundWoProfileId`; `'open'` = guest
-   * may pick any Whats On user each session; `'locked-new'` = the guest must
-   * create a new Whats On user in-app on first launch, then gets locked to it.
+   * `owner` (claimed the server → admin device) or `guest` (a member with
+   * server access). The unified user model has no per-user binding — which Whats
+   * On user you watch as is chosen from the shared picker on the backend.
    */
-  guestBinding?: InviteBinding;
-  /** Admin-suggested display name to prefill the in-app new-user form (`locked-new`). */
-  newUserName?: string | null;
+  role: DeviceRole;
   /** Unique id — the backend records redeemed jti to make grants single-use (H3). */
   jti: string;
   /** Issued-at (unix seconds). */
@@ -134,47 +128,37 @@ export interface ServerRecord {
 }
 
 /**
- * How a guest's in-app profile is determined (M7 two-mode design):
- *  - `locked`     — closed mode, existing user: bound to `boundWoProfileId`.
- *  - `locked-new` — closed mode, new user: guest creates a Whats On user
- *                   in-app on first launch and is locked to it.
- *  - `open`       — open mode: guest is not locked; picks any Whats On user
- *                   each session (and may create a new one).
+ * An emailed invite to access a server (unified user model). It grants the
+ * redeeming cloud account membership of the server — no per-user binding; the
+ * person picks/creates their Whats On user from the shared picker on the backend.
+ * `provisioningRef` optionally points at a backend-side spec (libraries etc.) the
+ * backend applies when the invitee first connects — the cloud never sees it.
  */
-export type InviteBinding = 'locked' | 'locked-new' | 'open';
-
 export interface Invite {
   token: string;
   serverId: string;
   /** Invited email — prefilled on the accept page + used for the Mailgun send. */
   email: string | null;
-  binding: InviteBinding;
-  /** Set only when binding === 'locked' (the existing WO user the guest gets). */
-  boundWoProfileId: string | null;
-  /** Optional admin-suggested display name for a `locked-new` invite. */
-  newUserName: string | null;
   label: string | null;
-  role: 'guest';
+  role: DeviceRole;
+  /** Opaque pointer to a backend provisioning spec; the cloud stores it blindly. */
+  provisioningRef: string | null;
   expiresAt: number;
   redeemedByAccountId: string | null;
   redeemedAt: string | null;
 }
 
 /**
- * A guest account's standing membership of a server (M7). Created when a guest
- * redeems an invite with their own cloud account. It's what lets the guest
- * self-service approve their OWN devices via the device-code flow (they no
- * longer need the owner to approve each one), and the source of the role +
- * binding stamped into every grant they mint for this server.
+ * A cloud account's standing membership of a server (unified user model). Created
+ * when the account redeems an invite. It's what lets them self-service approve
+ * their OWN devices via the device-code flow (no owner approval per device). Pure
+ * access — no profile/binding; identity is the backend's shared picker.
  */
-export interface GuestMembership {
+export interface ServerMembership {
   id: string;
   accountId: string;
   serverId: string;
-  binding: InviteBinding;
-  /** Resolved WO user id once known (set for `locked`, back-filled for `locked-new`). */
-  boundWoProfileId: string | null;
-  newUserName: string | null;
+  role: DeviceRole;
   createdAt: string;
   revokedAt: string | null;
 }
@@ -184,7 +168,6 @@ export interface DeviceGrant {
   serverId: string;
   accountId: string;
   role: DeviceRole;
-  boundWoProfileId: string | null;
   /**
    * App-facing bearer token for ongoing cloud calls (candidate refresh after a
    * WAN-IP change). Addresses the P1 finding that the data model had no way to

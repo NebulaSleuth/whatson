@@ -29,11 +29,6 @@ invitesRouter.get('/invites/:token', (req, res) => {
   res.json({
     serverLabel: server.label || 'a Whats On server',
     email: invite.email,
-    binding: invite.binding,
-    newUserName: invite.newUserName,
-    // A `locked-new` or `open` invite means the guest will set up / choose their
-    // profile in the app; the accept page uses this to set expectations.
-    createsProfile: invite.binding !== 'locked',
     redeemed: invite.redeemedAt !== null,
     expiresAt: invite.expiresAt,
   });
@@ -63,9 +58,7 @@ invitesRouter.post('/invites/redeem', requireAccount, (req, res) => {
     store.createMembership({
       accountId: req.accountId!,
       serverId: server.id,
-      binding: invite.binding,
-      boundWoProfileId: invite.boundWoProfileId,
-      newUserName: invite.newUserName,
+      role: invite.role,
     });
 
   store.markInviteRedeemed(invite.token, req.accountId!);
@@ -73,8 +66,8 @@ invitesRouter.post('/invites/redeem', requireAccount, (req, res) => {
     serverId: server.id,
     serverLabel: server.label || 'a Whats On server',
     membershipId: membership.id,
-    binding: membership.binding,
-    // Next step for the guest: onboard a device via the device-code flow.
+    // Next step: onboard a device via the device-code flow; identity is picked
+    // from the backend's shared "Who's Watching?" picker.
     next: 'device-code',
   });
 });

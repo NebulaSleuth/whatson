@@ -1,7 +1,7 @@
 import { config } from './config.js';
 import * as store from './store.js';
 import { signGrant, randomToken, cloudPublicKeyPem } from './crypto.js';
-import type { ServerRecord, GrantPayload, DeviceRole, InviteBinding, ServerCandidates } from './types.js';
+import type { ServerRecord, GrantPayload, DeviceRole, ServerCandidates } from './types.js';
 
 /** Candidate list for an app, with the app-visible TTL. */
 export function candidatesFor(server: ServerRecord): ServerCandidates {
@@ -26,25 +26,13 @@ export interface IssuedGrant {
  * invite redeem, and device-code all funnel through here so the Ed25519 /
  * jti / TTL rules can't drift between flows.
  */
-export function issueGrant(
-  server: ServerRecord,
-  accountId: string,
-  role: DeviceRole,
-  boundWoProfileId: string | null,
-  opts?: { binding?: InviteBinding; newUserName?: string | null },
-): IssuedGrant {
+export function issueGrant(server: ServerRecord, accountId: string, role: DeviceRole): IssuedGrant {
   const now = Math.floor(Date.now() / 1000);
-  // Owners are never bound/profiled. Guests carry their membership's binding;
-  // default to 'locked' for back-compat (a guest with a bound profile).
-  const guestBinding: InviteBinding | undefined = role === 'guest' ? (opts?.binding ?? 'locked') : undefined;
   const payload: GrantPayload = {
     v: 1,
     serverId: server.id,
     accountId,
     role,
-    boundWoProfileId: role === 'guest' ? boundWoProfileId : null,
-    ...(guestBinding ? { guestBinding } : {}),
-    ...(role === 'guest' && opts?.newUserName ? { newUserName: opts.newUserName } : {}),
     jti: randomToken(16),
     iat: now,
     exp: now + config.grantTtl,
@@ -53,7 +41,6 @@ export function issueGrant(
     serverId: server.id,
     accountId,
     role,
-    boundWoProfileId: payload.boundWoProfileId,
     cloudToken: randomToken(32),
   });
   return {

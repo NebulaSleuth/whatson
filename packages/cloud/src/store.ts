@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { config } from './config.js';
-import type { Account, ServerRecord, Invite, GuestMembership, DeviceGrant, ClaimCode, Candidate } from './types.js';
+import type { Account, ServerRecord, Invite, ServerMembership, DeviceGrant, ClaimCode, Candidate } from './types.js';
 
 /**
  * Minimal persistence for the control plane.
@@ -17,7 +17,7 @@ interface Db {
   accounts: Account[];
   servers: ServerRecord[];
   invites: Invite[];
-  memberships: GuestMembership[];
+  memberships: ServerMembership[];
   grants: DeviceGrant[];
   claimCodes: ClaimCode[];
 }
@@ -173,33 +173,22 @@ export function markInviteRedeemed(token: string, accountId: string): void {
 
 // ── Guest memberships (M7) ────────────────────────────────────────────────────
 
-export function createMembership(input: Omit<GuestMembership, 'id' | 'createdAt' | 'revokedAt'>): GuestMembership {
+export function createMembership(input: Omit<ServerMembership, 'id' | 'createdAt' | 'revokedAt'>): ServerMembership {
   const d = load();
-  const m: GuestMembership = { ...input, id: id('mbr'), createdAt: new Date().toISOString(), revokedAt: null };
+  const m: ServerMembership = { ...input, id: id('mbr'), createdAt: new Date().toISOString(), revokedAt: null };
   d.memberships.push(m);
   persist();
   return m;
 }
 
 /** Active membership of `accountId` for `serverId`, if any. */
-export function findMembership(accountId: string, serverId: string): GuestMembership | null {
+export function findMembership(accountId: string, serverId: string): ServerMembership | null {
   return load().memberships.find((m) => m.accountId === accountId && m.serverId === serverId && m.revokedAt === null) ?? null;
 }
 
 /** Active memberships for an account (for /accounts/me + the approve UI). */
-export function findMembershipsByAccount(accountId: string): GuestMembership[] {
+export function findMembershipsByAccount(accountId: string): ServerMembership[] {
   return load().memberships.filter((m) => m.accountId === accountId && m.revokedAt === null);
-}
-
-/** Back-fill the resolved profile id once a `locked-new` guest creates their user. */
-export function setMembershipProfile(membershipId: string, boundWoProfileId: string): GuestMembership | null {
-  const d = load();
-  const m = d.memberships.find((x) => x.id === membershipId);
-  if (!m) return null;
-  m.boundWoProfileId = boundWoProfileId;
-  m.binding = 'locked';
-  persist();
-  return m;
 }
 
 // ── Device grants ─────────────────────────────────────────────────────────────
