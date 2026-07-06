@@ -90,14 +90,27 @@ The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
    `GET /whatson-users/libraries/:kind`); removed the enable toggle; role badge.
    api typechecks; admin JS passes `node --check`. **Final check:** browser + live
    JF/Emby create flow (needs a running backend + the admin password).
-5. **Remaining — M7 unwind + mobile (own passes):**
-   - **M7 unwind** (cross-package, can trail): `pairing.ts` drop `guestBinding`/
-     `boundWoProfileId`; `userContext.ts` remove binding branches + "inherit
-     default"; retire `guestMode` (service + the remote-panel guest-mode radios) +
-     the cloud `guestBinding`/`ServerMembership` bits + mobile `cloudAuth`/
-     `create-profile`. This is Phase D territory (invites-as-users).
-   - **Mobile**: capture `sessionToken` at `/select` + send `X-Whatson-Session`
-     (then flip `WHATSON_STRICT_PIN`); the create-user UX. Needs a device rebuild.
+5. ✅ **Phase D — invites-as-users + M7 unwind** (`8c28efb`, `c9b5116`, `2eda7b7`,
+   `c93c60c`). All four sub-phases done:
+   - **D1 cloud**: invites = server access (ServerMembership, no binding); grants
+     binding-free; retired InviteBinding/membership-profile. Integration test 21/21.
+   - **D2 backend**: GrantPayload/PairedDevice binding fields gone; userContext
+     binding branch + inherit-default removed (guests unconfined, PIN-gated).
+     Verified 5/5.
+   - **D3 backend**: /remote/invite = email only; guestMode fully retired (service +
+     config route + admin "Invite someone" card).
+   - **D4 mobile**: cloudAuth returns boolean; cloud-signin → shared picker;
+     create-profile generic; "+ New" self-create in the picker. Mobile typechecks.
+
+**Remaining (verification + polish; own passes):**
+- **Mobile rebuild** — build/install APKs to exercise D4 (cloud-signin → picker →
+  create-profile) + the #5 create-user path. Like other mobile work this session.
+- **Mobile PIN token** — capture `sessionToken` at `/select` + send
+  `X-Whatson-Session`, then flip `WHATSON_STRICT_PIN=1`.
+- **Browser check** of the admin create-user flow (needs a running backend + the
+  JF/Emby password) — the last piece of #5.
+- **Phase C** (per-user library UI polish) + the self-create provisioning spec
+  (invite `provisioningRef` → backend `pending-invites` → provision on connect).
 
 Keep `typecheck` green each step; test migration on synthetic + empty cases.
 
