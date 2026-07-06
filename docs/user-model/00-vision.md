@@ -205,6 +205,8 @@ From the M7 implementation (cloud + backend + mobile), remove/repurpose:
 - The Whats On Users **enable toggle** (always on).
 - The legacy `X-Plex-User` picker path (`select-user.tsx`) once Plex mapping runs
   through the unified user model.
+- The "unmapped Whats On user inherits the server's default content" behavior
+  (M7 Phase 4b `userContext`) — replaced by explicit subsystem mapping (§11 #1).
 
 An invited "guest" is just a `member`-role Whats On user with a scoped library set.
 
@@ -226,15 +228,19 @@ An invited "guest" is just a `member`-role Whats On user with a scoped library s
 
 ## 11. Open decisions (settle before building)
 
-1. **Unmapped users** — must a Whats On user map to ≥1 subsystem, or can it exist
-   "created now, mapped later"? (Recommend: require ≥1 mapping, or fall back to an
-   admin-designated default service so the user sees *something*.)
+1. ~~Unmapped users~~ — **DECIDED:** a Whats On user may exist **unmapped** as a
+   transient state (admin creates now, maps later) but sees **no content until
+   mapped** to ≥1 subsystem. Creating a user normally flows straight into picking
+   subsystems + libraries → auto-provision. **No "inherit default content" mode**
+   (that was a Model-B shortcut, now removed — see §9).
 2. ~~Cloud account ⇄ Whats On user cardinality~~ — **DECIDED (§8): fully-shared.**
    Cloud account = server access; the shared "Who's Watching?" picker is the
    identity layer, gated by PIN. No binding.
-3. **Watched state** — now that subsystem users are real, use subsystem-native
-   watched state per mapped user, with Whats On's `tracked.ts` as the unifying
-   layer? Or keep Whats On as the source of truth?
+3. ~~Watched state~~ — **DECIDED:** use **subsystem-native watched state per mapped
+   user** — each person acts as their real subsystem identity, so history is
+   recorded per-person for free. Whats On's `tracked.ts` is kept only as a thin
+   **cross-subsystem unifier** (merging Continue Watching across servers) and a
+   fallback for unmapped users — not the source of truth.
 4. **Plex-Pass-less servers** — confirm the UX when Plex can't do multi-user
    (Plex owner-only; JF/Emby carry the rest). Detect + message clearly.
 5. **Existing subsystem users** — admin UI to *map* a Whats On user to an existing
