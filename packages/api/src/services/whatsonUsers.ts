@@ -207,10 +207,20 @@ function hashPin(pin: string): string {
 
 // ── Feature flag ──
 
+/**
+ * Whats On Users is **always on** in the unified user model — the app has no
+ * separate identity layer. In practice that means "on whenever a user exists":
+ * `ensureDefaultAdmin()` auto-creates one at startup, so a configured server is
+ * always on. The only "off" state is a fresh box with zero users before the
+ * bootstrap runs (or if it couldn't map any subsystem) — there we fall back to
+ * legacy Plex mode rather than showing an empty picker. The stored `enabled`
+ * flag is retired (kept in the file for back-compat; no longer consulted).
+ */
 export function isEnabled(): boolean {
-  return load().enabled;
+  return load().users.length > 0;
 }
 
+/** @deprecated The enable toggle is retired (always-on). Kept as a no-op writer. */
 export function setEnabled(enabled: boolean): void {
   const state = load();
   state.enabled = enabled;

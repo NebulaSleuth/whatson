@@ -29,6 +29,8 @@ export interface AdminSession {
   kind: ManagedKind;
   base: string;
   token: string;
+  /** The admin's own subsystem user id (for mapping a default admin Whats On user). */
+  userId: string;
 }
 export interface SubUser {
   id: string;
@@ -88,7 +90,7 @@ export async function adminSession(kind: ManagedKind): Promise<AdminSession> {
   if (status !== 200 || !json?.AccessToken) {
     throw new Error(`${kind} admin authentication failed (HTTP ${status}).`);
   }
-  return { kind, base: c.url, token: json.AccessToken };
+  return { kind, base: c.url, token: json.AccessToken, userId: json.User?.Id ?? '' };
 }
 
 export async function listUsers(s: AdminSession): Promise<SubUser[]> {

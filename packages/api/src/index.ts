@@ -52,6 +52,7 @@ import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
 import { startRemoteListener } from './server/remoteListener.js';
 import { startCloudRegistration } from './services/cloud/registration.js';
 import { startCertManager } from './services/cloud/certManager.js';
+import { ensureDefaultAdmin } from './services/userBootstrap.js';
 
 const app = express();
 
@@ -151,6 +152,10 @@ server.listen(config.port, () => {
   console.log(`[Radarr] ${config.radarr.url || 'Not configured'}`);
   console.log(`[EPG] Provider: ${config.epg.provider}, Country: ${config.epg.country}`);
   startUpdateScheduler();
+  // Unified user model (always-on): create a default admin Whats On user mapped
+  // to the server's own identities when there are none. Best-effort; on failure
+  // the app stays in legacy Plex mode until a user is created.
+  ensureDefaultAdmin().catch((e) => console.warn('[bootstrap] ensureDefaultAdmin failed:', (e as Error).message));
 });
 
 // ── Remote listener (docs/remote-access/, M1) ─────────────────────────────
