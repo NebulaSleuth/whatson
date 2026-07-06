@@ -249,6 +249,26 @@ whatsonUsersRouter.post('/whatson-users/:id/select', async (req, res) => {
   res.json({ success: true, data: { ...wo.toPublic(user), sessionToken: wo.mintSessionToken(user.id) } });
 });
 
+// Libraries available on a managed subsystem — for the admin's per-user library
+// picker when creating a new Jellyfin/Emby user (unified user model, Phase C UI).
+whatsonUsersRouter.get('/whatson-users/libraries/:kind', async (req, res) => {
+  const kind = req.params.kind;
+  if (kind !== 'jellyfin' && kind !== 'emby') {
+    res.status(400).json({ success: false, error: 'unsupported subsystem' });
+    return;
+  }
+  if (!su.isConfigured(kind)) {
+    res.json({ success: true, data: [] });
+    return;
+  }
+  try {
+    const s = await su.adminSession(kind);
+    res.json({ success: true, data: await su.listLibraries(s) });
+  } catch (e) {
+    res.status(502).json({ success: false, error: (e as Error).message });
+  }
+});
+
 whatsonUsersRouter.get('/whatson-users/source/plex', async (_req, res) => {
   try {
     const list = await plexUsers.listUsers();

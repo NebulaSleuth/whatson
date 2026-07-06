@@ -897,12 +897,9 @@
         <h2>Whats On Users</h2>
         <div></div>
       </div>
-      <div class="field">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-          <input type="checkbox" id="wo-enabled" style="width:18px;height:18px;cursor:pointer" onchange="toggleWoEnabled()" />
-          <span>Enable Whats On Users</span>
-        </label>
-        <div class="hint">When on, clients show this user list instead of the Plex Home picker. Each user maps to optional Plex / Jellyfin / Emby identities; only services they're mapped to contribute content for that user.</div>
+      <div class="hint" style="margin-bottom:4px">
+        Whats On Users is always on — each person is one user. Map them to your Plex Home /
+        Jellyfin / Emby identities, or create new Jellyfin/Emby accounts for them right here.
       </div>
       <div id="wo-users-list" style="margin-top:16px"></div>
       <div class="btn-row" style="margin-top:16px">
@@ -921,6 +918,13 @@
         <div class="field">
           <label>Name</label>
           <input type="text" id="wo-name" placeholder="e.g. Mike" />
+        </div>
+        <div class="field">
+          <label>Role</label>
+          <select id="wo-role">
+            <option value="member">Member — ordinary viewer</option>
+            <option value="admin">Admin — can manage users &amp; settings</option>
+          </select>
         </div>
         <div class="field">
           <label>Avatar</label>
@@ -942,11 +946,21 @@
         </div>
         <div class="field">
           <label>Jellyfin user</label>
-          <select id="wo-jellyfin-user"><option value="">(none)</option></select>
+          <select id="wo-jellyfin-user" onchange="onWoSubChange('jellyfin')"><option value="">(none)</option></select>
+        </div>
+        <div class="field" id="wo-jellyfin-libs-field" style="display:none">
+          <label>Jellyfin libraries for the new user</label>
+          <div id="wo-jellyfin-libs" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px"></div>
+          <div class="hint">Leave all unchecked = full access.</div>
         </div>
         <div class="field">
           <label>Emby user</label>
-          <select id="wo-emby-user"><option value="">(none)</option></select>
+          <select id="wo-emby-user" onchange="onWoSubChange('emby')"><option value="">(none)</option></select>
+        </div>
+        <div class="field" id="wo-emby-libs-field" style="display:none">
+          <label>Emby libraries for the new user</label>
+          <div id="wo-emby-libs" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px"></div>
+          <div class="hint">Leave all unchecked = full access.</div>
         </div>
         <div id="wo-modal-msg" style="color:#ff7777;margin-top:8px;font-size:13px"></div>
         <div class="btn-row" style="margin-top:16px">
@@ -2009,12 +2023,10 @@
 
     async function loadWoSection() {
       try {
-        const [cfg, users, avatars] = await Promise.all([
-          fetch(API + '/whatson-users/config', { credentials: 'same-origin' }).then(r => r.json()),
+        const [users, avatars] = await Promise.all([
           fetch(API + '/whatson-users', { credentials: 'same-origin' }).then(r => r.json()),
           fetch(API + '/whatson-users/avatars', { credentials: 'same-origin' }).then(r => r.json()),
         ]);
-        document.getElementById('wo-enabled').checked = !!cfg.data?.enabled;
         woAvatars = avatars.data || [];
         renderWoUsers(users.data || []);
       } catch (e) {
@@ -2035,11 +2047,12 @@
           u.embyUserId ? 'Emby' : null,
         ].filter(Boolean).join(' · ') || '<span style="color:#ff7777">no service mapped</span>';
         const pinBadge = u.hasPin ? '<span style="background:#2a2a2a;color:#888;font-size:11px;padding:2px 6px;border-radius:4px;margin-left:6px">PIN</span>' : '';
+        const roleBadge = u.role === 'admin' ? '<span style="background:#3a2e12;color:#e5a00d;font-size:11px;padding:2px 6px;border-radius:4px;margin-left:6px">admin</span>' : '';
         return (
           '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:#0e0e0e;border:1px solid #2a2a2a;border-radius:8px;margin-bottom:8px">' +
             '<img src="' + API + '/whatson-users/avatars/' + encodeURIComponent(u.avatar) + '.svg" alt="" style="width:48px;height:48px;border-radius:8px;background:#1a1a1a" />' +
             '<div style="flex:1;min-width:0">' +
-              '<div style="font-weight:600">' + escapeHtml(u.name) + pinBadge + '</div>' +
+              '<div style="font-weight:600">' + escapeHtml(u.name) + roleBadge + pinBadge + '</div>' +
               '<div style="color:#888;font-size:13px">' + services + '</div>' +
             '</div>' +
             '<button class="btn btn-secondary" onclick="editWoUser(\'' + u.id + '\')">Edit</button>' +
@@ -2051,23 +2064,6 @@
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-
-    async function toggleWoEnabled() {
-      const enabled = document.getElementById('wo-enabled').checked;
-      try {
-        const r = await fetch(API + '/whatson-users/config', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
-        }).then(r => r.json());
-        if (!r.success) throw new Error(r.error || 'failed');
-        showToast(enabled ? 'Whats On Users enabled.' : 'Whats On Users disabled.', 'success');
-      } catch (e) {
-        showToast('Failed: ' + e.message, 'error');
-        document.getElementById('wo-enabled').checked = !enabled;
-      }
     }
 
     async function ensureWoSourceLists() {
@@ -2133,6 +2129,49 @@
       }
     }
 
+    // Prepend a "Create new user" option to a JF/Emby dropdown (create-new is
+    // offered on Add only; on Edit the subsystems are map-existing).
+    function addWoCreateOption(selectId, label) {
+      const sel = document.getElementById(selectId);
+      const opt = document.createElement('option');
+      opt.value = '__create__';
+      opt.textContent = '➕ Create new ' + label + ' user';
+      // Insert right after the "(none)" option.
+      sel.insertBefore(opt, sel.options[1] || null);
+    }
+
+    async function onWoSubChange(kind) {
+      const sel = document.getElementById('wo-' + kind + '-user');
+      const field = document.getElementById('wo-' + kind + '-libs-field');
+      if (sel.value === '__create__') {
+        field.style.display = '';
+        await loadSubsystemLibraries(kind);
+      } else {
+        field.style.display = 'none';
+      }
+    }
+
+    async function loadSubsystemLibraries(kind) {
+      const box = document.getElementById('wo-' + kind + '-libs');
+      setHtml(box, '<span class="hint">Loading…</span>');
+      try {
+        const r = await fetch(API + '/whatson-users/libraries/' + kind, { credentials: 'same-origin' }).then(r => r.json());
+        const libs = (r.success && r.data) || [];
+        if (!libs.length) { setHtml(box, '<span class="hint">No libraries found.</span>'); return; }
+        setHtml(box, libs.map((l) =>
+          '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer">' +
+            '<input type="checkbox" class="wo-lib-' + kind + '" value="' + escapeHtml(String(l.id)) + '" /> ' + escapeHtml(l.name) +
+          '</label>'
+        ).join(''));
+      } catch (e) {
+        setHtml(box, '<span class="hint">Could not load libraries.</span>');
+      }
+    }
+
+    function selectedWoLibs(kind) {
+      return Array.from(document.querySelectorAll('.wo-lib-' + kind + ':checked')).map((c) => c.value);
+    }
+
     function renderWoAvatarPicker(selected) {
       woSelectedAvatar = selected || (woAvatars[0]?.key || '');
       const wrap = document.getElementById('wo-avatar-picker');
@@ -2162,11 +2201,17 @@
       fillSourceDropdown('wo-plex-user', woPlexUsers, 'id');
       fillSourceDropdown('wo-jellyfin-user', woJellyfinUsers, 'id');
       fillSourceDropdown('wo-emby-user', woEmbyUsers, 'id');
+      // Create-new is available when adding a user.
+      addWoCreateOption('wo-jellyfin-user', 'Jellyfin');
+      addWoCreateOption('wo-emby-user', 'Emby');
+      document.getElementById('wo-role').value = 'member';
       document.getElementById('wo-plex-user').value = '';
       document.getElementById('wo-jellyfin-user').value = '';
       document.getElementById('wo-emby-user').value = '';
       document.getElementById('wo-plex-pin').value = '';
       document.getElementById('wo-plex-pin-field').style.display = 'none';
+      document.getElementById('wo-jellyfin-libs-field').style.display = 'none';
+      document.getElementById('wo-emby-libs-field').style.display = 'none';
       renderWoAvatarPicker('');
       document.getElementById('wo-modal').style.display = 'flex';
     }
@@ -2191,10 +2236,13 @@
       fillSourceDropdown('wo-plex-user', woPlexUsers, 'id');
       fillSourceDropdown('wo-jellyfin-user', woJellyfinUsers, 'id');
       fillSourceDropdown('wo-emby-user', woEmbyUsers, 'id');
+      document.getElementById('wo-role').value = user.role || 'member';
       document.getElementById('wo-plex-user').value = user.plexUserId != null ? String(user.plexUserId) : '';
       document.getElementById('wo-jellyfin-user').value = user.jellyfinUserId || '';
       document.getElementById('wo-emby-user').value = user.embyUserId || '';
       document.getElementById('wo-plex-pin').value = '';
+      document.getElementById('wo-jellyfin-libs-field').style.display = 'none';
+      document.getElementById('wo-emby-libs-field').style.display = 'none';
       // Sync the PIN-field visibility to the now-selected Plex user.
       onWoPlexUserChange();
       renderWoAvatarPicker(user.avatar);
@@ -2220,10 +2268,22 @@
       const body = {
         name,
         avatar: woSelectedAvatar,
+        role: document.getElementById('wo-role').value === 'admin' ? 'admin' : 'member',
         plexUserId: plexRaw === '' ? null : parseInt(plexRaw, 10),
-        jellyfinUserId: jfRaw === '' ? null : jfRaw,
-        embyUserId: emRaw === '' ? null : emRaw,
+        jellyfinUserId: (jfRaw === '' || jfRaw === '__create__') ? null : jfRaw,
+        embyUserId: (emRaw === '' || emRaw === '__create__') ? null : emRaw,
       };
+      // "Create new" → provision a real subsystem user with the chosen libraries.
+      if (jfRaw === '__create__') {
+        body.jellyfinCreate = true;
+        const l = selectedWoLibs('jellyfin');
+        if (l.length) { body.libraries = Object.assign(body.libraries || {}, { jellyfin: l }); }
+      }
+      if (emRaw === '__create__') {
+        body.embyCreate = true;
+        const l = selectedWoLibs('emby');
+        if (l.length) { body.libraries = Object.assign(body.libraries || {}, { emby: l }); }
+      }
       // PIN semantics: blank on create = no PIN. Blank on edit of a user
       // with a PIN already set = leave unchanged (don't include the field).
       // Blank on edit of a user without a PIN = no change (also omit).
