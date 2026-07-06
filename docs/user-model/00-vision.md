@@ -69,8 +69,8 @@ A **Whats On User** is the person:
 - `role`: `admin` | `member`  (admin manages users + config)
 - Whats On **login credential**: a PIN (TV-friendly) and/or password, stored as a
   **bcrypt hash** (one-way) — this is what the person types.
-- Optional **cloud-account link** (email) — only needed for remote onboarding
-  (see §8).
+- **No** per-user cloud link. Cloud accounts are server-access credentials,
+  decoupled from Whats On users — any member account sees the shared picker (§8).
 - Per-subsystem **mapping + library set** (below).
 
 Each Whats On user maps to **0..1 identity per subsystem** — only the subsystems
@@ -160,21 +160,34 @@ no "guest binding."
 
 ---
 
-## 8. Cloud account vs Whats On user (a tension to resolve)
+## 8. Cloud account vs Whats On user — DECIDED: fully-shared picker
 
-M7 introduced a **cloud account** (email + password at whatsontv.net) used to
-onboard remote devices. We now also have the **Whats On user** (local profile,
-PIN). These must be reconciled:
+**Decision (2026-07-05):** the cloud account and the Whats On user are **orthogonal**.
 
-- **Local-only user:** just a Whats On user with a PIN. No cloud account.
-- **Remote-capable user:** the Whats On user is **linked to a cloud account**
-  (email + password). Remote device-code onboarding authenticates the cloud
-  account, then resolves to the linked Whats On user on the target server.
+- A **cloud account** (email + password at whatsontv.net) is purely a
+  **remote-reachability + server-access** credential. It stores nothing about
+  identity. The cloud stays starved: only "account X may access server Y" — no
+  profiles, no user binding.
+- A **Whats On user** is *who you watch as* — chosen from the "Who's Watching?"
+  picker and gated by an optional PIN. **Identical on LAN and remote.**
 
-**Decision needed:** is the cloud account 1:1 with a Whats On user, or can one
-cloud account front multiple Whats On users (e.g., a household)? Recommendation:
-**1 cloud account ⇄ 1 Whats On user per server** (simplest, matches "users are
-people"), with the cloud storing only account↔server membership — no profiles.
+Any device authorized on a server (on the LAN, or remotely via *any* member cloud
+account) shows the **full "Who's Watching?" picker** of that server's Whats On
+users. Pick a user, enter its PIN if set. Netflix-style, uniform everywhere. This
+**kills the M7 open/closed/binding modes entirely** — there is nothing to bind.
+
+**Consequence (accepted): isolation is by PIN.** Because any authorized device can
+pick any user, per-user library limits hold only for **PIN-protected** users. The
+model is a **household** — you invite people you trust into the shared picker. If a
+truly restricted guest (can *only* ever be their own user) is needed later, that's
+an **opt-in per-account "restrict to one user" flag**, not the default — deferred
+until there's a real need.
+
+**Local-only vs remote:** a Whats On user needs **no** cloud account to exist or be
+used on the LAN. A cloud account is added only to make a device reachable from
+outside the home; once connected it sees the same shared picker. A person's remote
+device authenticates with *some* member cloud account (their own or a shared
+household one) to reach the server, then picks their user like at home.
 
 ---
 
@@ -216,7 +229,9 @@ An invited "guest" is just a `member`-role Whats On user with a scoped library s
 1. **Unmapped users** — must a Whats On user map to ≥1 subsystem, or can it exist
    "created now, mapped later"? (Recommend: require ≥1 mapping, or fall back to an
    admin-designated default service so the user sees *something*.)
-2. **Cloud account ⇄ Whats On user cardinality** (see §8).
+2. ~~Cloud account ⇄ Whats On user cardinality~~ — **DECIDED (§8): fully-shared.**
+   Cloud account = server access; the shared "Who's Watching?" picker is the
+   identity layer, gated by PIN. No binding.
 3. **Watched state** — now that subsystem users are real, use subsystem-native
    watched state per mapped user, with Whats On's `tracked.ts` as the unifying
    layer? Or keep Whats On as the source of truth?
