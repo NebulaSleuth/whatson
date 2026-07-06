@@ -44,6 +44,9 @@ verified. The next step is the **Phase A data-model refactor** (not started).
 - **Phase A #3 — PIN session token** (`f93ac12`): `/select` mints an AES-GCM
   per-user token; userContext enforces it (soft default / `WHATSON_STRICT_PIN`
   hard). Verified 9/9 both modes. Mobile still to send `X-Whatson-Session`.
+- **Phase A #5 — admin UI** (`0efdcae`): role select + JF/Emby create-new-user
+  with library picker in /setup; removed the enable toggle; `GET /whatson-users/
+  libraries/:kind`. Verified (typecheck + node --check); browser check pending.
 - **Phase B foundations** (`c32ba19`):
   - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
     env or generated `data/whatson-secret.key`). **Verified 5/5.**
@@ -82,11 +85,19 @@ The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
    sessionToken; `userContext` verifies `X-Whatson-Session` for PIN-protected
    users. Soft by default; `WHATSON_STRICT_PIN=1` → hard 401. Verified 9/9 both
    modes. **Mobile follow-up:** capture + send the token, then flip strict on.
-4. **Unwind M7 bits** (can trail): `pairing.ts` drop `guestBinding`/
-   `boundWoProfileId`; `userContext.ts` remove binding branches + "inherit default";
-   remove the `enabled` toggle + `guestMode` from service + admin UI.
-5. **Admin UI**: remove enable toggle + guest-mode radios; add `role` + a
-   create-user-with-subsystems/libraries flow.
+4. ✅ **Admin UI** (`0efdcae`) — /setup Whats On Users: role select; JF/Emby
+   "➕ Create new user" → provisions with a per-subsystem library picker (backend
+   `GET /whatson-users/libraries/:kind`); removed the enable toggle; role badge.
+   api typechecks; admin JS passes `node --check`. **Final check:** browser + live
+   JF/Emby create flow (needs a running backend + the admin password).
+5. **Remaining — M7 unwind + mobile (own passes):**
+   - **M7 unwind** (cross-package, can trail): `pairing.ts` drop `guestBinding`/
+     `boundWoProfileId`; `userContext.ts` remove binding branches + "inherit
+     default"; retire `guestMode` (service + the remote-panel guest-mode radios) +
+     the cloud `guestBinding`/`ServerMembership` bits + mobile `cloudAuth`/
+     `create-profile`. This is Phase D territory (invites-as-users).
+   - **Mobile**: capture `sessionToken` at `/select` + send `X-Whatson-Session`
+     (then flip `WHATSON_STRICT_PIN`); the create-user UX. Needs a device rebuild.
 
 Keep `typecheck` green each step; test migration on synthetic + empty cases.
 
