@@ -243,7 +243,10 @@ whatsonUsersRouter.post('/whatson-users/:id/select', async (req, res) => {
       catch (e) { console.warn('[wo] plex token warm-up failed:', (e as Error).message); }
     }
   }
-  res.json({ success: true, data: wo.toPublic(user) });
+  // Mint a per-user session token proving the PIN was entered this session. The
+  // client sends it back as X-Whatson-Session so PIN-protected users can't be
+  // acted-as by merely asserting X-Whatson-User (userContext verifies it).
+  res.json({ success: true, data: { ...wo.toPublic(user), sessionToken: wo.mintSessionToken(user.id) } });
 });
 
 whatsonUsersRouter.get('/whatson-users/source/plex', async (_req, res) => {

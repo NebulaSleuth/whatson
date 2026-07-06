@@ -96,6 +96,12 @@ function loadConfig(): AppConfig {
     auth: {
       adminPasswordHash: (process.env.ADMIN_PASSWORD_HASH || '').trim(),
       sessionSecret: (process.env.WHATSON_SESSION_SECRET || '').trim(),
+      // Unified user model: when on, a PIN-protected Whats On user requires a
+      // valid per-user session token (from /select) on every request — closing
+      // the X-Whatson-User client-trust gap under the fully-shared picker.
+      // Default off (soft/log-only) so existing clients keep working until they
+      // send the token; flip on once the apps do.
+      strictPin: process.env.WHATSON_STRICT_PIN === '1',
     },
     hdhomerun: {
       url: trimUrl(process.env.HDHOMERUN_URL),

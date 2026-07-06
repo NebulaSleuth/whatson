@@ -86,6 +86,29 @@ export function embyUserIdOf(u: WhatsOnUser): string | null {
   return u.mappings.emby?.userId ?? null;
 }
 
+// ── Per-user session tokens (PIN proof) ──
+// Minted at /select once the PIN is verified; presented on later requests so
+// `X-Whatson-User` isn't merely client-asserted for PIN-protected users. AES-GCM
+// (secrets.ts) makes the token tamper-proof + stateless (survives restarts).
+
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export function mintSessionToken(woUserId: string): string {
+  return encryptSecret(JSON.stringify({ u: woUserId, exp: Date.now() + SESSION_TTL_MS }));
+}
+
+export function verifySessionToken(token: string | undefined | null, woUserId: string): boolean {
+  if (!token) return false;
+  const raw = decryptSecret(token);
+  if (!raw) return false;
+  try {
+    const p = JSON.parse(raw) as { u?: string; exp?: number };
+    return p.u === woUserId && typeof p.exp === 'number' && p.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Guest access mode (M7 remote invites):
  *  - `closed` — each invite is tied to a specific Whats On user the admin

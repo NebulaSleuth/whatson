@@ -238,6 +238,8 @@ export interface AuthConfig {
   adminPasswordHash: string;
   /** HMAC secret for signing /setup admin session cookies. Auto-generated on first run if missing. */
   sessionSecret: string;
+  /** When true, PIN-protected Whats On users require a valid per-user session token on every request. */
+  strictPin: boolean;
 }
 
 /**

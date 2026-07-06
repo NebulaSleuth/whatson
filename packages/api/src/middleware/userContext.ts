@@ -3,6 +3,7 @@ import { getUserToken, seedUserToken } from '../services/users.js';
 import { setRequestUserId } from '../services/tracked.js';
 import { setActiveUserScope } from '../services/adapters/registry.js';
 import * as wo from '../services/whatsonUsers.js';
+import { config } from '../config.js';
 import type { PairedDevice } from '../services/pairing.js';
 
 /**
@@ -86,6 +87,21 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
   if (woId && wo.isEnabled()) {
     const user = wo.findById(woId);
     if (user) {
+      // PIN gate (unified user model). A PIN-protected user requires a valid
+      // per-user session token (minted at /select) — otherwise X-Whatson-User is
+      // client-asserted with no proof, which matters under the fully-shared
+      // picker. Soft by default (log); WHATSON_STRICT_PIN → hard 401.
+      if (user.pinHash) {
+        const sh = req.headers['x-whatson-session'];
+        const sess = Array.isArray(sh) ? sh[0] : sh;
+        if (!wo.verifySessionToken(sess, user.id)) {
+          if (config.auth.strictPin) {
+            res.status(401).json({ success: false, error: 'This profile requires its PIN.' });
+            return;
+          }
+          console.warn(`[userContext] PIN-protected WO user ${user.id} accessed without a valid session token (soft mode)`);
+        }
+      }
       // Mapped subsystem ids (read through accessors — storage is nested now).
       const pid = wo.plexUserIdOf(user);
       const jid = wo.jellyfinUserIdOf(user);
