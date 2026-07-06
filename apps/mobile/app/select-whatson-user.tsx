@@ -133,12 +133,10 @@ export default function SelectWhatsOnUserScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>
-          {error
-            ? (error as Error).message
-            : 'No users configured yet. Open the admin /setup page to add one.'}
+          {error ? (error as Error).message : "You don't have a profile yet — set one up to start watching."}
         </Text>
-        <Pressable style={styles.retryButton} onPress={() => router.replace('/(tabs)')}>
-          <Text style={styles.retryText}>Continue anyway</Text>
+        <Pressable style={styles.retryButton} onPress={() => router.replace('/create-profile' as any)}>
+          <Text style={styles.retryText}>+ Create profile</Text>
         </Pressable>
       </View>
     );
@@ -168,6 +166,18 @@ export default function SelectWhatsOnUserScreen() {
             </Pressable>
           );
         })}
+        <Pressable
+          key="__new__"
+          style={({ focused }) => [styles.userCard, isTV && focused && styles.userCardFocused]}
+          onPress={() => router.replace('/create-profile' as any)}
+          disabled={selecting}
+          focusable
+        >
+          <View style={[styles.avatar, styles.avatarNew]}>
+            <Text style={styles.avatarEmoji}>＋</Text>
+          </View>
+          <Text style={styles.userName} numberOfLines={1}>New</Text>
+        </Pressable>
       </View>
 
       {selecting && (
@@ -231,6 +241,7 @@ const styles = StyleSheet.create({
   userCard: { alignItems: 'center', width: AVATAR_SIZE + 24, padding: 12, borderRadius: 12, borderWidth: 3, borderColor: 'transparent' },
   userCardFocused: { borderColor: colors.focus, backgroundColor: colors.surface },
   avatar: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  avatarNew: { borderWidth: 2, borderColor: colors.cardBorder, borderStyle: 'dashed' },
   avatarEmoji: { fontSize: AVATAR_SIZE * 0.6, lineHeight: AVATAR_SIZE * 0.85, includeFontPadding: false, textAlign: 'center' },
   userName: { ...typography.cardTitle, marginTop: 8, textAlign: 'center' },
   pinIcon: { fontSize: 12, marginTop: 4 },

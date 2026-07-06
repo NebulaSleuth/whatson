@@ -41,22 +41,7 @@ export type PollResult =
   | { status: 'pending' }
   | { status: 'denied' }
   | { status: 'expired' }
-  | { status: 'approved'; grant: string; candidates: ServerCandidatesWire; cloudToken?: string };
-
-/** How a guest's in-app profile is decided (mirrors the backend GuestBinding). */
-export type GuestBinding = 'locked' | 'locked-new' | 'open';
-
-export interface RedeemResult {
-  ok: boolean;
-  /** Only meaningful for guest devices; undefined for owners. */
-  guestBinding?: GuestBinding;
-  /** Admin-suggested name to prefill the new-viewer form (locked-new). */
-  newUserName?: string | null;
-}
-
-// Stashed after a successful redeem so the create-profile screen can report the
-// WO user it makes back to the cloud (binds a locked-new guest's other devices).
-let pendingBackfill: { serverId: string; cloudToken: string } | null = null;
+  | { status: 'approved'; grant: string; candidates: ServerCandidatesWire };
 
 export async function pollDeviceCode(deviceCode: string): Promise<PollResult> {
   const res = await fetch(`${CLOUD}/api/device-code/poll`, {
@@ -74,16 +59,12 @@ export async function pollDeviceCode(deviceCode: string): Promise<PollResult> {
  * Returns false if the server can't be reached from this network (e.g. the
  * owner hasn't opened remote access / the port isn't reachable from here).
  */
-export async function redeemGrantViaCandidates(
-  grant: string,
-  sc: ServerCandidatesWire,
-  cloudToken?: string,
-): Promise<RedeemResult> {
+export async function redeemGrantViaCandidates(grant: string, sc: ServerCandidatesWire): Promise<boolean> {
   const cands: Candidate[] = normalizeCandidates(sc.candidates);
   await updateCandidates(cands, sc.serverId);
 
   const winner = await raceCandidates(cands, { expectedServerId: sc.serverId });
-  if (!winner) return { ok: false };
+  if (!winner) return false;
 
   const res = await fetch(`${winner.url}/api/auth/redeem-grant`, {
     method: 'POST',
@@ -91,35 +72,10 @@ export async function redeemGrantViaCandidates(
     body: JSON.stringify({ grant }),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok || !body?.success || !body?.data?.key) return { ok: false };
+  if (!res.ok || !body?.success || !body?.data?.key) return false;
 
   await setStoredAuthKey(body.data.key);
   useAppStore.getState().setAuthKey(body.data.key);
   pinCandidate(winner); // sets apiUrl (+ /api) + connection type
-
-  pendingBackfill = cloudToken ? { serverId: sc.serverId, cloudToken } : null;
-  return {
-    ok: true,
-    guestBinding: body.data.guestBinding,
-    newUserName: body.data.newUserName ?? null,
-  };
-}
-
-/**
- * Report the Whats On user a 'locked-new' guest just created back to the cloud,
- * so the guest's OTHER devices bind to the same profile. Best-effort — a failure
- * only means multi-device guests might re-create a profile, never blocks login.
- */
-export async function reportGuestProfileToCloud(woProfileId: string): Promise<void> {
-  const ctx = pendingBackfill;
-  if (!ctx) return;
-  try {
-    await fetch(`${CLOUD}/api/servers/${ctx.serverId}/membership/profile`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${ctx.cloudToken}` },
-      body: JSON.stringify({ boundWoProfileId: woProfileId }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  return true;
 }

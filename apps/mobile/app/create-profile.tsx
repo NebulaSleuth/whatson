@@ -8,16 +8,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { setSavedUser } from '@/lib/storage';
-import { reportGuestProfileToCloud } from '@/lib/cloudAuth';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /**
- * New-viewer setup (M7). A guest whose invite said "new viewer" (grant binding
- * 'locked-new'), or an open-mode guest adding a viewer, lands here after
- * connecting: they enter a name + pick an avatar, which creates their Whats On
- * user on the server (unmapped → inherits the server's default content with its
- * own watched state) and signs them in.
+ * Create your Whats On profile (unified user model). Reached from the "Who's
+ * Watching?" picker's "+ New" option: enter a name + pick an avatar, which creates
+ * your Whats On user on the server and signs you in. It joins the shared picker.
  */
 export default function CreateProfileScreen() {
   const params = useLocalSearchParams<{ name?: string }>();
@@ -40,8 +37,6 @@ export default function CreateProfileScreen() {
     setSaving(true);
     try {
       const user = await api.createGuestProfile(trimmed, avatarKey);
-      // Bind this guest's other devices to the same viewer (best-effort).
-      await reportGuestProfileToCloud(user.id);
       const current = { id: user.id, kind: 'whatson' as const, title: user.name, thumb: user.avatar, hasPassword: false };
       setCurrentUser(current);
       if (rememberUser) {
