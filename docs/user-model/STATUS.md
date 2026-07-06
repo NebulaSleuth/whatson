@@ -39,6 +39,8 @@ verified. The next step is the **Phase A data-model refactor** (not started).
   `isEnabled()` = users>0 (toggle retired; empty→legacy fallback);
   `userBootstrap.ensureDefaultAdmin()` auto-creates an owner-admin at startup.
   **Verified 9/9** vs real Plex.
+- **Phase A #2 — provisionUser wired** (`5f66b6a`): create provisions real JF/Emby
+  users (libraries), delete cleans up managed ones. Verified 6/6.
 - **Phase B foundations** (`c32ba19`):
   - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
     env or generated `data/whatson-secret.key`). **Verified 5/5.**
@@ -69,9 +71,10 @@ The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
    `ensureDefaultAdmin()` creates a default admin mapped to the Plex owner +
    JF/Emby admin, wired into `index.ts` startup. Verified 9/9 vs real Plex
    (creates owner-admin, token encrypted, idempotent).
-2. **Wire `subsystemUsers.provisionUser`** into the create-user flow (Phase B
-   payoff): admin "add user" → pick subsystems + create-new (provision) vs
-   map-existing; store the returned `{userId, encToken}` in `mappings`.
+2. ✅ **Wire `subsystemUsers.provisionUser`** (`5f66b6a`) — POST /whatson-users with
+   jellyfinCreate/embyCreate provisions a real JF/Emby user (generated password,
+   libraries) stored as a managed mapping; DELETE cleans up managed subsystem users.
+   Verified 6/6 (merge); live route E2E pending the JF/Emby password.
 3. **Per-user PIN session token** (impl §2.3) — `/select` returns a short-lived
    token; `userContext` requires it for PIN-protected users so `X-Whatson-User`
    isn't client-trusted. Load-bearing under fully-shared.
