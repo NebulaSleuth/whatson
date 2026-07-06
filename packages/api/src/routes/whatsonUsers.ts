@@ -153,9 +153,10 @@ whatsonUsersRouter.patch('/whatson-users/:id', async (req, res) => {
     //   - Mapping changed to a different user → derive fresh token.
     //   - Same mapping but admin supplied a new PIN → refresh token.
     const existing = wo.findById(req.params.id);
+    const existingPid = existing ? wo.plexUserIdOf(existing) : null;
     if (existing && body.plexUserId !== undefined) {
       const newId = body.plexUserId === null ? null : Number(body.plexUserId);
-      const mappingChanged = newId !== existing.plexUserId;
+      const mappingChanged = newId !== existingPid;
       if (newId === null) {
         body.plexUserToken = null;
       } else if (mappingChanged) {
@@ -167,8 +168,8 @@ whatsonUsersRouter.patch('/whatson-users/:id', async (req, res) => {
         // Same mapping, no PIN. Don't touch the stored token.
         delete body.plexUserToken;
       }
-    } else if (existing && plexPin && existing.plexUserId != null) {
-      body.plexUserToken = await derivePlexToken(existing.plexUserId, plexPin);
+    } else if (existing && plexPin && existingPid != null) {
+      body.plexUserToken = await derivePlexToken(existingPid, plexPin);
     }
     const updated = wo.update(req.params.id, body);
     if (!updated) { res.status(404).json({ success: false, error: 'user not found' }); return; }
@@ -195,11 +196,13 @@ whatsonUsersRouter.post('/whatson-users/:id/select', async (req, res) => {
   // calls with X-Whatson-User=<id> resolve instantly. Prefer the stored
   // token (set at mapping time and persists across backend restarts);
   // fall back to a fresh switch only for non-PIN-protected users.
-  if (user.plexUserId !== null) {
-    if (user.plexUserToken) {
-      plexUsers.seedUserToken(user.plexUserId, user.plexUserToken);
+  const pid = wo.plexUserIdOf(user);
+  if (pid !== null) {
+    const stored = wo.plexTokenOf(user);
+    if (stored) {
+      plexUsers.seedUserToken(pid, stored);
     } else {
-      try { await plexUsers.selectUser(user.plexUserId); }
+      try { await plexUsers.selectUser(pid); }
       catch (e) { console.warn('[wo] plex token warm-up failed:', (e as Error).message); }
     }
   }

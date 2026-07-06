@@ -86,45 +86,37 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
   if (woId && wo.isEnabled()) {
     const user = wo.findById(woId);
     if (user) {
+      // Mapped subsystem ids (read through accessors — storage is nested now).
+      const pid = wo.plexUserIdOf(user);
+      const jid = wo.jellyfinUserIdOf(user);
+      const eid = wo.embyUserIdOf(user);
       req.whatsonUser = {
         id: user.id,
         name: user.name,
-        plexUserId: user.plexUserId,
-        jellyfinUserId: user.jellyfinUserId,
-        embyUserId: user.embyUserId,
+        plexUserId: pid,
+        jellyfinUserId: jid,
+        embyUserId: eid,
       };
       // Per-user watched state lives under the WO id, not the Plex id.
       // Same code path the legacy mode uses — tracked.ts just needs a
       // stable string id.
       setRequestUserId(user.id);
-      // Aggregator + routes that iterate getConfiguredAdapters() will
-      // now see only the adapters this WO user is mapped to. A user with NO
-      // service mappings (e.g. a guest's self-created "new viewer", M7)
+      // Aggregator + routes that iterate getConfiguredAdapters() see only the
+      // adapters this WO user is mapped to. A user with NO service mappings
       // inherits the server's default content — scope null = every configured
       // adapter — while still getting its own watched state (keyed above).
-      const hasAnyMapping =
-        user.plexUserId !== null || user.jellyfinUserId !== null || user.embyUserId !== null;
-      setActiveUserScope(
-        hasAnyMapping
-          ? {
-              plexUserId: user.plexUserId,
-              jellyfinUserId: user.jellyfinUserId,
-              embyUserId: user.embyUserId,
-            }
-          : null,
-      );
-      // Populate the Plex per-user token. The cache is in-memory only,
-      // so after every backend restart the first request for a given WO
-      // user will miss it — seed from the on-disk plexUserToken (set
-      // at mapping time) so the very first request after restart still
-      // gets the right per-user identity.
-      if (user.plexUserId !== null) {
-        const plexId = user.plexUserId;
-        req.plexUserId = String(plexId);
-        let token = getUserToken(plexId);
-        const stored = wo.findById(user.id)?.plexUserToken;
+      const hasAnyMapping = pid !== null || jid !== null || eid !== null;
+      setActiveUserScope(hasAnyMapping ? { plexUserId: pid, jellyfinUserId: jid, embyUserId: eid } : null);
+      // Populate the Plex per-user token. The cache is in-memory only, so after
+      // every backend restart the first request for a given WO user will miss it
+      // — seed from the stored (encrypted) per-user token so the very first
+      // request after restart still gets the right per-user identity.
+      if (pid !== null) {
+        req.plexUserId = String(pid);
+        let token = getUserToken(pid);
+        const stored = wo.plexTokenOf(user);
         if (!token && stored) {
-          seedUserToken(plexId, stored);
+          seedUserToken(pid, stored);
           token = stored;
         }
         if (token) req.plexUserToken = token;

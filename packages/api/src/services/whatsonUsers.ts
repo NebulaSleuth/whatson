@@ -16,34 +16,74 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createHash, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { encryptSecret, decryptSecret, isEncrypted } from './secrets.js';
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
+
+/** Privilege level of a Whats On user (unified user model). */
+export type UserRole = 'admin' | 'member';
+
+/**
+ * A Whats On user's identity on one subsystem. `userId` is the subsystem's user
+ * id (Jellyfin/Emby GUID, or Plex Home user id as a string). `token`, when held,
+ * is a per-user access token stored ENCRYPTED at rest (secrets.ts). `managed` is
+ * true when Whats On created this subsystem user (and so may delete it) — false
+ * when mapped to a pre-existing one (never delete on our say-so).
+ */
+export interface SubsystemMapping {
+  userId: string;
+  token: string | null;
+  managed: boolean;
+}
 
 export interface WhatsOnUser {
   id: string;
   name: string;
   /** Key into the built-in avatar catalog (see avatars.ts). */
   avatar: string;
+  /** admin manages users/config; member is an ordinary viewer. */
+  role: UserRole;
   /**
    * bcrypt hash of the user's PIN, or null if no PIN is set. Legacy records
    * may hold an unsalted SHA-256 hex hash; these are upgraded to bcrypt
    * transparently on the next successful verify (see verifyPin).
    */
   pinHash: string | null;
-  /** Plex Home user id (numeric). null = this user has no Plex content. */
-  plexUserId: number | null;
+  /** Per-subsystem identity. Absent = this user has no content on that subsystem. */
+  mappings: {
+    plex?: SubsystemMapping;
+    jellyfin?: SubsystemMapping;
+    emby?: SubsystemMapping;
+  };
   /**
-   * Server-specific Plex token for the mapped Plex Home user, derived
-   * once at mapping time. Required for PIN-protected Home users
-   * (otherwise the runtime token cache can't switch into them without
-   * the PIN). Not the user's PIN — that's used once to fetch this and
-   * then discarded.
+   * Per-subsystem allowed library ids. Absent/empty for a subsystem = all its
+   * libraries (no restriction). Enforced server-side where possible (Phase C).
    */
-  plexUserToken: string | null;
-  /** Jellyfin user GUID. null = no Jellyfin content. */
-  jellyfinUserId: string | null;
-  /** Emby user GUID. null = no Emby content. */
-  embyUserId: string | null;
+  libraries?: {
+    plex?: string[];
+    jellyfin?: string[];
+    emby?: string[];
+  };
+}
+
+// ── Typed accessors — the rest of the app reads mappings through these so it
+//    never has to know the storage shape (and Plex tokens decrypt transparently).
+
+export function plexUserIdOf(u: WhatsOnUser): number | null {
+  const raw = u.mappings.plex?.userId;
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+export function plexTokenOf(u: WhatsOnUser): string | null {
+  const t = u.mappings.plex?.token;
+  return t ? decryptSecret(t) : null;
+}
+export function jellyfinUserIdOf(u: WhatsOnUser): string | null {
+  return u.mappings.jellyfin?.userId ?? null;
+}
+export function embyUserIdOf(u: WhatsOnUser): string | null {
+  return u.mappings.emby?.userId ?? null;
 }
 
 /**
@@ -75,14 +115,71 @@ function load(): WhatsOnUsersFile {
   try {
     if (!existsSync(file())) return { ...EMPTY };
     const parsed = JSON.parse(readFileSync(file(), 'utf-8')) as WhatsOnUsersFile;
-    return {
+    const state: WhatsOnUsersFile = {
       enabled: parsed.enabled === true,
       guestMode: parsed.guestMode === 'open' ? 'open' : 'closed',
       users: Array.isArray(parsed.users) ? parsed.users : [],
     };
+    // Modernize old records in place (flat fields → nested mappings, add role,
+    // encrypt Plex tokens). Idempotent — persists once, then no-ops.
+    if (migrate(state)) save(state);
+    return state;
   } catch {
     return { ...EMPTY };
   }
+}
+
+/**
+ * Migrate a loaded file to the unified-user-model shape. Returns true if it
+ * changed anything (so the caller persists). Idempotent + non-destructive.
+ */
+function migrate(state: WhatsOnUsersFile): boolean {
+  let changed = false;
+  for (const u of state.users) {
+    const anyU = u as unknown as Record<string, unknown>;
+    // Build nested mappings from the old flat fields, once.
+    if (anyU.mappings === undefined) {
+      const m: WhatsOnUser['mappings'] = {};
+      const plexId = anyU.plexUserId;
+      if (plexId !== undefined && plexId !== null) {
+        const tok = anyU.plexUserToken;
+        m.plex = {
+          userId: String(plexId),
+          token: typeof tok === 'string' && tok ? encryptSecret(tok) : null,
+          managed: false,
+        };
+      }
+      if (typeof anyU.jellyfinUserId === 'string' && anyU.jellyfinUserId)
+        m.jellyfin = { userId: anyU.jellyfinUserId, token: null, managed: false };
+      if (typeof anyU.embyUserId === 'string' && anyU.embyUserId)
+        m.emby = { userId: anyU.embyUserId, token: null, managed: false };
+      u.mappings = m;
+      changed = true;
+    }
+    // Drop the retired flat fields.
+    for (const k of ['plexUserId', 'plexUserToken', 'jellyfinUserId', 'embyUserId']) {
+      if (k in anyU) {
+        delete anyU[k];
+        changed = true;
+      }
+    }
+    // Encrypt any Plex token that is still plaintext (belt-and-suspenders).
+    if (u.mappings?.plex?.token && !isEncrypted(u.mappings.plex.token)) {
+      u.mappings.plex.token = encryptSecret(u.mappings.plex.token);
+      changed = true;
+    }
+    // Default role.
+    if (u.role !== 'admin' && u.role !== 'member') {
+      u.role = 'member';
+      changed = true;
+    }
+  }
+  // Someone must be able to manage — first user becomes admin if none is.
+  if (state.users.length && !state.users.some((u) => u.role === 'admin')) {
+    state.users[0].role = 'admin';
+    changed = true;
+  }
+  return changed;
 }
 
 function save(state: WhatsOnUsersFile): void {
@@ -144,25 +241,36 @@ export interface CreateUserInput {
   name: string;
   avatar: string;
   pin?: string | null;
+  role?: UserRole;
   plexUserId?: number | null;
   plexUserToken?: string | null;
   jellyfinUserId?: string | null;
   embyUserId?: string | null;
+  libraries?: WhatsOnUser['libraries'];
 }
 
 export function create(input: CreateUserInput): WhatsOnUser {
   const name = (input.name || '').trim();
   if (!name) throw new Error('name is required');
   const state = load();
+  const mappings: WhatsOnUser['mappings'] = {};
+  if (input.plexUserId != null) {
+    mappings.plex = {
+      userId: String(input.plexUserId),
+      token: input.plexUserToken ? encryptSecret(input.plexUserToken) : null,
+      managed: false,
+    };
+  }
+  if (input.jellyfinUserId) mappings.jellyfin = { userId: input.jellyfinUserId, token: null, managed: false };
+  if (input.embyUserId) mappings.emby = { userId: input.embyUserId, token: null, managed: false };
   const user: WhatsOnUser = {
     id: newId(),
     name,
     avatar: input.avatar || 'default',
+    role: input.role === 'admin' ? 'admin' : 'member',
     pinHash: input.pin ? hashPin(input.pin) : null,
-    plexUserId: input.plexUserId ?? null,
-    plexUserToken: input.plexUserToken ?? null,
-    jellyfinUserId: input.jellyfinUserId ?? null,
-    embyUserId: input.embyUserId ?? null,
+    mappings,
+    libraries: input.libraries ?? {},
   };
   state.users.push(user);
   save(state);
@@ -174,10 +282,12 @@ export interface UpdateUserInput {
   avatar?: string;
   /** null clears the PIN, undefined leaves it unchanged, string sets a new one. */
   pin?: string | null;
+  role?: UserRole;
   plexUserId?: number | null;
   plexUserToken?: string | null;
   jellyfinUserId?: string | null;
   embyUserId?: string | null;
+  libraries?: WhatsOnUser['libraries'];
 }
 
 export function update(id: string, input: UpdateUserInput): WhatsOnUser | null {
@@ -191,17 +301,35 @@ export function update(id: string, input: UpdateUserInput): WhatsOnUser | null {
     u.name = n;
   }
   if (input.avatar !== undefined) u.avatar = input.avatar;
+  if (input.role !== undefined) u.role = input.role === 'admin' ? 'admin' : 'member';
   if (input.pin !== undefined) u.pinHash = input.pin === null ? null : hashPin(input.pin);
   if (input.plexUserId !== undefined) {
-    // Clearing or remapping the Plex user invalidates any stored
-    // per-user token. The route layer will derive a fresh one if
-    // a new mapping (and PIN, if required) was supplied.
-    if (input.plexUserId !== u.plexUserId) u.plexUserToken = null;
-    u.plexUserId = input.plexUserId;
+    if (input.plexUserId === null) {
+      delete u.mappings.plex;
+    } else {
+      const cur = u.mappings.plex;
+      // Remapping to a different Plex Home user invalidates the stored token;
+      // the route layer derives a fresh one.
+      const remapped = !cur || cur.userId !== String(input.plexUserId);
+      u.mappings.plex = {
+        userId: String(input.plexUserId),
+        token: remapped ? null : cur!.token,
+        managed: cur?.managed ?? false,
+      };
+    }
   }
-  if (input.plexUserToken !== undefined) u.plexUserToken = input.plexUserToken;
-  if (input.jellyfinUserId !== undefined) u.jellyfinUserId = input.jellyfinUserId;
-  if (input.embyUserId !== undefined) u.embyUserId = input.embyUserId;
+  if (input.plexUserToken !== undefined && u.mappings.plex) {
+    u.mappings.plex.token = input.plexUserToken ? encryptSecret(input.plexUserToken) : null;
+  }
+  if (input.jellyfinUserId !== undefined) {
+    if (!input.jellyfinUserId) delete u.mappings.jellyfin;
+    else u.mappings.jellyfin = { userId: input.jellyfinUserId, token: u.mappings.jellyfin?.token ?? null, managed: u.mappings.jellyfin?.managed ?? false };
+  }
+  if (input.embyUserId !== undefined) {
+    if (!input.embyUserId) delete u.mappings.emby;
+    else u.mappings.emby = { userId: input.embyUserId, token: u.mappings.emby?.token ?? null, managed: u.mappings.emby?.managed ?? false };
+  }
+  if (input.libraries !== undefined) u.libraries = input.libraries;
   state.users[idx] = u;
   save(state);
   return u;
@@ -258,14 +386,31 @@ export function verifyPin(user: WhatsOnUser, pin: string | undefined | null): bo
  * UI, and `hasPlexToken` so the admin UI can show whether a
  * PIN-protected Plex Home user has been resolved.
  */
-export function toPublic(user: WhatsOnUser): Omit<WhatsOnUser, 'pinHash' | 'plexUserToken'> & {
+export interface PublicWhatsOnUser {
+  id: string;
+  name: string;
+  avatar: string;
+  role: UserRole;
   hasPin: boolean;
   hasPlexToken: boolean;
-} {
-  const { pinHash, plexUserToken, ...rest } = user;
+  /** Back-compat flat mapping ids (derived) — the admin UI + mobile read these. */
+  plexUserId: number | null;
+  jellyfinUserId: string | null;
+  embyUserId: string | null;
+  libraries: NonNullable<WhatsOnUser['libraries']>;
+}
+
+export function toPublic(user: WhatsOnUser): PublicWhatsOnUser {
   return {
-    ...rest,
-    hasPin: pinHash != null,
-    hasPlexToken: plexUserToken != null,
+    id: user.id,
+    name: user.name,
+    avatar: user.avatar,
+    role: user.role,
+    hasPin: user.pinHash != null,
+    hasPlexToken: user.mappings.plex?.token != null,
+    plexUserId: plexUserIdOf(user),
+    jellyfinUserId: jellyfinUserIdOf(user),
+    embyUserId: embyUserIdOf(user),
+    libraries: user.libraries ?? {},
   };
 }
