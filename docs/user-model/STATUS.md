@@ -28,6 +28,13 @@ verified. The next step is the **Phase A data-model refactor** (not started).
   - **§11:** unmapped users allowed as transient state (no content until mapped;
     no "inherit default" mode); watched state = subsystem-native per mapped user.
   - **Model A** chosen: each Whats On user maps to real subsystem identities.
+- **Phase A — data-shape refactor** (`6ed8ba5`): `WhatsOnUser` flat fields →
+  nested `mappings.{plex,jellyfin,emby}` (`{userId, token:encrypted, managed}`) +
+  `role` + `libraries[]`; typed accessors; idempotent migration (flat→nested,
+  encrypt Plex token, first-user→admin, drop old fields); `create/update` keep the
+  flat input contract; `toPublic` emits flat + role (clients unchanged); userContext
+  + WO route read via accessors. **Verified 14/14.** Behavior intentionally
+  unchanged (enabled honest, inherit-default + guestMode kept for now).
 - **Phase B foundations** (`c32ba19`):
   - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
     env or generated `data/whatson-secret.key`). **Verified 5/5.**
@@ -48,41 +55,30 @@ verified. The next step is the **Phase A data-model refactor** (not started).
 
 ---
 
-## ⏭️ RESUME HERE — Phase A: data-model refactor (`whatsonUsers.ts`)
+## ⏭️ RESUME HERE — finish Phase A + wire Phase B
 
-The next chunk. **Not started.** It restructures the Whats On user and ripples.
+The data-shape refactor (`6ed8ba5`) is **done**. Remaining, in order:
 
-**Shape (target):** `WhatsOnUser` gains `role: 'admin'|'member'`, and the flat
-`plexUserId`/`plexUserToken`/`jellyfinUserId`/`embyUserId` become nested
-`mappings.{plex,jellyfin,emby}` (each `{ userId/homeUserId, token: EncBlob, managed }`)
-+ `libraries.{plex,jellyfin,emby}: string[]`. Remove the `enabled` flag and
-`guestMode` (always-on). See `01-implementation.md` §1.1.
+1. **Always-on + auto-create-admin.** Force `wo.isEnabled()` → true, but FIRST add
+   an async startup step (`ensureDefaultAdmin()` in `index.ts`) that, when there
+   are 0 WO users AND a media server is configured, creates an `admin` user mapped
+   to the Plex owner (from `users.ts`) + the JF/Emby admin. **Order matters** —
+   forcing always-on before this would break the owner's live box (WO-off →
+   legacy Plex mode → empty picker). The owner's box has **no `whatsonUsers.json`**
+   so it hits exactly this empty→auto-create path.
+2. **Wire `subsystemUsers.provisionUser`** into the create-user flow (Phase B
+   payoff): admin "add user" → pick subsystems + create-new (provision) vs
+   map-existing; store the returned `{userId, encToken}` in `mappings`.
+3. **Per-user PIN session token** (impl §2.3) — `/select` returns a short-lived
+   token; `userContext` requires it for PIN-protected users so `X-Whatson-User`
+   isn't client-trusted. Load-bearing under fully-shared.
+4. **Unwind M7 bits** (can trail): `pairing.ts` drop `guestBinding`/
+   `boundWoProfileId`; `userContext.ts` remove binding branches + "inherit default";
+   remove the `enabled` toggle + `guestMode` from service + admin UI.
+5. **Admin UI**: remove enable toggle + guest-mode radios; add `role` + a
+   create-user-with-subsystems/libraries flow.
 
-**Blast radius:** ~95 references across ~13 files — `middleware/userContext.ts`,
-`services/adapters/registry.ts` (`getConfiguredAdapters` scoping), `routes/whatsonUsers.ts`,
-and the content routes (`home/tv/movies/library/live/playback/recommendations/scrobble`).
-Note: many `.plexUserId` hits are the **legacy `req.plexUserId`** (the Plex-picker
-path), which is *not* changing — filter those out.
-
-**Recommended approach:**
-1. **Additive-first** — introduce `role`/`mappings`/`libraries` alongside the old
-   fields, migrate to populate them, move consumers over, then delete the old
-   fields. Keep `typecheck` green at every step (no big-bang).
-2. **Migration** (idempotent, non-destructive; back up the JSON first):
-   - No `whatsonUsers.json` → force-on + auto-create an `admin` user from the Plex
-     owner (+ JF/Emby admin if configured).
-   - Existing users → restructure flat fields into `mappings`; first user → `admin`.
-   - Encrypt plaintext `plexUserToken` in place via `secrets.encryptSecret`.
-3. **Test** migration on synthetic old-format data AND the empty case (the owner's
-   live box has **no `whatsonUsers.json`** — see gotchas — so its migration is the
-   empty case).
-4. Add the **per-user PIN session token** (impl §2.3) so `X-Whatson-User` isn't
-   client-trusted — load-bearing under fully-shared.
-
-**Then (rest of A+B):** wire `subsystemUsers.provisionUser` into the create-user
-flow; `pairing.ts` drop `guestBinding`/`boundWoProfileId`; `userContext.ts` remove
-the binding branches + "inherit default"; admin UI (remove enable toggle +
-guest-mode radios; add role + create-user-with-subsystems/libraries).
+Keep `typecheck` green each step; test migration on synthetic + empty cases.
 
 Then Phases C (per-user libraries UI), D (invites-as-users — rework M7 cloud/backend/
 mobile), E (cleanup). See `01-implementation.md` §3 + the §5 unwind checklist.
