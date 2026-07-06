@@ -35,6 +35,10 @@ verified. The next step is the **Phase A data-model refactor** (not started).
   flat input contract; `toPublic` emits flat + role (clients unchanged); userContext
   + WO route read via accessors. **Verified 14/14.** Behavior intentionally
   unchanged (enabled honest, inherit-default + guestMode kept for now).
+- **Phase A increment #1 — always-on + auto-create-admin** (`46b6d41`):
+  `isEnabled()` = users>0 (toggle retired; empty→legacy fallback);
+  `userBootstrap.ensureDefaultAdmin()` auto-creates an owner-admin at startup.
+  **Verified 9/9** vs real Plex.
 - **Phase B foundations** (`c32ba19`):
   - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
     env or generated `data/whatson-secret.key`). **Verified 5/5.**
@@ -57,15 +61,14 @@ verified. The next step is the **Phase A data-model refactor** (not started).
 
 ## ⏭️ RESUME HERE — finish Phase A + wire Phase B
 
-The data-shape refactor (`6ed8ba5`) is **done**. Remaining, in order:
+The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
+(`46b6d41`) are **done + verified**. Remaining, in order:
 
-1. **Always-on + auto-create-admin.** Force `wo.isEnabled()` → true, but FIRST add
-   an async startup step (`ensureDefaultAdmin()` in `index.ts`) that, when there
-   are 0 WO users AND a media server is configured, creates an `admin` user mapped
-   to the Plex owner (from `users.ts`) + the JF/Emby admin. **Order matters** —
-   forcing always-on before this would break the owner's live box (WO-off →
-   legacy Plex mode → empty picker). The owner's box has **no `whatsonUsers.json`**
-   so it hits exactly this empty→auto-create path.
+1. ✅ **Always-on + auto-create-admin** — `isEnabled()` = "any user exists" (retires
+   the toggle; empty → legacy fallback). `services/userBootstrap.ts`
+   `ensureDefaultAdmin()` creates a default admin mapped to the Plex owner +
+   JF/Emby admin, wired into `index.ts` startup. Verified 9/9 vs real Plex
+   (creates owner-admin, token encrypted, idempotent).
 2. **Wire `subsystemUsers.provisionUser`** into the create-user flow (Phase B
    payoff): admin "add user" → pick subsystems + create-new (provision) vs
    map-existing; store the returned `{userId, encToken}` in `mappings`.
