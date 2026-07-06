@@ -46,44 +46,11 @@ declare global {
 
 export function userContext(req: Request, res: Response, next: NextFunction): void {
   const woIdHeader = req.headers['x-whatson-user'];
-  let woId = Array.isArray(woIdHeader) ? woIdHeader[0] : woIdHeader;
+  const woId = Array.isArray(woIdHeader) ? woIdHeader[0] : woIdHeader;
 
-  // Profile binding (doc 01 Item 4 + M7 guest modes). A guest device's access to
-  // WO profiles depends on how it was invited — X-Whatson-User is otherwise
-  // client-asserted with no proof. Owners (and open-mode LAN requests with no
-  // device) are unrestricted, so this is a no-op for existing installs.
-  const device = req.whatsonDevice;
-  if (device?.role === 'guest') {
-    const binding = device.guestBinding ?? 'locked';
-    if (binding === 'open') {
-      // Open-mode guest (M7): not confined. They pick which WO user to watch as
-      // each session, like the household — leave the client-asserted woId (which
-      // may be absent until they pick). No profile lock.
-    } else {
-      // 'locked' / 'locked-new': confined to the single bound profile.
-      const bound = device.boundWoProfileId;
-      if (!bound) {
-        // A confined guest with no bound profile can't act as anyone yet. A
-        // 'locked-new' guest is allowed to reach ONLY the create-profile
-        // endpoint (to make its viewer, then it's bound); everything else 403s.
-        const path = (req.originalUrl || req.path || '').split('?')[0];
-        const isCreateProfile =
-          binding === 'locked-new' && path.endsWith('/whatson-users/guest-profile');
-        if (!isCreateProfile) {
-          res.status(403).json({ success: false, error: 'This device is not bound to a profile.' });
-          return;
-        }
-        // Fall through with no woId — the create endpoint reads req.whatsonDevice.
-      } else {
-        if (woId && woId !== bound) {
-          res.status(403).json({ success: false, error: 'This device may not act as that profile.' });
-          return;
-        }
-        woId = bound; // default a guest to its bound profile when none is requested
-      }
-    }
-  }
-
+  // Unified user model: a device (owner or guest) is not bound to a Whats On user.
+  // Which user you watch as comes from the shared "Who's Watching?" picker via
+  // X-Whatson-User, and PIN-protected users are gated by a session token below.
   if (woId && wo.isEnabled()) {
     const user = wo.findById(woId);
     if (user) {
@@ -118,11 +85,9 @@ export function userContext(req: Request, res: Response, next: NextFunction): vo
       // stable string id.
       setRequestUserId(user.id);
       // Aggregator + routes that iterate getConfiguredAdapters() see only the
-      // adapters this WO user is mapped to. A user with NO service mappings
-      // inherits the server's default content — scope null = every configured
-      // adapter — while still getting its own watched state (keyed above).
-      const hasAnyMapping = pid !== null || jid !== null || eid !== null;
-      setActiveUserScope(hasAnyMapping ? { plexUserId: pid, jellyfinUserId: jid, embyUserId: eid } : null);
+      // subsystems this user is mapped to. Unmapped = no content (unified user
+      // model §11 #1 — the old "inherit default" mode is retired).
+      setActiveUserScope({ plexUserId: pid, jellyfinUserId: jid, embyUserId: eid });
       // Populate the Plex per-user token. The cache is in-memory only, so after
       // every backend restart the first request for a given WO user will miss it
       // — seed from the stored (encrypted) per-user token so the very first

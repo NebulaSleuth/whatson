@@ -10,26 +10,16 @@
 export type DeviceRole = 'owner' | 'guest';
 
 /**
- * How a guest's in-app profile is determined (M7). MUST match
- * `packages/cloud/src/types.ts` InviteBinding.
- *  - `locked`     — bound to `boundWoProfileId`.
- *  - `locked-new` — guest creates a Whats On user in-app, then is locked to it.
- *  - `open`       — guest isn't locked; picks any Whats On user each session.
+ * Claims carried by a cloud-signed grant (raw Ed25519 detached signature). MUST
+ * match `packages/cloud/src/types.ts` GrantPayload. The unified user model has no
+ * per-user binding — which Whats On user you watch as is picked from the backend's
+ * shared "Who's Watching?" picker, so a grant only conveys server access + role.
  */
-export type GuestBinding = 'locked' | 'locked-new' | 'open';
-
-/** Claims carried by a cloud-signed grant (raw Ed25519 detached signature). */
 export interface GrantPayload {
   v: 1;
   serverId: string;
   accountId: string;
   role: DeviceRole;
-  boundWoProfileId: string | null;
-  /** Guest access shape (M7). Absent on owner grants + pre-M7 guest grants
-   *  (which are treated as `'locked'` for back-compat). */
-  guestBinding?: GuestBinding;
-  /** Admin-suggested name to prefill the in-app new-viewer form (`locked-new`). */
-  newUserName?: string | null;
   jti: string;
   iat: number;
   exp: number;

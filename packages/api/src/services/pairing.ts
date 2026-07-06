@@ -2,7 +2,6 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import * as crypto from 'crypto';
-import type { GuestBinding } from './cloud/types.js';
 
 /**
  * Manages the device-pairing flow: short code generation, polling,
@@ -63,25 +62,13 @@ export interface PairedDevice {
   /** Human-readable label set when the device paired. */
   label: string;
   /**
-   * Privilege level. `owner` = full access (admin routes, all WO profiles);
-   * `guest` = consumer routes only, locked to `boundWoProfileId`. Devices
-   * paired via the LAN `/setup` flow are owners; guests come from the invite /
-   * device-code flow (M7). Legacy records with no role migrate to `owner`.
+   * Privilege level. `owner` = full access incl. admin routes; `guest` = consumer
+   * routes only. Neither is bound to a Whats On user — identity is picked from the
+   * shared "Who's Watching?" picker (gated by PIN). Devices paired via the LAN
+   * `/setup` flow are owners; guests come from the invite / device-code flow.
+   * Legacy records with no role migrate to `owner`.
    */
   role: DeviceRole;
-  /**
-   * For guest devices, the single Whats On profile id this device may act as
-   * (enforced in userContext). null for owners (any profile).
-   */
-  boundWoProfileId: string | null;
-  /**
-   * For guest devices, how their profile is determined (M7). `locked` (default
-   * for legacy guest records) = confined to `boundWoProfileId`; `open` = not
-   * confined (picks any WO user, like the household); `locked-new` = must create
-   * a WO user in-app, then it's bound and this flips to `locked`. Undefined for
-   * owners.
-   */
-  guestBinding?: GuestBinding;
   /** ISO timestamp. */
   createdAt: string;
   /** ISO timestamp of last seen X-Whatson-Auth match. */
@@ -104,21 +91,19 @@ async function loadPaired(): Promise<PairedDevice[]> {
     paired = [];
   }
   // Migrate legacy records: anything paired before roles existed was paired by
-  // the admin at /setup, so it's an owner with no profile binding.
+  // the admin at /setup, so it's an owner. Drop the retired binding fields.
   let migrated = false;
   for (const d of paired) {
     if (d.role !== 'owner' && d.role !== 'guest') {
       d.role = 'owner';
       migrated = true;
     }
-    if (d.boundWoProfileId === undefined) {
-      d.boundWoProfileId = null;
-      migrated = true;
-    }
-    // Guest records predating M7 bindings were all bound-to-a-profile.
-    if (d.role === 'guest' && d.guestBinding === undefined) {
-      d.guestBinding = 'locked';
-      migrated = true;
+    const anyD = d as unknown as Record<string, unknown>;
+    for (const k of ['boundWoProfileId', 'guestBinding']) {
+      if (k in anyD) {
+        delete anyD[k];
+        migrated = true;
+      }
     }
   }
   if (migrated) savePaired().catch(() => {});
@@ -194,7 +179,7 @@ export function pollPair(code: string): { status: 'pending' | 'completed' | 'exp
 export async function completePair(
   code: string,
   label: string,
-  opts?: { role?: DeviceRole; boundWoProfileId?: string | null },
+  opts?: { role?: DeviceRole },
 ): Promise<{ ok: boolean; deviceId?: string; reason?: string }> {
   expireIfDone();
   if (!activePair || activePair.status !== 'pending') {
@@ -207,14 +192,12 @@ export async function completePair(
   const key = genKey();
   const id = crypto.randomBytes(8).toString('hex');
   const list = await loadPaired();
-  // LAN /setup pairing yields an owner; the grant/invite flow (M7) passes
-  // role='guest' + a bound profile.
+  // LAN /setup pairing yields an owner; the grant/invite flow passes role='guest'.
   list.push({
     id,
     keyHash: hashKey(key),
     label: label || activePair.deviceLabel || 'Unnamed device',
     role: opts?.role ?? 'owner',
-    boundWoProfileId: opts?.boundWoProfileId ?? null,
     createdAt: new Date().toISOString(),
     lastSeenAt: null,
   });
@@ -230,13 +213,11 @@ export async function completePair(
 
 /**
  * Provision a device directly from a verified cloud grant (doc 02 §6), skipping
- * the 6-digit LAN code flow. The grant's role + bound profile are carried onto
- * the device record. Returns the one-shot auth key.
+ * the 6-digit LAN code flow. The grant's role is carried onto the device record.
+ * Returns the one-shot auth key.
  */
 export async function provisionDevice(opts: {
   role: DeviceRole;
-  boundWoProfileId?: string | null;
-  guestBinding?: GuestBinding;
   label?: string;
 }): Promise<{ key: string; deviceId: string }> {
   const key = genKey();
@@ -247,30 +228,11 @@ export async function provisionDevice(opts: {
     keyHash: hashKey(key),
     label: opts.label || 'Remote device',
     role: opts.role,
-    boundWoProfileId: opts.boundWoProfileId ?? null,
-    // Guests default to 'locked' (a bound-profile grant) when the grant predates
-    // M7 bindings; owners carry no binding.
-    guestBinding: opts.role === 'guest' ? (opts.guestBinding ?? 'locked') : undefined,
     createdAt: new Date().toISOString(),
     lastSeenAt: null,
   });
   await savePaired();
   return { key, deviceId: id };
-}
-
-/**
- * Bind a guest device to the Whats On profile it just created in-app
- * (`locked-new` → `locked`). Returns false if the device is unknown. Used by
- * the guest create-profile endpoint (M7 Phase 4).
- */
-export async function bindDeviceProfile(deviceId: string, woProfileId: string): Promise<boolean> {
-  const list = await loadPaired();
-  const d = list.find((x) => x.id === deviceId);
-  if (!d) return false;
-  d.boundWoProfileId = woProfileId;
-  d.guestBinding = 'locked';
-  await savePaired();
-  return true;
 }
 
 export function getPendingPair(): { code: string; expiresAt: number; deviceLabel: string | null } | null {

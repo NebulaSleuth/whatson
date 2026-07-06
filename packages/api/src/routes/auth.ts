@@ -203,21 +203,10 @@ authRouter.post('/auth/redeem-grant', async (req, res) => {
     return;
   }
   markRedeemed(payload.jti);
-  // Guests default to 'locked' for pre-M7 grants (a bound-profile guest).
-  const guestBinding = payload.role === 'guest' ? (payload.guestBinding ?? 'locked') : undefined;
-  const { key, deviceId } = await provisionDevice({
-    role: payload.role,
-    boundWoProfileId: payload.boundWoProfileId,
-    guestBinding,
-    label: 'Remote (grant)',
-  });
-  // The app branches on guestBinding: 'open' → show the "Who's Watching?" picker;
-  // 'locked-new' → show the create-profile screen (prefill newUserName); 'locked'
-  // → use the bound profile.
-  res.json({
-    success: true,
-    data: { key, deviceId, role: payload.role, guestBinding, newUserName: payload.newUserName ?? null },
-  });
+  const { key, deviceId } = await provisionDevice({ role: payload.role, label: 'Remote (grant)' });
+  // Identity is picked from the backend's shared "Who's Watching?" picker; the
+  // grant only conveys server access + role.
+  res.json({ success: true, data: { key, deviceId, role: payload.role } });
 });
 
 // ── Paired-device management ──────────────────────────────────────

@@ -2,7 +2,6 @@ import { Router } from 'express';
 import * as wo from '../services/whatsonUsers.js';
 import * as plexUsers from '../services/users.js';
 import { listAvatars, getAvatar, getAvatarPng } from '../services/avatars.js';
-import { bindDeviceProfile } from '../services/pairing.js';
 import * as su from '../services/subsystemUsers.js';
 import { jellyfinAdapter } from '../services/adapters/jellyfin.js';
 import { embyAdapter } from '../services/adapters/emby.js';
@@ -94,12 +93,9 @@ whatsonUsersRouter.post('/whatson-users/guest-profile', async (req, res) => {
   const requested = String(req.body?.avatar ?? '').trim();
   const avatar = getAvatar(requested).key;
 
+  // Create the Whats On user (unmapped for now; the invite's provisioning spec
+  // wires subsystems in a later step). It joins the shared picker.
   const user = wo.create({ name, avatar });
-  // A 'locked-new' guest gets locked to the viewer it just made; an 'open' guest
-  // stays free to pick any viewer (this one now among them).
-  if (device.guestBinding === 'locked-new') {
-    await bindDeviceProfile(device.id, user.id);
-  }
   res.json({ success: true, data: wo.toPublic(user) });
 });
 
