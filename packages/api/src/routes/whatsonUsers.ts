@@ -3,6 +3,7 @@ import * as wo from '../services/whatsonUsers.js';
 import * as plexUsers from '../services/users.js';
 import { listAvatars, getAvatar, getAvatarPng } from '../services/avatars.js';
 import { bindDeviceProfile } from '../services/pairing.js';
+import * as su from '../services/subsystemUsers.js';
 import { jellyfinAdapter } from '../services/adapters/jellyfin.js';
 import { embyAdapter } from '../services/adapters/emby.js';
 import * as jellyfin from '../services/jellyfin.js';
@@ -125,6 +126,7 @@ whatsonUsersRouter.post('/whatson-users', async (req, res) => {
     const body = req.body || {};
     const plexPin: string | undefined = body.plexPin;
     delete body.plexPin;
+    const name = String(body.name ?? '').trim();
     // If a Plex mapping was supplied, derive the per-user token now so
     // we don't depend on the in-memory cache (which is empty after every
     // backend restart). If derivation fails — wrong PIN, Plex not
@@ -134,6 +136,27 @@ whatsonUsersRouter.post('/whatson-users', async (req, res) => {
     } else {
       body.plexUserToken = null;
     }
+
+    // PROVISION new Jellyfin/Emby users when requested (jellyfinCreate/embyCreate),
+    // with the chosen library set. Managed users are created with a generated
+    // password and an encrypted token; the person never needs that password.
+    const libs = (body.libraries as { jellyfin?: string[]; emby?: string[] }) || {};
+    const explicit: Record<string, { userId: string; token: string; managed: boolean }> = {};
+    for (const kind of ['jellyfin', 'emby'] as const) {
+      const wantCreate = kind === 'jellyfin' ? body.jellyfinCreate : body.embyCreate;
+      if (!wantCreate) continue;
+      if (!su.isConfigured(kind)) throw new Error(`${kind} is not configured on this server.`);
+      if (!name) throw new Error('A name is required to create a subsystem user.');
+      const prov = await su.provisionUser(kind, name, libs[kind] ?? null);
+      explicit[kind] = { userId: prov.userId, token: prov.encToken, managed: true };
+      // Don't also treat any supplied flat id as a map-existing for this subsystem.
+      if (kind === 'jellyfin') delete body.jellyfinUserId;
+      else delete body.embyUserId;
+    }
+    if (Object.keys(explicit).length) body.mappings = explicit;
+    delete body.jellyfinCreate;
+    delete body.embyCreate;
+
     const created = wo.create(body);
     res.json({ success: true, data: wo.toPublic(created) });
   } catch (e) {
@@ -179,9 +202,23 @@ whatsonUsersRouter.patch('/whatson-users/:id', async (req, res) => {
   }
 });
 
-whatsonUsersRouter.delete('/whatson-users/:id', (req, res) => {
-  const ok = wo.remove(req.params.id);
-  if (!ok) { res.status(404).json({ success: false, error: 'user not found' }); return; }
+whatsonUsersRouter.delete('/whatson-users/:id', async (req, res) => {
+  const user = wo.findById(req.params.id);
+  if (!user) { res.status(404).json({ success: false, error: 'user not found' }); return; }
+  // Delete the subsystem users Whats On CREATED (managed) so we don't orphan
+  // them; never touch mapped-existing users (managed=false) or Plex Home users.
+  for (const kind of ['jellyfin', 'emby'] as const) {
+    const m = user.mappings[kind];
+    if (m?.managed && su.isConfigured(kind)) {
+      try {
+        const s = await su.adminSession(kind);
+        await su.deleteUser(s, m.userId);
+      } catch (e) {
+        console.warn(`[wo] could not delete managed ${kind} user ${m.userId}:`, (e as Error).message);
+      }
+    }
+  }
+  wo.remove(req.params.id);
   res.json({ success: true });
 });
 

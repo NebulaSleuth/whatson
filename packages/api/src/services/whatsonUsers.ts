@@ -257,6 +257,13 @@ export interface CreateUserInput {
   jellyfinUserId?: string | null;
   embyUserId?: string | null;
   libraries?: WhatsOnUser['libraries'];
+  /**
+   * Explicit per-subsystem mappings — used for PROVISIONED (managed) users where
+   * the caller already holds the subsystem userId + an already-ENCRYPTED token
+   * (see subsystemUsers.provisionUser). Overrides the flat map-existing field for
+   * that subsystem.
+   */
+  mappings?: Partial<WhatsOnUser['mappings']>;
 }
 
 export function create(input: CreateUserInput): WhatsOnUser {
@@ -273,6 +280,10 @@ export function create(input: CreateUserInput): WhatsOnUser {
   }
   if (input.jellyfinUserId) mappings.jellyfin = { userId: input.jellyfinUserId, token: null, managed: false };
   if (input.embyUserId) mappings.emby = { userId: input.embyUserId, token: null, managed: false };
+  // Explicit mappings (provisioned/managed users) win over the flat fields.
+  if (input.mappings?.plex) mappings.plex = input.mappings.plex;
+  if (input.mappings?.jellyfin) mappings.jellyfin = input.mappings.jellyfin;
+  if (input.mappings?.emby) mappings.emby = input.mappings.emby;
   const user: WhatsOnUser = {
     id: newId(),
     name,
