@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
 import { config } from '../config.js';
-import { getCached, setCached } from '../cache.js';
+import { getCached, setCached, invalidateCache } from '../cache.js';
+import { buildDownloadStatus } from '../utils.js';
 import type { ContentItem } from '@whatson/shared';
 
 let client: AxiosInstance | null = null;
@@ -169,11 +170,32 @@ export async function getQueue(): Promise<ContentItem[]> {
     const movieId = movie.id;
     if (movieId && seen.has(movieId)) continue;
     if (movieId) seen.add(movieId);
-    result.push(radarrToContentItem(movie, 'downloading'));
+    const item = radarrToContentItem(movie, 'downloading');
+    item.download = buildDownloadStatus(record);
+    result.push(item);
   }
 
   setCached(cacheKey, result, 60);
   return result;
+}
+
+/**
+ * Cancel a queued/downloading item. `blocklist` tells Radarr to remember the
+ * release as bad so it isn't grabbed again — used by "cancel and re-search".
+ * Invalidates the queue cache so the shelf reflects the removal immediately.
+ */
+export async function cancelDownload(queueId: number, blocklist = false): Promise<void> {
+  const http = getClient();
+  await http.delete(`/queue/${queueId}`, {
+    params: { removeFromClient: true, blocklist },
+  });
+  invalidateCache('radarr:queue');
+}
+
+/** Trigger a fresh search for a single movie (used after cancel-and-re-search). */
+export async function searchMovie(movieId: number): Promise<void> {
+  const http = getClient();
+  await http.post('/command', { name: 'MoviesSearch', movieIds: [movieId] });
 }
 
 export async function searchMovies(query: string): Promise<ContentItem[]> {

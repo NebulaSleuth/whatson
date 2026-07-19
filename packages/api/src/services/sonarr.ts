@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
 import { config } from '../config.js';
-import { getCached, setCached } from '../cache.js';
+import { getCached, setCached, invalidateCache } from '../cache.js';
+import { buildDownloadStatus } from '../utils.js';
 import type { ContentItem } from '@whatson/shared';
 
 let client: AxiosInstance | null = null;
@@ -232,11 +233,33 @@ export async function getQueue(): Promise<ContentItem[]> {
     const epId = ep.id || ep.episodeId;
     if (epId && seen.has(epId)) continue;
     if (epId) seen.add(epId);
-    result.push(sonarrEpisodeToContentItem(ep, record.series, 'downloading'));
+    const item = sonarrEpisodeToContentItem(ep, record.series, 'downloading');
+    item.download = buildDownloadStatus(record);
+    result.push(item);
   }
 
   setCached(cacheKey, result, 60);
   return result;
+}
+
+/**
+ * Cancel a queued/downloading item. `blocklist` tells Sonarr to remember the
+ * release as bad so it isn't grabbed again on the next search — used by the
+ * "cancel and re-search" flow. Invalidates the queue cache so the shelf
+ * reflects the removal immediately.
+ */
+export async function cancelDownload(queueId: number, blocklist = false): Promise<void> {
+  const http = getClient();
+  await http.delete(`/queue/${queueId}`, {
+    params: { removeFromClient: true, blocklist },
+  });
+  invalidateCache('sonarr:queue');
+}
+
+/** Trigger a fresh search for a single episode (used after cancel-and-re-search). */
+export async function searchEpisode(episodeId: number): Promise<void> {
+  const http = getClient();
+  await http.post('/command', { name: 'EpisodeSearch', episodeIds: [episodeId] });
 }
 
 export async function searchSeries(query: string): Promise<ContentItem[]> {

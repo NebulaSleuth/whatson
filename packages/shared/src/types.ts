@@ -23,6 +23,29 @@ export interface Availability {
   network?: string;
 }
 
+/**
+ * Live download progress for an item currently in a Sonarr/Radarr queue
+ * (status === 'downloading'). Surfaced so the detail sheet can show a
+ * progress read-out and offer cancel / cancel-and-re-search actions.
+ */
+export interface DownloadStatus {
+  /** Sonarr/Radarr `/queue` record id — the handle the cancel routes delete. */
+  queueId: number;
+  /** 0–100 percent complete, derived from size vs sizeleft. */
+  percentage: number;
+  /** Raw queue status: downloading | queued | paused | completed | delay | warning | … */
+  status: string;
+  /** Compact human time remaining, e.g. "12m", "1h 4m". Absent when stalled/queued. */
+  timeLeft?: string;
+  /** ISO 8601 estimated completion time, when the client reports one. */
+  estimatedCompletionTime?: string;
+  /** Total size / bytes remaining, for an optional size read-out. */
+  sizeBytes?: number;
+  sizeLeftBytes?: number;
+  /** Error or warning text from the download client, if any. */
+  errorMessage?: string;
+}
+
 export interface ContentItem {
   id: string;
   type: ContentType;
@@ -49,6 +72,8 @@ export interface ContentItem {
   showRatingKey?: string;
   /** When multiple items are collapsed into one card (e.g., multiple downloading episodes of the same show). */
   groupCount?: number;
+  /** Present only for items in a Sonarr/Radarr download queue (status === 'downloading'). */
+  download?: DownloadStatus;
 }
 
 export interface ContentSection {
