@@ -1,8 +1,9 @@
 # Unified User Model — Status & Resume Point
 
-**Last updated:** 2026-07-05
+**Last updated:** 2026-07-05 · **Status: SHIPPED (v0.1.144) + verified live**
 **Plan of record:** [`00-vision.md`](00-vision.md) (decided model) +
-[`01-implementation.md`](01-implementation.md) (build blueprint, phases A–E).
+[`01-implementation.md`](01-implementation.md) (build blueprint) +
+[`02-remaining.md`](02-remaining.md) (detailed backlog of what's left).
 **Deeper history:** MemPalace wing `claude_sessions`/`conversations`, source
 `session/2026-07-05`.
 
@@ -10,144 +11,131 @@
 
 ## TL;DR
 
-We pivoted away from the M7 "guest / viewer / binding" model to a **unified user
-model** (users = people; Whats On owns identity; subsystems are content sources).
-The vision + implementation plan are **written, decided, committed, pushed**. The
-build has **started**: the two net-new Phase-B foundation modules are done and
-verified. The next step is the **Phase A data-model refactor** (not started).
+The **unified user model** is built, tested, and **deployed to the whole fleet as
+v0.1.144** — cloud, backend, Roku, and the SHIELD. Verified live: the owner applied
+the update and confirmed the auto-created **NebulaSleuth admin, mapped to his Plex
+owner**, in `/setup → Users`, so the always-on migration + auto-admin worked.
+
+The model replaces the M7 "guest / viewer / binding" apparatus (now fully retired):
+**users are people** (always-on, no toggle), each mapped to real subsystem
+identities with **encrypted tokens**; Whats On can **create Jellyfin/Emby accounts**
+with per-user libraries; **PIN session tokens** gate protected users; and **invites
+just grant server access** — identity is the shared "Who's Watching?" picker.
 
 ---
 
-## ✅ Done (committed + pushed)
+## What shipped (all committed, pushed, deployed)
 
-- **Vision + plan of record** — `00-vision.md`, `01-implementation.md`
-  (`dc255c6`, `93a2ae8`, `47ac0f9`, `69bdc0e`). All decisions settled:
-  - **§8 fully-shared:** cloud account = server-access only; the shared "Who's
-    Watching?" picker + PIN is the identity layer, identical LAN/remote. Isolation
-    is by PIN (accepted tradeoff). Kills M7 open/closed/binding.
-  - **§11:** unmapped users allowed as transient state (no content until mapped;
-    no "inherit default" mode); watched state = subsystem-native per mapped user.
-  - **Model A** chosen: each Whats On user maps to real subsystem identities.
-- **Phase A — data-shape refactor** (`6ed8ba5`): `WhatsOnUser` flat fields →
-  nested `mappings.{plex,jellyfin,emby}` (`{userId, token:encrypted, managed}`) +
-  `role` + `libraries[]`; typed accessors; idempotent migration (flat→nested,
-  encrypt Plex token, first-user→admin, drop old fields); `create/update` keep the
-  flat input contract; `toPublic` emits flat + role (clients unchanged); userContext
-  + WO route read via accessors. **Verified 14/14.** Behavior intentionally
-  unchanged (enabled honest, inherit-default + guestMode kept for now).
-- **Phase A increment #1 — always-on + auto-create-admin** (`46b6d41`):
-  `isEnabled()` = users>0 (toggle retired; empty→legacy fallback);
-  `userBootstrap.ensureDefaultAdmin()` auto-creates an owner-admin at startup.
-  **Verified 9/9** vs real Plex.
-- **Phase A #2 — provisionUser wired** (`5f66b6a`): create provisions real JF/Emby
-  users (libraries), delete cleans up managed ones. Verified 6/6.
-- **Phase A #3 — PIN session token** (`f93ac12`): `/select` mints an AES-GCM
-  per-user token; userContext enforces it (soft default / `WHATSON_STRICT_PIN`
-  hard). Verified 9/9 both modes. Mobile still to send `X-Whatson-Session`.
-- **Phase A #5 — admin UI** (`0efdcae`): role select + JF/Emby create-new-user
-  with library picker in /setup; removed the enable toggle; `GET /whatson-users/
-  libraries/:kind`. Verified (typecheck + node --check); browser check pending.
-- **Phase B foundations** (`c32ba19`):
-  - `services/secrets.ts` — AES-256-GCM at rest (master key: `WHATSON_SECRET_KEY`
-    env or generated `data/whatson-secret.key`). **Verified 5/5.**
-  - `services/subsystemUsers.ts` — Jellyfin/Emby user management (admin auth →
-    create / set-password / library-restrict / delete / map-existing +
-    `provisionUser()` returning userId + encrypted token). Typechecks; wraps the
-    exact ops proven live 8/8 earlier. **Live module re-test pending** (needs the
-    JF/Emby admin password again — see gotchas).
+**Vision + plan** (`dc255c6`,`93a2ae8`,`47ac0f9`,`69bdc0e`) — decisions in
+`00-vision.md`: §8 fully-shared (cloud account = server access; shared picker + PIN
+= identity); §11 unmapped→no content + subsystem-native watched state; Model A.
 
-### Live capabilities already verified (against the owner's real servers)
-- **Jellyfin 10.11.8** (`http://192.168.1.206:8096`) + **Emby 4.9.5.0**
-  (`http://192.168.1.211:8096`), admin user **Mike**: full lifecycle 8/8 —
-  create, generated password, per-user `EnabledFolders` library restriction, login
-  as new user, delete. → JF/Emby = full auto-provision.
-- **Plex** (owner NebulaSleuth, **Plex Pass lifetime**, Home 5/15 → 10 free slots,
-  server `M1Silicon`): Home-user mapping/creation only, capped 15, Plex-Pass-gated;
-  external shared "friends" are out of scope. → admin-managed.
+**Phase B foundations** (`c32ba19`)
+- `services/secrets.ts` — AES-256-GCM at rest, master key `WHATSON_SECRET_KEY` env
+  or generated `<DATA_DIR>/whatson-secret.key`. 5/5.
+- `services/subsystemUsers.ts` — Jellyfin/Emby management (create / set-password /
+  library-restrict / delete / map-existing + `provisionUser`). Ops proven live 8/8.
+
+**Phase A** — the backend user model
+- `6ed8ba5` data-shape refactor: `WhatsOnUser` → nested `mappings.{plex,jellyfin,
+  emby}` (`{userId, token:encrypted, managed}`) + `role` + `libraries[]`; typed
+  accessors; idempotent migration. 14/14.
+- `46b6d41` always-on + `userBootstrap.ensureDefaultAdmin()` (auto-creates the
+  Plex-owner admin at startup). `isEnabled()` = users>0. 9/9 vs real Plex.
+- `5f66b6a` `provisionUser` wired into create (real JF/Emby users + libraries);
+  delete cleans up managed users. 6/6.
+- `f93ac12` PIN session token (`/select` mints AES-GCM token; `userContext` checks
+  `X-Whatson-Session`; soft default / `WHATSON_STRICT_PIN` hard). 9/9 both modes.
+- `0efdcae` admin UI: role select + JF/Emby create-new-user with a library picker;
+  `GET /whatson-users/libraries/:kind`; removed the enable toggle.
+
+**Phase D** — invites-as-users + full M7 unwind
+- `8c28efb` D1 cloud: invites = `ServerMembership` (no binding); binding-free
+  grants; retired InviteBinding + membership/profile. Integration test **21/21**.
+- `c9b5116` D2 backend: `GrantPayload`/`PairedDevice` binding fields gone;
+  `userContext` binding branch + inherit-default removed. 5/5.
+- `2eda7b7` D3 backend: `/remote/invite` = email only; `guestMode` fully retired
+  (service + config route + admin "Invite someone" card).
+- `c93c60c` D4 mobile: `cloudAuth` returns boolean; `cloud-signin` → shared picker;
+  `create-profile` generic; "+ New" self-create in the picker.
+
+**Deployed** (`3d19b6c` = v0.1.144 bump)
+- **Cloud** → Azure `whatson-cloud` (`cloud.whatsontv.net`), key preserved.
+- **Backend** → GitHub release `v0.1.144`; owner applied it (running 0.1.144).
+- **Roku** → re-sideloaded to 192.168.1.129.
+- **SHIELD** (`192.168.1.69:5555`) → rebuilt TV APK installed. **Pixel NOT updated.**
+
+### Capabilities verified against the owner's real servers
+- **Jellyfin 10.11.8** (`192.168.1.206:8096`) + **Emby 4.9.5.0** (`192.168.1.211:8096`),
+  admin **Mike**: full lifecycle 8/8 (create, generated password, `EnabledFolders`
+  restriction, login-as-new-user, delete).
+- **Plex** (owner NebulaSleuth, Plex Pass lifetime, Home 5/15, server `M1Silicon`):
+  Home-user mapping/creation only — capped 15, Plex-Pass-gated; external "friends"
+  out of scope.
 
 ---
 
-## ⏭️ RESUME HERE — finish Phase A + wire Phase B
+## ⏭️ RESUME HERE — remaining follow-ups (none blocking; model is live)
 
-The data-shape refactor (`6ed8ba5`) and always-on + auto-create-admin
-(`46b6d41`) are **done + verified**. Remaining, in order:
+**Full detail with file-level steps: [`02-remaining.md`](02-remaining.md).** Summary:
 
-1. ✅ **Always-on + auto-create-admin** — `isEnabled()` = "any user exists" (retires
-   the toggle; empty → legacy fallback). `services/userBootstrap.ts`
-   `ensureDefaultAdmin()` creates a default admin mapped to the Plex owner +
-   JF/Emby admin, wired into `index.ts` startup. Verified 9/9 vs real Plex
-   (creates owner-admin, token encrypted, idempotent).
-2. ✅ **Wire `subsystemUsers.provisionUser`** (`5f66b6a`) — POST /whatson-users with
-   jellyfinCreate/embyCreate provisions a real JF/Emby user (generated password,
-   libraries) stored as a managed mapping; DELETE cleans up managed subsystem users.
-   Verified 6/6 (merge); live route E2E pending the JF/Emby password.
-3. ✅ **Per-user PIN session token** (`f93ac12`) — `/select` returns an AES-GCM
-   sessionToken; `userContext` verifies `X-Whatson-Session` for PIN-protected
-   users. Soft by default; `WHATSON_STRICT_PIN=1` → hard 401. Verified 9/9 both
-   modes. **Mobile follow-up:** capture + send the token, then flip strict on.
-4. ✅ **Admin UI** (`0efdcae`) — /setup Whats On Users: role select; JF/Emby
-   "➕ Create new user" → provisions with a per-subsystem library picker (backend
-   `GET /whatson-users/libraries/:kind`); removed the enable toggle; role badge.
-   api typechecks; admin JS passes `node --check`. **Final check:** browser + live
-   JF/Emby create flow (needs a running backend + the admin password).
-5. ✅ **Phase D — invites-as-users + M7 unwind** (`8c28efb`, `c9b5116`, `2eda7b7`,
-   `c93c60c`). All four sub-phases done:
-   - **D1 cloud**: invites = server access (ServerMembership, no binding); grants
-     binding-free; retired InviteBinding/membership-profile. Integration test 21/21.
-   - **D2 backend**: GrantPayload/PairedDevice binding fields gone; userContext
-     binding branch + inherit-default removed (guests unconfined, PIN-gated).
-     Verified 5/5.
-   - **D3 backend**: /remote/invite = email only; guestMode fully retired (service +
-     config route + admin "Invite someone" card).
-   - **D4 mobile**: cloudAuth returns boolean; cloud-signin → shared picker;
-     create-profile generic; "+ New" self-create in the picker. Mobile typechecks.
-
-**Remaining (verification + polish; own passes):**
-- **Mobile rebuild** — build/install APKs to exercise D4 (cloud-signin → picker →
-  create-profile) + the #5 create-user path. Like other mobile work this session.
-- **Mobile PIN token** — capture `sessionToken` at `/select` + send
-  `X-Whatson-Session`, then flip `WHATSON_STRICT_PIN=1`.
-- **Browser check** of the admin create-user flow (needs a running backend + the
-  JF/Emby password) — the last piece of #5.
-- **Phase C** (per-user library UI polish) + the self-create provisioning spec
-  (invite `provisioningRef` → backend `pending-invites` → provision on connect).
-
-Keep `typecheck` green each step; test migration on synthetic + empty cases.
-
-Then Phases C (per-user libraries UI), D (invites-as-users — rework M7 cloud/backend/
-mobile), E (cleanup). See `01-implementation.md` §3 + the §5 unwind checklist.
+1. **Mobile PIN hardening.** The apps don't yet capture the `sessionToken` from
+   `POST /whatson-users/:id/select` or send `X-Whatson-Session`, so keep
+   `WHATSON_STRICT_PIN` **off** (PIN gate is soft/log-only). Wire the token in
+   `apps/mobile` (store it after select; send the header in `lib/api.ts`), rebuild,
+   then set `WHATSON_STRICT_PIN=1` on the backend to enforce.
+2. **Phase C — per-user library UI polish.** Editing an existing user's libraries
+   (today the picker only applies on create-new); a defaults editor. Enforcement
+   for mapped-existing users is a policy decision (don't clobber their server-side
+   policy silently).
+3. **Self-create provisioning spec.** Flow B (invitee self-creates): the invite
+   carries `provisioningRef`; wire a backend `data/pending-invites.json` spec
+   (libraries + subsystems) that `POST /whatson-users/guest-profile` applies so a
+   self-created user is provisioned + library-scoped instead of bare. See
+   `01-implementation.md` §1.4 / §6.
+4. **Browser E2E of the admin create-user flow** — load `/setup → Users` in a
+   browser against the live backend and create a Jellyfin/Emby user for real
+   (needs the JF/Emby admin password — see gotchas).
+5. **Pixel** — rebuild + install the phone APK when wanted (only the SHIELD was done).
 
 ---
 
 ## Gotchas / key facts for a fresh session
 
-- **Live service has no `whatsonUsers.json`.** WO-Users was never set up on the
-  owner's box (`C:\Program Files\WhatsOn\data\` has only a `users/` watched-state
-  dir). So migration there is the trivial empty case.
+- **The model is LIVE on the fleet (v0.1.144).** The owner's backend runs it; the
+  NebulaSleuth admin (mapped to the Plex owner) was auto-created and confirmed.
 - **This machine IS the live backend** (`192.168.1.181:3001` = localhost, NSSM
-  service `whatson-api`). Don't double-boot (EADDRINUSE) and don't test-write
-  against it. Admin routes answer on the LAN IP but **404 on loopback** (known
-  quirk). Most `/api/*` are auth-gated now (admin password set).
-- **To re-test `subsystemUsers` live**, you need the JF/Emby admin password again —
-  the owner deleted `c:\temp\pw.txt` (correctly). JF `http://192.168.1.206:8096`,
-  Emby `http://192.168.1.211:8096`, user `Mike`. Set `JELLYFIN_URL/USERNAME/PASSWORD`
-  + `EMBY_*` env and run a probe (see the pattern used this session).
-- **`secrets.ts` key** lives at `<DATA_DIR>/whatson-secret.key` (0600). Losing it
-  makes existing encrypted tokens undecryptable — back it up alongside the data.
-- **JF/Emby config** in the backend is `{ url, username, password }` (admin creds);
-  `config.jellyfin` / `config.emby`. Not currently set on the owner's box.
-- **M7 is deployed but being superseded.** Cloud is live on Azure with M7 code
-  (invites/membership/device-code); backend `v0.1.143` is released but the owner
-  hasn't applied it from `/setup` (and may skip it — the guest/invite UI is about
-  to be reworked). Per-server TLS, cloud control plane, device-code, and the Azure
-  `CLOUD_DATA_DIR` fix all carry forward unchanged.
+  `whatson-api`, running 0.1.144). Don't double-boot (EADDRINUSE — it loads the real
+  `.env`) and don't test-write against it. Admin routes 404 on **loopback** but work
+  on the LAN IP; most `/api/*` are auth-gated (admin password set).
+- **JF/Emby are NOT configured in the backend** (`config.jellyfin`/`config.emby`
+  empty) — so subsystem *provisioning* is dormant on the live box until the owner
+  sets `JELLYFIN_URL/USERNAME/PASSWORD` + `EMBY_*`. To test `subsystemUsers` live you
+  need the JF/Emby admin password again (owner deleted `c:\temp\pw.txt`, correctly).
+  JF `192.168.1.206:8096`, Emby `192.168.1.211:8096`, user `Mike`.
+- **`secrets.ts` master key** lives at `<DATA_DIR>/whatson-secret.key` (0600).
+  Losing it makes existing encrypted tokens undecryptable — back it up with the data.
+- **Deploy recipe that works** (both fought back once): cloud = build + stage +
+  `npm install --omit=dev` + **python forward-slash zip** (`scratchpad/mkzip.py`;
+  PowerShell `Compress-Archive` writes backslashes Linux can't extract) + `az webapp
+  deploy --type zip`; cloud `CLOUD_DATA_DIR=/home/data` (fixed — was a Git-Bash
+  path-mangled value; data lives outside wwwroot so deploys don't wipe the signing
+  key/store). Backend = bump BOTH `packages/api/package.json` + `packages/shared/src/
+  constants.ts`, `npm run build -w packages/shared`, `npm run build:installer`, `gh
+  release create v0.1.NN …`. Updater is owner-apply from `/setup` (auto-poll here is
+  unreliable — force with public `POST /api/update/check`).
+- **tsx test harness:** throwaway `.ts` under `packages/api/src/` (NOT `.mts` —
+  ESM/CJS interop mismatch), async IIFE (CJS, no top-level await), `DATA_DIR` temp,
+  env pointed at real servers, clean up test users. `shared` changes need
+  `npm run build -w packages/shared` before the api typechecks (api imports the dist).
+- **Cloud test** (`npm test -w packages/cloud`) spawns on port 4987 — kill orphans
+  first if it fails with a libuv `UV_HANDLE_CLOSING` assertion.
 
 ## Verification commands
 
 ```
-npm run typecheck -w packages/api        # backend
+npm run typecheck -w packages/api
 npm run typecheck -w packages/cloud
-npm test -w packages/cloud               # M7 cloud integration (will need rework for ServerMembership)
+( cd apps/mobile && npx tsc --noEmit )
+npm test -w packages/cloud               # 21/21 unified invite flow
 ```
-Live probes this session used throwaway `.ts` under `packages/api/src/` run via
-`node_modules/.bin/tsx` with env pointed at the real servers, cleaning up test users.

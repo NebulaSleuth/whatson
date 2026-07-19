@@ -6,6 +6,19 @@
 
 ---
 
+> ⚠️ **SUPERSEDED (2026-07-05): the M7 guest / invite / viewer-binding flow described
+> below was REPLACED by the unified user model, shipped as v0.1.144.** See
+> [`../user-model/STATUS.md`](../user-model/STATUS.md). What carries forward
+> unchanged: the cloud control plane, per-server TLS/ACME, device-code onboarding,
+> connection racer, the Azure `CLOUD_DATA_DIR=/home/data` fix, and the M0–M8 security/
+> remote-access infra. What's retired: `guestBinding`/`guestMode`/open-closed modes,
+> `boundWoProfileId`, "viewers", and `GuestMembership.binding` (now `ServerMembership`
+> — invites just grant server access; identity is the shared "Who's Watching?"
+> picker). Read this doc for the remote-access *infrastructure*; ignore its M7
+> guest-flow specifics.
+
+---
+
 ## TL;DR — REMOTE ACCESS WORKS END-TO-END (prod-verified on real phone/cellular)
 
 As of 2026-07-05 the whole "watch from anywhere" system works and is shipped:
