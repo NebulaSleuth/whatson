@@ -6,6 +6,9 @@ import type { ContentItem } from '@whatson/shared';
 
 let client: AxiosInstance | null = null;
 
+/** How long a past-due, not-yet-downloaded movie lingers on Coming Soon as "LATE". */
+const LATE_WINDOW_DAYS = 7;
+
 function getClient(): AxiosInstance {
   if (!client) {
     if (!config.radarr.url || !config.radarr.apiKey) {
@@ -132,8 +135,11 @@ export async function getUpcoming(days: number = 30): Promise<ContentItem[]> {
   if (cached) return cached;
 
   const http = getClient();
-  const start = new Date().toISOString();
-  const end = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  // Reach back LATE_WINDOW_DAYS so movies whose release date has passed but
+  // still haven't downloaded stay on Coming Soon, badged "LATE".
+  const now = Date.now();
+  const start = new Date(now - LATE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const end = new Date(now + days * 24 * 60 * 60 * 1000).toISOString();
 
   const { data } = await http.get('/calendar', {
     params: { start, end, unmonitored: false },
@@ -142,7 +148,14 @@ export async function getUpcoming(days: number = 30): Promise<ContentItem[]> {
   const items = toArray(data);
   const unaired = items.filter((movie: any) => !movie.hasFile);
   const result = unaired
-    .map((movie: any) => radarrToContentItem(movie, 'coming_soon'))
+    .map((movie: any) => {
+      const item = radarrToContentItem(movie, 'coming_soon');
+      const relTime = item.availability.availableAt
+        ? new Date(item.availability.availableAt).getTime()
+        : 0;
+      if (relTime && relTime < now) item.isLate = true;
+      return item;
+    })
     .sort(
       (a: ContentItem, b: ContentItem) =>
         new Date(a.availability.availableAt).getTime() -

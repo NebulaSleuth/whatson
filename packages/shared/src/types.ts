@@ -74,6 +74,12 @@ export interface ContentItem {
   groupCount?: number;
   /** Present only for items in a Sonarr/Radarr download queue (status === 'downloading'). */
   download?: DownloadStatus;
+  /**
+   * A `coming_soon` item whose expected air/release date has already passed
+   * but which still has no file. Kept on the Coming Soon shelf for 7 days
+   * past its date and badged "LATE"; clients offer a "Search Now" action.
+   */
+  isLate?: boolean;
 }
 
 export interface ContentSection {

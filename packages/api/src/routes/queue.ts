@@ -79,3 +79,32 @@ queueRouter.post('/queue/cancel-research', async (req, res) => {
     res.status(status).json({ success: false, error: message });
   }
 });
+
+/**
+ * Kick off a Sonarr/Radarr search for a Coming Soon / LATE item that isn't
+ * downloading yet. Body: { source, sourceId } — sourceId is the episode id
+ * (Sonarr) or movie id (Radarr), i.e. the ContentItem.sourceId of an
+ * upcoming item.
+ */
+queueRouter.post('/queue/search', async (req, res) => {
+  try {
+    const { source, sourceId } = req.body || {};
+    const targetId = Number(sourceId);
+    if (!targetId) {
+      res.status(400).json({ success: false, error: 'sourceId is required' });
+      return;
+    }
+    if (source === 'sonarr') await sonarr.searchEpisode(targetId);
+    else if (source === 'radarr') await radarr.searchMovie(targetId);
+    else {
+      res.status(400).json({ success: false, error: `Unsupported source "${source}"` });
+      return;
+    }
+    notifyDataChanged('search-now', 'home', 'tv', 'movies');
+    res.json({ success: true, data: { searching: true } });
+  } catch (error) {
+    const { status, message } = arrError(error);
+    console.error('[Queue] search failed:', message);
+    res.status(status).json({ success: false, error: message });
+  }
+});
