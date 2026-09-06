@@ -138,9 +138,14 @@ export default function LiveTVScreen() {
   const epgIndex = useMemo(() => buildEpgIndex(epgPrograms || []), [epgPrograms]);
 
   const handleTune = useCallback((channel: LiveChannel) => {
+    // liveChannelName lets the player show "Tuning <channel>…" the
+    // instant the screen opens, before /live/stream/:id responds.
     router.push({
       pathname: '/player',
-      params: { liveChannelId: channel.id },
+      params: {
+        liveChannelId: channel.id,
+        liveChannelName: channel.name + (channel.number ? ` · ${channel.number}` : ''),
+      },
     } as any);
   }, []);
 

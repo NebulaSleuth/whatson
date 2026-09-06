@@ -36,6 +36,13 @@ interface AppState {
   isReady: boolean;
   authKey: string | null;
   currentUser: CurrentUser | null;
+  /**
+   * PIN session token minted by POST /whatson-users/:id/select. Sent as
+   * X-Whatson-Session for kind:'whatson' users so PIN-protected profiles
+   * can't be acted-as by merely asserting X-Whatson-User. Null for legacy
+   * Plex users and for Whats On users selected before this was added.
+   */
+  sessionToken: string | null;
   rememberUser: boolean;
   autoSkipIntro: boolean;
   autoSkipCredits: boolean;
@@ -48,6 +55,7 @@ interface AppState {
   setReady: (ready: boolean) => void;
   setAuthKey: (key: string | null) => void;
   setCurrentUser: (user: CurrentUser | null) => void;
+  setSessionToken: (token: string | null) => void;
   setRememberUser: (remember: boolean) => void;
   setAutoSkipIntro: (skip: boolean) => void;
   setAutoSkipCredits: (skip: boolean) => void;
@@ -63,6 +71,7 @@ export const useAppStore = create<AppState>((set) => ({
   isReady: false,
   authKey: null,
   currentUser: null,
+  sessionToken: null,
   rememberUser: false,
   autoSkipIntro: false,
   autoSkipCredits: false,
@@ -75,6 +84,7 @@ export const useAppStore = create<AppState>((set) => ({
   setReady: (isReady) => set({ isReady }),
   setAuthKey: (authKey) => set({ authKey }),
   setCurrentUser: (currentUser) => set({ currentUser }),
+  setSessionToken: (sessionToken) => set({ sessionToken }),
   setRememberUser: (rememberUser) => set({ rememberUser }),
   setAutoSkipIntro: (autoSkipIntro) => set({ autoSkipIntro }),
   setAutoSkipCredits: (autoSkipCredits) => set({ autoSkipCredits }),

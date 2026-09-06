@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
-import { setSavedUser } from '@/lib/storage';
+import { setSavedUser, setStoredSessionToken } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -39,6 +39,11 @@ export default function CreateProfileScreen() {
       const user = await api.createGuestProfile(trimmed, avatarKey);
       const current = { id: user.id, kind: 'whatson' as const, title: user.name, thumb: user.avatar, hasPassword: false };
       setCurrentUser(current);
+      // guest-profile mints no session token (bare, PIN-less user) — drop
+      // any token left over from a previous login so it isn't sent for
+      // the wrong user.
+      useAppStore.getState().setSessionToken(null);
+      await setStoredSessionToken(null);
       if (rememberUser) {
         await setSavedUser({ id: current.id, kind: 'whatson', title: current.title, thumb: current.thumb });
       }

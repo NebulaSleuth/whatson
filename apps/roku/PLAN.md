@@ -12,10 +12,44 @@ This document is the architecture and delivery plan for the Roku client. It assu
 > **download status panel with Cancel Download / Cancel & Re-search**, **Search Now**, and
 > the **LATE** badge.
 >
+> **Shipped in code, compile UNVERIFIED — needs a sideload + on-device pass** (written
+> without a Roku or BrightScript compiler reachable; see the "verify on device" list below):
+> - **"Sign in with Whats On"** (cloud device-code onboarding) on the pair view →
+>   `cloudSignInView`; POST `https://cloud.whatsontv.net/api/device-code`, poll
+>   `/api/device-code/poll`, probe the grant's connection candidates, POST
+>   `<winner>/api/auth/redeem-grant`, persist key + URL like the LAN pair flow. Plus
+>   **connection candidates**: `GET /api/candidates` cached after a LAN pair (registry
+>   `candidates` / `expectedServerId`), and at boot an unreachable `apiUrl` falls back
+>   to probing the cached candidates before showing a "Can't reach your server" pair
+>   state. The pair view now has mobile's action row (New code / Edit server URL /
+>   Sign in with Whats On) and a no-URL "Connect to your server" state.
+> - **Guest self-serve profile**: "New" tile on the Whats On picker → `createProfileView`
+>   (name via KeyboardDialog + avatar grid from `/api/whatson-users/avatars`) → POST
+>   `/api/whatson-users/guest-profile` → auto-select.
+> - **Sports league + team follows**: Settings → Sports is now leagues (left) + teams
+>   (right, `/api/sports/teams?league=`) with an "All games" mode row; PUTs the full
+>   `SportsPrefs` shape. **Sports tab is hidden until a league is followed** (mobile
+>   `_layout.tsx` parity) — the TabButton is detached from the strip and re-inserted.
+> - **Sonarr/Radarr add picker** (`arrPickerView`): Quality Profile / Root Folder /
+>   Monitor (Sonarr: "All Episodes" = `all`, "Future Only" = `future`) with last-used
+>   memory in the registry (`sonarrProfile`, `sonarrFolder`, `sonarrMonitor`,
+>   `radarrProfile`, `radarrFolder`); Sonarr adds send `monitor` + `searchForMissing: true`.
+> - **PIN session token**: `data.sessionToken` from POST `/whatson-users/:id/select` is
+>   kept (registry `whatsonSession`, alongside the remembered user) and sent as
+>   `X-Whatson-Session` by `ApiTask`; cleared on Switch User / Unpair / Re-pair / a
+>   rejected auth key / falling back to the Plex picker.
+>
+> Verify on device: BrightScript compile of `HomeScene.brs` (~8,800 lines) + `ApiTask`;
+> `LayoutGroup.insertChild/removeChild` re-flow of the tab strip and pair/cloud button
+> rows; LabelList bottom-boundary Down bubbling to the Scene (arr picker → Add row);
+> `roUrlTransfer` HTTPS to cloud.whatsontv.net (cert bundle); `Timer.duration` from the
+> cloud's `interval`; MarkupGrid `numRows=1` avatar grid; that `/api/whatson-users/
+> guest-profile` 403s on an owner-role device exactly as it does on mobile.
+>
 > **Where the plan diverged from the build** (kept for the record; the sections below
 > describe the original plan):
 > - §4's multi-scene layout was **not** followed — the shipped channel is a single
->   mega-scene (`components/HomeScene.brs`, ~6,800 lines) holding all tabs, detail,
+>   mega-scene (`components/HomeScene.brs`, ~8,800 lines) holding all tabs, detail,
 >   player, and settings logic, with flat leaf components (ActionButton, ApiTask,
 >   EpisodeListItem, LiveChannelItem, PosterItem, SportsCard, TabButton, ToggleRow,
 >   UserCardItem). No `util/`/`tasks/`/`cards/` dirs; `PosterItem` fills `ContentCard`'s
@@ -33,6 +67,36 @@ This document is the architecture and delivery plan for the Roku client. It assu
 >   LayoutGroups** (`downloadActions`, `searchActions`) because SceneGraph LayoutGroups
 >   reserve space for invisible children — mixing them into the main action row pushed
 >   buttons off-screen.
+> - **Connection candidates are probed sequentially**, not raced. Mobile's
+>   `connectionRace.ts` fires every candidate at once (LAN gets a 250 ms head start, 2 s
+>   timeout each). A BrightScript `Task` runs one `roUrlTransfer` per node, so Roku walks
+>   the list in priority order (lan → ipv6 → wan → relay) with a 4 s timeout per
+>   candidate (`startCandidateProbe` / `probeNextCandidate`). Same right-server check
+>   (`/api/health` `serverId` must match `expectedServerId` when both exist). Worst case
+>   is `4 s × candidates` before "Can't reach your server" instead of ~2.75 s.
+> - **Boot fallback shows a pair-view state, not a status.** Mobile's `resolveConnection`
+>   returns `'unreachable'` and the app shows a can't-reach message. Roku reuses the pair
+>   view (`m.pairMode = "connecting" | "unreachable"`) with Retry / Edit server URL /
+>   Sign in with Whats On, keeping the existing auth key (no re-pair is forced).
+> - **Sonarr/Radarr add picker renders options as three vertical LabelList columns**
+>   (Quality Profile / Root Folder / Monitor) with an Add / Cancel row beneath, instead of
+>   mobile's wrapping chip rows — long root-folder paths don't fit a chip strip on the
+>   D-pad, and LabelList is the established Roku idiom here (tracks picker). Values,
+>   labels, defaults and remembered-prefs behaviour match `ArrAddPicker.tsx`.
+> - **Sports settings save on every toggle** (leagues and teams), whereas mobile stages a
+>   draft behind Save/Cancel. Mobile's two mode chips ("Favorite teams (n)" / "All games")
+>   become an "All games" row at the top of the team list; picking any team implies
+>   "Favorite teams" mode, exactly as mobile switches mode when opening its team picker.
+>   Team logos are not shown (LabelList rows are text only).
+> - **Create profile shows the selected avatar as a text label** ("Selected: …") rather
+>   than a gold border on the chosen tile — `UserCardItem` has no selected state and the
+>   MarkupGrid re-renders cells on scroll. Avatar tiles otherwise reuse `UserCardItem`.
+> - **Switch User clears the PIN session token** (mobile treats a switch as sign-out);
+>   Roku's picker has a Back path mobile lacks, so Back is eaten for a PIN-protected user
+>   whose token was just cleared — they must re-select (and re-enter the PIN).
+> - **Both pair and cloud flows can be live at once**: pressing "Sign in with Whats On"
+>   leaves the LAN pair poll running, so whichever completes first wins (mobile navigates
+>   away from the pair screen and stops its poll).
 >
 > **Known issue:** `scripts/package.js` does not include `fonts/**/*` while
 > `scripts/deploy.js` does — a store package would miss NotoSansSymbols.ttf (Settings

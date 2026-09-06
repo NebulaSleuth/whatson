@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
 import { useAppStore, type PlexUser } from '@/lib/store';
-import { setSavedUser } from '@/lib/storage';
+import { setSavedUser, setStoredSessionToken } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -44,6 +44,10 @@ export default function SelectUserScreen() {
         hasPassword: user.hasPassword,
       };
       setCurrentUser(current);
+      // Plex Home users carry no Whats On session token — drop any left
+      // over from a previous Whats On login.
+      useAppStore.getState().setSessionToken(null);
+      await setStoredSessionToken(null);
       if (rememberUser) await setSavedUser({ id: current.id, kind: 'plex', title: current.title, thumb: current.thumb });
       queryClient.clear();
       router.replace('/(tabs)');
@@ -70,6 +74,8 @@ export default function SelectUserScreen() {
           hasPassword: user.hasPassword,
         };
         setCurrentUser(current);
+        useAppStore.getState().setSessionToken(null);
+        await setStoredSessionToken(null);
         if (rememberUser) await setSavedUser({ id: current.id, kind: 'plex', title: current.title, thumb: current.thumb });
       }
       queryClient.clear();

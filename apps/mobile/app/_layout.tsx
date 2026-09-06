@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
-import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey } from '@/lib/storage';
+import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey, getStoredSessionToken, setStoredSessionToken, getStoredPlexConnectionType } from '@/lib/storage';
 import { resolveConnection, updateCandidates } from '@/lib/connection';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
@@ -40,7 +40,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       if (initDone.current) return;
       initDone.current = true;
-      const [storedUrl, configured, authKey, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw, liveChannels] = await Promise.all([
+      const [storedUrl, configured, authKey, savedUser, rememberUser, skipIntro, skipCredits, disableTouch, showByw, liveChannels, storedSessionToken, storedConnType] = await Promise.all([
         getStoredApiUrl(),
         isAppConfigured(),
         getStoredAuthKey(),
@@ -51,6 +51,8 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         getDisableTouchSurface(),
         getShowBecauseYouWatched(),
         getLiveTvChannels(),
+        getStoredSessionToken(),
+        getStoredPlexConnectionType(),
       ]);
       if (storedUrl) {
         setApiUrl(storedUrl);
@@ -68,12 +70,29 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       useAppStore.getState().setDisableTouchSurface(disableTouch);
       useAppStore.getState().setShowBecauseYouWatched(showByw);
       useAppStore.getState().setLiveTvChannels(liveChannels);
+      // Explicit Settings → Connection pick (Local/Remote) wins over the
+      // boot-time auto-detect below; null = never chosen → auto-detect.
+      if (storedConnType) useAppStore.getState().setPlexConnectionType(storedConnType);
 
       // Apply touch surface setting on Apple TV
       if (isTVOS && disableTouch) {
         try {
           const { TVEventControl } = require('react-native');
           TVEventControl?.disableTVPanGesture?.();
+        } catch {}
+      }
+
+      // Apple TV: route the Siri Remote Menu button to BackHandler.
+      // react-native-tvos only emits the 'menu' TV event (which its
+      // BackHandler.ios.js turns into hardwareBackPress) once the menu
+      // key is enabled — RCTTVRemoteHandler.m `useMenuKey` defaults to
+      // NO, in which case tvOS handles Menu itself and backgrounds the
+      // app from any screen. Enabling it gives tvOS the same back
+      // behaviour as Android TV (useTVBackHandler + player/detail back).
+      if (isTVOS) {
+        try {
+          const { TVEventControl } = require('react-native');
+          TVEventControl?.enableTVMenuKey?.();
         } catch {}
       }
 
@@ -171,6 +190,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
               thumb: savedUser.thumb,
               hasPassword: u.hasPin,
             });
+            // /select mints a fresh session token; fall back to the one
+            // persisted at last login if the backend didn't return one.
+            const token = u.sessionToken || storedSessionToken || null;
+            useAppStore.getState().setSessionToken(token);
+            if (token !== storedSessionToken) await setStoredSessionToken(token);
             userRestored = true;
           } else {
             const userIdNum = Number(savedUser.id);
@@ -189,7 +213,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         } catch {
           // Token expired, user removed, or PIN now required.
           await setSavedUser(null);
+          await setStoredSessionToken(null);
         }
+      }
+      if (!userRestored && storedSessionToken) {
+        // Orphaned token (no user restored) — drop it so it can't leak
+        // onto a different user's requests.
+        await setStoredSessionToken(null);
       }
 
       // Discover which server providers are configured. Determines
@@ -202,7 +232,8 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       } catch {}
 
       // Test Plex connection — determine if client can reach Plex directly (local) or needs remote.
-      if (plexConfigured) {
+      // Skipped when the user picked Local/Remote explicitly in Settings → Connection.
+      if (plexConfigured && !storedConnType) {
         try {
           const conns = await api.getPlexConnections();
           let isLocal = false;

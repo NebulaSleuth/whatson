@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
-import { setSavedUser } from '@/lib/storage';
+import { setSavedUser, setStoredSessionToken } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography } from '@/constants/theme';
 
@@ -33,6 +33,7 @@ export default function SelectWhatsOnUserScreen() {
   const [pin, setPin] = useState('');
   const [selecting, setSelecting] = useState(false);
   const setCurrentUser = useAppStore((s) => s.setCurrentUser);
+  const setSessionToken = useAppStore((s) => s.setSessionToken);
   const rememberUser = useAppStore((s) => s.rememberUser);
   const queryClient = useQueryClient();
 
@@ -58,7 +59,7 @@ export default function SelectWhatsOnUserScreen() {
     [avatarByKey],
   );
 
-  const completeLogin = useCallback(async (user: WhatsOnUserCard) => {
+  const completeLogin = useCallback(async (user: WhatsOnUserCard, sessionToken?: string) => {
     // We carry the avatar key in `thumb` so the rest of the app — which
     // already renders thumb URLs — can still surface the user image
     // anywhere needed. The settings/header components will look it up
@@ -71,6 +72,13 @@ export default function SelectWhatsOnUserScreen() {
       hasPassword: user.hasPin,
     };
     setCurrentUser(current);
+    // PIN session token from /select — sent as X-Whatson-Session on every
+    // request (docs/user-model/02-remaining.md #1). Persist it only when
+    // the user is remembered, so a restore can reuse it; otherwise make
+    // sure no stale token from a previous login lingers on disk.
+    const token = sessionToken || null;
+    setSessionToken(token);
+    await setStoredSessionToken(rememberUser ? token : null);
     if (rememberUser) {
       await setSavedUser({
         id: current.id,
@@ -81,7 +89,7 @@ export default function SelectWhatsOnUserScreen() {
     }
     queryClient.clear();
     router.replace('/(tabs)');
-  }, [setCurrentUser, rememberUser, queryClient]);
+  }, [setCurrentUser, setSessionToken, rememberUser, queryClient]);
 
   const handleSelectUser = useCallback(async (user: WhatsOnUserCard) => {
     if (user.hasPin) {
@@ -91,8 +99,8 @@ export default function SelectWhatsOnUserScreen() {
     }
     setSelecting(true);
     try {
-      await api.selectWhatsOnUser(user.id);
-      await completeLogin(user);
+      const selected = await api.selectWhatsOnUser(user.id);
+      await completeLogin(user, selected.sessionToken);
     } catch (e) {
       Alert.alert('Error', (e as Error).message);
     } finally {
@@ -104,9 +112,9 @@ export default function SelectWhatsOnUserScreen() {
     if (!pinUserId || !pin) return;
     setSelecting(true);
     try {
-      await api.selectWhatsOnUser(pinUserId, pin);
+      const selected = await api.selectWhatsOnUser(pinUserId, pin);
       const user = users?.find((u) => u.id === pinUserId);
-      if (user) await completeLogin(user);
+      if (user) await completeLogin(user, selected.sessionToken);
       setPinUserId(null);
     } catch (e) {
       const msg = (e as Error).message;

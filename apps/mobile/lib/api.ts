@@ -44,13 +44,20 @@ export function resolveArtworkUrl(url: string, opts?: { w?: number; h?: number }
 }
 
 function getUserHeader(): Record<string, string> {
-  const user = useAppStore.getState().currentUser;
+  const { currentUser: user, sessionToken } = useAppStore.getState();
   if (!user) return {};
   // Whats On users send X-Whatson-User; the backend then resolves the
   // mapped per-service identity. Legacy Plex picker keeps X-Plex-User.
-  return user.kind === 'whatson'
-    ? { 'X-Whatson-User': user.id }
-    : { 'X-Plex-User': user.id };
+  // X-Whatson-Session carries the PIN session token minted at /select so
+  // userContext can verify a PIN-protected user actually entered their PIN
+  // (enforced server-side only under WHATSON_STRICT_PIN).
+  if (user.kind === 'whatson') {
+    return {
+      'X-Whatson-User': user.id,
+      ...(sessionToken ? { 'X-Whatson-Session': sessionToken } : {}),
+    };
+  }
+  return { 'X-Plex-User': user.id };
 }
 
 function getPlexConnectionType(): string {
@@ -459,6 +466,8 @@ export const api = {
       plexUserId: number | null;
       jellyfinUserId: string | null;
       embyUserId: string | null;
+      /** PIN session token (AES-GCM, 30d) — send back as X-Whatson-Session. */
+      sessionToken?: string;
     }>(`/whatson-users/${id}/select`, {
       method: 'POST',
       body: JSON.stringify(pin ? { pin } : {}),

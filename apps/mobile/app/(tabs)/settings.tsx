@@ -18,7 +18,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
-import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels, setStoredAuthKey } from '@/lib/storage';
+import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels, setStoredAuthKey, setStoredSessionToken, setStoredPlexConnectionType as savePlexConnectionType } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
 import { isTV, isTVOS } from '@/lib/tv';
 import { useQuery } from '@tanstack/react-query';
@@ -58,7 +58,7 @@ interface ServerConfigData {
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
-  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched, liveTvChannels, setLiveTvChannels } = useAppStore();
+  const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, setSessionToken, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched, liveTvChannels, setLiveTvChannels, plexConnectionType, setPlexConnectionType } = useAppStore();
   const { data: availableChannels = [], isLoading: channelsLoading, error: channelsError, refetch: refetchChannels } = useQuery({
     queryKey: ['live', 'channels'],
     queryFn: () => api.getLiveChannels(),
@@ -174,6 +174,38 @@ export default function SettingsScreen() {
           </TVPressable>
         </View>
 
+        {/* Connection — which Plex connection the backend should use for
+            this device (sent as X-Plex-Connection). Labels match Roku's
+            Settings → Connection toggle (HomeScene.xml connectionToggle /
+            connectionDisplayName). Persisted; overrides boot auto-detect. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Connection</Text>
+          <Text style={styles.sectionDescription}>
+            {plexConnectionType === 'remote' ? 'Remote (via plex.tv relay)' : 'Local (direct LAN)'}
+          </Text>
+          <View style={styles.segmentRow}>
+            {([['local', 'Local (LAN)'], ['remote', 'Remote (plex.tv)']] as const).map(([type, label]) => {
+              const selected = plexConnectionType === type;
+              return (
+                <TVPressable
+                  key={type}
+                  style={[styles.segment, selected && styles.segmentSelected]}
+                  onPress={async () => {
+                    if (selected) return;
+                    setPlexConnectionType(type);
+                    await savePlexConnectionType(type);
+                    // Plex picks a different connection now — drop cached
+                    // home / library / playback data (matches Roku).
+                    queryClient.invalidateQueries();
+                  }}
+                >
+                  <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{label}</Text>
+                </TVPressable>
+              );
+            })}
+          </View>
+        </View>
+
         {/* User */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>User</Text>
@@ -216,7 +248,9 @@ export default function SettingsScreen() {
                 style={[styles.primaryButton, { backgroundColor: colors.surface, marginTop: spacing.md }]}
                 onPress={() => {
                   setCurrentUser(null);
+                  setSessionToken(null);
                   setSavedUser(null);
+                  setStoredSessionToken(null);
                   queryClient.clear();
                   router.replace('/select-user' as any);
                 }}
@@ -634,7 +668,9 @@ function PairingSection() {
           text: 'Re-pair',
           onPress: async () => {
             await setStoredAuthKey(null);
+            await setStoredSessionToken(null);
             setAuthKey(null);
+            useAppStore.getState().setSessionToken(null);
             router.push('/pair-device' as any);
           },
         },
@@ -653,7 +689,9 @@ function PairingSection() {
           style: 'destructive',
           onPress: async () => {
             await setStoredAuthKey(null);
+            await setStoredSessionToken(null);
             setAuthKey(null);
+            useAppStore.getState().setSessionToken(null);
           },
         },
       ],
@@ -845,6 +883,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: { backgroundColor: colors.primary, paddingVertical: spacing.md, borderRadius: 8, alignItems: 'center' },
   primaryButtonText: { fontSize: 16, fontWeight: '600', color: '#000' },
+  segmentRow: { flexDirection: 'row', gap: spacing.sm },
+  segment: {
+    flex: 1, paddingVertical: spacing.md, borderRadius: 8, alignItems: 'center',
+    backgroundColor: colors.surface, borderWidth: 2, borderColor: 'transparent',
+  },
+  segmentSelected: { backgroundColor: colors.primary },
+  segmentText: { ...typography.body, color: colors.text, fontSize: 16, fontWeight: '600' },
+  segmentTextSelected: { color: '#000' },
   refreshText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
   serviceRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

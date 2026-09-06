@@ -5,6 +5,7 @@ const KEYS = {
   CONFIGURED: 'whatson_configured',
   AUTH_KEY: 'whatson_authKey',
   SAVED_USER: 'whatson_savedUser',
+  SESSION_TOKEN: 'whatson_sessionToken',
   REMEMBER_USER: 'whatson_rememberUser',
   AUTO_SKIP_INTRO: 'whatson_autoSkipIntro',
   AUTO_SKIP_CREDITS: 'whatson_autoSkipCredits',
@@ -19,6 +20,7 @@ const KEYS = {
   SUBTITLE_PREFS: 'whatson_subtitlePrefs',
   CANDIDATES: 'whatson_candidates',
   EXPECTED_SERVER_ID: 'whatson_expectedServerId',
+  PLEX_CONNECTION_TYPE: 'whatson_plexConnectionType',
 } as const;
 
 export async function getStoredApiUrl(): Promise<string | null> {
@@ -153,6 +155,30 @@ export async function setSavedUser(user: SavedUser | null): Promise<void> {
   } catch {}
 }
 
+// ── PIN session token (X-Whatson-Session) ──
+//
+// Minted by POST /whatson-users/:id/select and bound to that Whats On user.
+// Persisted alongside the remembered user so an auto-login restore can keep
+// proving the PIN was entered; cleared whenever the user is cleared/switched.
+
+export async function getStoredSessionToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(KEYS.SESSION_TOKEN);
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredSessionToken(token: string | null): Promise<void> {
+  try {
+    if (token) {
+      await SecureStore.setItemAsync(KEYS.SESSION_TOKEN, token);
+    } else {
+      await SecureStore.deleteItemAsync(KEYS.SESSION_TOKEN);
+    }
+  } catch {}
+}
+
 export async function getRememberUser(): Promise<boolean> {
   try {
     return (await SecureStore.getItemAsync(KEYS.REMEMBER_USER)) === 'true';
@@ -166,8 +192,30 @@ export async function setRememberUser(remember: boolean): Promise<void> {
     await SecureStore.setItemAsync(KEYS.REMEMBER_USER, String(remember));
     if (!remember) {
       await SecureStore.deleteItemAsync(KEYS.SAVED_USER);
+      await SecureStore.deleteItemAsync(KEYS.SESSION_TOKEN);
     }
   } catch {}
+}
+
+// ── Plex connection type (Settings → Connection) ──
+//
+// User's explicit Local (LAN) / Remote (plex.tv) pick, mirroring Roku's
+// registry `connectionType`. Sent on every request as X-Plex-Connection.
+// null = never chosen → the app keeps auto-detecting at boot.
+
+export type PlexConnectionType = 'local' | 'remote';
+
+export async function getStoredPlexConnectionType(): Promise<PlexConnectionType | null> {
+  try {
+    const val = await SecureStore.getItemAsync(KEYS.PLEX_CONNECTION_TYPE);
+    return val === 'local' || val === 'remote' ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredPlexConnectionType(type: PlexConnectionType): Promise<void> {
+  try { await SecureStore.setItemAsync(KEYS.PLEX_CONNECTION_TYPE, type); } catch {}
 }
 
 // ── Auto-Skip Preferences ──

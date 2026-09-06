@@ -45,6 +45,29 @@ sub init()
     m.searchActions = m.top.findNode("searchActions")
     m.searchNowButton = m.top.findNode("searchNowButton")
 
+    ' Add to Sonarr / Radarr picker overlay (mirrors mobile ArrAddPicker).
+    m.arrPickerView = m.top.findNode("arrPickerView")
+    m.arrPickerTitle = m.top.findNode("arrPickerTitle")
+    m.arrPickerSubtitle = m.top.findNode("arrPickerSubtitle")
+    m.arrMonitorHeader = m.top.findNode("arrMonitorHeader")
+    m.arrProfileList = m.top.findNode("arrProfileList")
+    m.arrFolderList = m.top.findNode("arrFolderList")
+    m.arrMonitorList = m.top.findNode("arrMonitorList")
+    m.arrPickerError = m.top.findNode("arrPickerError")
+    m.arrPickerActions = m.top.findNode("arrPickerActions")
+    m.arrAddButton = m.top.findNode("arrAddButton")
+    m.arrCancelButton = m.top.findNode("arrCancelButton")
+    m.arrPickerOpen = false
+    m.arrSelProfile = 0
+    m.arrSelFolder = 0
+    m.arrSelMonitor = 0
+    m.arrActiveColumn = 0
+    ' Same option labels/values as ArrAddPicker.tsx's Monitor chips.
+    m.arrMonitorOptions = [
+        { label: "All Episodes", value: "all" },
+        { label: "Future Only", value: "future" }
+    ]
+
     ' Show detail view — seasons + episodes browser, reached via the
     ' Go to Show button on the regular detail view for episode items.
     m.showDetailBackdrop = m.top.findNode("showDetailBackdrop")
@@ -77,19 +100,33 @@ sub init()
     m.tabBar = m.top.findNode("tabBar")
     m.titleLabel = m.top.findNode("title")
     m.clockLabel = m.top.findNode("clockLabel")
-    ' Tab strip — array indexed in XML order (home=0 through settings=6).
-    ' Used by left/right traversal, focus restoration after showView,
-    ' and selected-state propagation.
-    m.tabButtons = [
+    ' Tab strip. m.allTabButtons / m.allTabViews hold every TabButton in
+    ' XML order with the view each one opens. m.tabButtons / m.tabViews
+    ' are the VISIBLE subset (rebuilt by rebuildTabStrip) and are what
+    ' left/right traversal, focus restoration after showView, and
+    ' selected-state propagation index into. The only conditional tab is
+    ' Sports — hidden until at least one league is followed, mirroring
+    ' mobile (tabs)/_layout.tsx. It's physically removed from the
+    ' LayoutGroup (not just invisible) because this firmware's
+    ' LayoutGroup reserves space for invisible children.
+    m.tabSports = m.top.findNode("tabSports")
+    m.allTabButtons = [
         m.top.findNode("tabHome"),
         m.top.findNode("tabTv"),
         m.top.findNode("tabMovies"),
         m.top.findNode("tabLiveTv"),
-        m.top.findNode("tabSports"),
+        m.tabSports,
         m.top.findNode("tabLibrary"),
         m.top.findNode("tabSearch"),
         m.top.findNode("tabSettings")
     ]
+    m.allTabViews = ["home", "tv", "movies", "tunerLive", "sports", "library", "search", "settings"]
+    m.tabButtons = m.allTabButtons
+    m.tabViews = m.allTabViews
+    ' XML ships with the Sports tab present; setSportsTabVisible(false)
+    ' below (after wiring) removes it until /api/sports/prefs says otherwise.
+    m.sportsTabVisible = true
+    m.sportsTabPrefsTask = invalid
     m.tunerLiveView = m.top.findNode("tunerLiveView")
     m.tunerLiveGrid = m.top.findNode("tunerLiveGrid")
     m.tunerLiveStatus = m.top.findNode("tunerLiveStatus")
@@ -199,12 +236,21 @@ sub init()
     m.serverConfigSonarr = m.top.findNode("serverConfigSonarr")
     m.serverConfigRadarr = m.top.findNode("serverConfigRadarr")
 
-    ' Sports settings sub-view.
+    ' Sports settings sub-view (leagues on the left, teams on the right).
     m.sportsSettingsView = m.top.findNode("sportsSettingsView")
     m.sportsSettingsStatus = m.top.findNode("sportsSettingsStatus")
     m.sportsLeagueList = m.top.findNode("sportsLeagueList")
+    m.sportsTeamsHeader = m.top.findNode("sportsTeamsHeader")
+    m.sportsTeamsStatus = m.top.findNode("sportsTeamsStatus")
+    m.sportsTeamList = m.top.findNode("sportsTeamList")
     m.sportsLeaguesAvailable = invalid
-    m.sportsLeaguesFollowed = []
+    ' Followed leagues keyed by league key → { mode: "all"|"teams",
+    ' teamIds: [] }. Mirrors sports-settings.tsx's Draft; serialised to
+    ' the SportsPrefs shape on every change.
+    m.sportsPrefsByKey = {}
+    m.sportsTeamsCache = {}          ' league key → teams array (from /api/sports/teams)
+    m.sportsTeamsLeagueKey = ""      ' league whose teams the right column shows
+    m.sportsTeamsTask = invalid
     m.sportsLeaguesTask = invalid
     m.sportsPrefsSaveTask = invalid
 
@@ -242,14 +288,63 @@ sub init()
     m.whatsOnEnabled = false
     m.initialFetchDone = false     ' have we kicked off /api/home yet?
 
+    ' Create-profile view (guest self-serve, mirrors create-profile.tsx).
+    m.createProfileView = m.top.findNode("createProfileView")
+    m.profileNameButton = m.top.findNode("profileNameButton")
+    m.profileAvatarLabel = m.top.findNode("profileAvatarLabel")
+    m.avatarGrid = m.top.findNode("avatarGrid")
+    m.profileStatus = m.top.findNode("profileStatus")
+    m.createProfileButton = m.top.findNode("createProfileButton")
+    m.profileName = ""
+    m.profileAvatarKey = "default"
+    m.profileNameDialog = invalid
+    m.createProfileTask = invalid
+
     ' Pair view nodes — populated by startPair() / poll handlers.
     m.pairView = m.top.findNode("pairView")
+    m.pairTitle = m.top.findNode("pairTitle")
     m.pairCode = m.top.findNode("pairCode")
     m.pairStatus = m.top.findNode("pairStatus")
     m.pairSubtitle = m.top.findNode("pairSubtitle")
+    m.pairHint = m.top.findNode("pairHint")
+    m.pairCloudHint = m.top.findNode("pairCloudHint")
+    m.pairActions = m.top.findNode("pairActions")
+    m.pairNewCodeButton = m.top.findNode("pairNewCodeButton")
+    m.pairEditUrlButton = m.top.findNode("pairEditUrlButton")
+    m.pairCloudButton = m.top.findNode("pairCloudButton")
+    m.pairRetryButton = m.top.findNode("pairRetryButton")
+    m.pairButtons = [m.pairNewCodeButton, m.pairEditUrlButton, m.pairCloudButton, m.pairRetryButton]
+    ' "pair" (LAN code flow) | "nourl" (no server address yet) |
+    ' "connecting" (boot fallback probing cached candidates) |
+    ' "unreachable" (nothing answered — offer retry / URL / cloud).
+    m.pairMode = "pair"
     m.pairPollTimer = invalid
     m.pairStartTask = invalid
     m.pairPollTask = invalid
+    m.candidatesTask = invalid
+    m.bootCandidatesTried = false
+
+    ' Cloud sign-in view ("Sign in with Whats On", mirrors cloud-signin.tsx).
+    m.cloudSignInView = m.top.findNode("cloudSignInView")
+    m.cloudSubtitle = m.top.findNode("cloudSubtitle")
+    m.cloudCode = m.top.findNode("cloudCode")
+    m.cloudStatus = m.top.findNode("cloudStatus")
+    m.cloudActions = m.top.findNode("cloudActions")
+    m.cloudRetryButton = m.top.findNode("cloudRetryButton")
+    m.cloudBackButton = m.top.findNode("cloudBackButton")
+    m.cloudButtons = [m.cloudRetryButton, m.cloudBackButton]
+    m.cloudDeviceCode = ""
+    m.cloudGrant = ""
+    m.cloudStartTask = invalid
+    m.cloudPollTask = invalid
+    m.cloudPollTimer = invalid
+    m.redeemTask = invalid
+    ' Sequential candidate probe state (see startCandidateProbe).
+    m.probeQueue = []
+    m.probeIndex = -1
+    m.probeExpectedServerId = ""
+    m.probePurpose = ""
+    m.probeTask = invalid
 
     ' Library state: per-type cache so toggling between TV Shows and
     ' Movies after both have loaded is instant. Default type matches
@@ -411,10 +506,13 @@ sub init()
     apiUrl = normalizeApiUrl(apiUrl)
     print "[HomeScene] apiUrl resolved to: "; apiUrl
 
-    if apiUrl = invalid or apiUrl = ""
-        m.status.text = "API URL not configured. Set the 'apiUrl' value in registry section 'whatson' (see apps/roku/README.md)."
-        return
-    end if
+    ' No server address at all → after wiring below we land on the pair
+    ' view in "nourl" mode (mobile: "Connect to your server" with Set
+    ' server URL + Sign in with Whats On). We used to bail out here with
+    ' a registry hint on the home view, which left first-run users with
+    ' no way forward on the device itself.
+    noApiUrl = (apiUrl = invalid or apiUrl = "")
+    if noApiUrl then apiUrl = ""
 
     m.apiUrl = apiUrl
 
@@ -454,7 +552,15 @@ sub init()
     m.userId = userId
     m.userKind = userKind
     m.rememberLogin = rememberLogin
-    print "[HomeScene] rememberLogin="; rememberLogin; " userKind="; userKind; " userId="; userId
+    ' PIN session token (X-Whatson-Session) minted by /whatson-users/:id/
+    ' select. Persisted alongside the remembered Whats On user; only
+    ' meaningful when that user was restored, so it's gated the same way.
+    m.sessionToken = ""
+    if rememberLogin and userKind = "whatson" and userId <> "" and section2 <> invalid and section2.Exists("whatsonSession")
+        m.sessionToken = section2.Read("whatsonSession")
+        if m.sessionToken = invalid then m.sessionToken = ""
+    end if
+    print "[HomeScene] rememberLogin="; rememberLogin; " userKind="; userKind; " userId="; userId; " sessionToken.len="; Len(m.sessionToken)
 
     ' Connection type ("local" | "remote") — sent as X-Plex-Connection
     ' on every API request so the backend picks the right Plex link
@@ -574,16 +680,16 @@ sub init()
     ]
     ' Each custom TabButton fires `buttonSelected` on OK press. Wire a
     ' single shared handler that walks m.tabButtons to find the source.
-    for each btn in m.tabButtons
+    ' Observe ALL buttons once here (the Sports button is observed even
+    ' while detached from the strip) — rebuildTabStrip must never
+    ' re-observe or the handler would fire twice per press.
+    for each btn in m.allTabButtons
         btn.observeField("buttonSelected", "onTabSelected")
     end for
-    ' LayoutGroup doesn't auto-traverse focusable siblings the way
-    ' ButtonGroup did — wire each TabButton's nextFocusLeft / Right
-    ' to its neighbour so D-pad left/right walks the strip.
-    for i = 0 to m.tabButtons.Count() - 1
-        if i > 0 then m.tabButtons[i].nextFocusLeft = m.tabButtons[i - 1]
-        if i < m.tabButtons.Count() - 1 then m.tabButtons[i].nextFocusRight = m.tabButtons[i + 1]
-    end for
+    ' Sports tab starts hidden (mobile parity — shown once a league is
+    ' followed). This also wires nextFocusLeft / Right across the
+    ' visible strip via rebuildTabStrip.
+    setSportsTabVisible(false)
     ' Home is the default landing view (homeView.visible=true in XML)
     ' but boot never calls showView("home"), so paint Home as selected.
     updateTabSelection("home")
@@ -659,6 +765,28 @@ sub init()
     m.configureSportsButton.observeField("buttonSelected", "onConfigureSportsPressed")
     m.repairButton.observeField("buttonSelected", "onRepairPressed")
     m.sportsLeagueList.observeField("itemSelected", "onSportsLeagueToggled")
+    m.sportsLeagueList.observeField("itemFocused", "onSportsLeagueFocused")
+    m.sportsTeamList.observeField("itemSelected", "onSportsTeamToggled")
+
+    ' Pair view action row + cloud sign-in view.
+    m.pairNewCodeButton.observeField("buttonSelected", "onPairNewCodePressed")
+    m.pairEditUrlButton.observeField("buttonSelected", "onPairEditUrlPressed")
+    m.pairCloudButton.observeField("buttonSelected", "onPairCloudPressed")
+    m.pairRetryButton.observeField("buttonSelected", "onPairRetryPressed")
+    m.cloudRetryButton.observeField("buttonSelected", "onCloudRetryPressed")
+    m.cloudBackButton.observeField("buttonSelected", "onCloudBackPressed")
+
+    ' Create-profile view.
+    m.profileNameButton.observeField("buttonSelected", "onProfileNamePressed")
+    m.avatarGrid.observeField("itemSelected", "onAvatarPicked")
+    m.createProfileButton.observeField("actionSelected", "onCreateProfilePressed")
+
+    ' Add to Sonarr / Radarr picker.
+    m.arrProfileList.observeField("itemSelected", "onArrProfileSelected")
+    m.arrFolderList.observeField("itemSelected", "onArrFolderSelected")
+    m.arrMonitorList.observeField("itemSelected", "onArrMonitorSelected")
+    m.arrAddButton.observeField("actionSelected", "onArrAddPressed")
+    m.arrCancelButton.observeField("actionSelected", "closeArrPicker")
 
     ' Settings is a long scrolling list — wire nextFocusUp/Down between
     ' every focusable row top-to-bottom, plus observe focus to scroll the
@@ -717,6 +845,15 @@ sub init()
     ' admin-status is an open endpoint, so we can hit it before the
     ' rest of the API is unlocked. The result tells us whether to
     ' enter the pair flow or carry on as before.
+    if noApiUrl
+        ' Nothing to probe yet — the user has to give us a server address
+        ' or sign in with Whats On. Mirrors mobile's "Connect to your
+        ' server" state on pair-device.tsx.
+        m.pairMode = "nourl"
+        renderPairViewChrome()
+        showView("pair")
+        return
+    end if
     checkAdminStatus()
 end sub
 
@@ -728,6 +865,10 @@ sub checkAdminStatus()
     task.observeField("response", "onAdminStatusResponse")
     task.method = "GET"
     task.url = m.apiUrl + "/api/auth/admin-status"
+    ' Fail fast: this is the first call of boot, and an unreachable host
+    ' should fall through to the cached-candidate probe in a few seconds
+    ' rather than the 60s default (mobile uses 8s on its pair screen).
+    task.timeoutMs = 8000
     ' No setApiTaskAuth — it's an open endpoint and we don't have the
     ' key resolved yet on first run anyway.
     task.control = "RUN"
@@ -738,6 +879,31 @@ sub onAdminStatusResponse()
     if m.adminStatusTask = invalid then return
     resp = m.adminStatusTask.response
     m.adminStatusTask = invalid
+
+    ' Transport-level failure (timeout / connection refused — ApiTask
+    ' sets no `status` for those, unlike an HTTP 4xx/5xx which we keep
+    ' treating as "backend answered, carry on"). Mirrors mobile's
+    ' connection.ts: race the cached candidates before giving up, so a
+    ' Roku that moved networks (or a server whose LAN IP changed) finds
+    ' the server via its other addresses instead of landing on the pair
+    ' screen.
+    unreachable = (resp = invalid or (resp.success <> true and resp.status = invalid))
+    if unreachable
+        print "[HomeScene] admin-status unreachable at "; m.apiUrl
+        if m.bootCandidatesTried <> true
+            m.bootCandidatesTried = true
+            cands = loadCachedCandidates()
+            if cands.Count() > 0
+                m.pairMode = "connecting"
+                renderPairViewChrome()
+                showView("pair")
+                startCandidateProbe(cands, readRegistryValue("expectedServerId"), "boot")
+                return
+            end if
+        end if
+        showUnreachableState()
+        return
+    end if
 
     hasAdminPassword = false
     if resp <> invalid and resp.success = true and resp.data <> invalid
@@ -805,6 +971,8 @@ sub onVerifyAuthKeyResponse()
             section.Delete("authKey")
             section.Flush()
         end if
+        ' The PIN session belongs to the old device identity — drop it.
+        clearSessionToken()
         showView("pair")
         startPair()
         return
@@ -871,6 +1039,7 @@ sub onWhatsOnConfigResponse()
     ' back to legacy plex flow.
     if m.userKind = "whatson"
         m.userKind = "plex"
+        clearSessionToken()
         plexId = ""
         section = CreateObject("roRegistrySection", "whatson")
         if section <> invalid and section.Exists("plexUserId")
@@ -897,6 +1066,9 @@ sub startInitialFetches()
     if m.initialFetchDone then return
     m.initialFetchDone = true
     fetchHomeShelves()
+    ' Decides whether the Sports tab is shown (mobile _layout.tsx hides
+    ' it until a league is followed).
+    fetchSportsTabPrefs()
 end sub
 
 sub fetchHomeShelves()
@@ -1192,25 +1364,10 @@ sub onTabSelected()
     ' Reset the source's buttonSelected so the next OK press notifies
     ' again (alwaysNotify only fires on transitions).
     m.tabButtons[idx].buttonSelected = false
-    ' Indices match XML order: 0=Home, 1=TV, 2=Movies, 3=LiveTV,
-    ' 4=Sports, 5=Library, 6=Search, 7=Settings.
-    if idx = 0
-        showView("home")
-    else if idx = 1
-        showView("tv")
-    else if idx = 2
-        showView("movies")
-    else if idx = 3
-        showView("tunerLive")
-    else if idx = 4
-        showView("sports")
-    else if idx = 5
-        showView("library")
-    else if idx = 6
-        showView("search")
-    else if idx = 7
-        showView("settings")
-    end if
+    ' m.tabViews is parallel to m.tabButtons (visible strip only), so
+    ' the index is stable whether or not the Sports tab is present.
+    viewName = m.tabViews[idx]
+    if viewName <> invalid and viewName <> "" then showView(viewName)
 end sub
 
 ' LayoutGroup doesn't auto-delegate focus to a focusable child the
@@ -1265,22 +1422,93 @@ end sub
 ' Mark the active tab on the strip so its TabButton paints the gold
 ' "selected" treatment even when focus has moved to the content area.
 sub updateTabSelection(viewName as string)
-    ' Local var only — the body below was written for the OLD tab
-    ' index space and is updated to include LiveTV at index 3.
+    ' Look the view up in the VISIBLE strip (m.tabViews) — indices shift
+    ' when the Sports tab is hidden, so no hardcoded positions here.
     idx = -1
-    if viewName = "home" then idx = 0
-    if viewName = "tv" then idx = 1
-    if viewName = "movies" then idx = 2
-    if viewName = "tunerLive" then idx = 3
-    if viewName = "sports" then idx = 4
-    if viewName = "library" then idx = 5
-    if viewName = "search" then idx = 6
-    if viewName = "settings" then idx = 7
+    for i = 0 to m.tabViews.Count() - 1
+        if m.tabViews[i] = viewName then idx = i
+    end for
     if idx < 0 then return
     m.activeTabIndex = idx
     for i = 0 to m.tabButtons.Count() - 1
         m.tabButtons[i].selected = (i = idx)
     end for
+end sub
+
+' ─── Tab strip visibility (Sports tab is conditional) ─────────────
+
+' Rebuild the visible-strip arrays + the left/right nextFocus chain
+' after a tab was added/removed. Observers are NOT touched here (see
+' init — they're wired once on m.allTabButtons).
+sub rebuildTabStrip()
+    m.tabButtons = []
+    m.tabViews = []
+    for i = 0 to m.allTabButtons.Count() - 1
+        if m.allTabViews[i] <> "sports" or m.sportsTabVisible = true
+            m.tabButtons.push(m.allTabButtons[i])
+            m.tabViews.push(m.allTabViews[i])
+        end if
+    end for
+    ' LayoutGroup doesn't auto-traverse focusable siblings the way
+    ' ButtonGroup did — wire each TabButton's nextFocusLeft / Right
+    ' to its neighbour so D-pad left/right walks the strip.
+    for i = 0 to m.tabButtons.Count() - 1
+        if i > 0
+            m.tabButtons[i].nextFocusLeft = m.tabButtons[i - 1]
+        else
+            m.tabButtons[i].nextFocusLeft = invalid
+        end if
+        if i < m.tabButtons.Count() - 1
+            m.tabButtons[i].nextFocusRight = m.tabButtons[i + 1]
+        else
+            m.tabButtons[i].nextFocusRight = invalid
+        end if
+    end for
+    if m.currentView <> invalid then updateTabSelection(m.currentView)
+end sub
+
+' Show/hide the Sports tab. Mirrors mobile (tabs)/_layout.tsx: hidden
+' until /api/sports/prefs reports at least one followed league; Sports
+' Settings stays reachable from the Settings tab either way. The button
+' is detached from the LayoutGroup rather than made invisible because
+' LayoutGroup reserves space for invisible children (see PLAN.md).
+sub setSportsTabVisible(show as boolean)
+    if m.sportsTabVisible = show then return
+    m.sportsTabVisible = show
+    if show
+        ' XML order puts Sports right after Live TV (index 4).
+        m.tabBar.insertChild(m.tabSports, 4)
+    else
+        m.tabBar.removeChild(m.tabSports)
+    end if
+    rebuildTabStrip()
+    print "[HomeScene] sports tab visible="; show
+    ' If the user was sitting on the Sports tab when the last league was
+    ' unfollowed, fall back to Home so the selected tab still exists.
+    if not show and m.currentView = "sports" then goHome()
+end sub
+
+sub fetchSportsTabPrefs()
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onSportsTabPrefsResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/sports/prefs"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.sportsTabPrefsTask = task
+end sub
+
+sub onSportsTabPrefsResponse()
+    if m.sportsTabPrefsTask = invalid then return
+    resp = m.sportsTabPrefsTask.response
+    m.sportsTabPrefsTask = invalid
+    ' Any failure (including older backends without /sports/*) hides the
+    ' tab — same as mobile's `retry: false` query defaulting to hidden.
+    show = false
+    if resp <> invalid and resp.success = true and resp.data <> invalid and resp.data.leagues <> invalid
+        show = (resp.data.leagues.Count() > 0)
+    end if
+    setSportsTabVisible(show)
 end sub
 
 sub onLibraryItemSelected()
@@ -1909,7 +2137,7 @@ sub buildSportsTabRows()
 
     if nowCount = 0 and laterCount = 0 and completedCount = 0
         if noPrefs
-            m.sportsStatus.text = "No teams or sports followed yet. Open Settings → Sports on the mobile app to pick leagues and teams."
+            m.sportsStatus.text = "No teams or sports followed yet. Open Settings → Sports to pick leagues and teams."
         else
             m.sportsStatus.text = "Nothing on right now. No games are live, starting soon, or recently finished for your followed leagues."
         end if
@@ -2888,13 +3116,14 @@ end function
 
 ' ─── Add to Sonarr / Radarr ───────────────────────────────────────
 '
-' v1 quick-add: fetches profiles + folders, picks the first of each,
-' POSTs the add. No picker UI yet — that comes in a follow-up phase
-' alongside the Search Discover & Track flow. Mobile parity for the
-' picker requires a sheet with Quality Profile / Root Folder / Monitor
-' chips; for now we trust the server's first-defined entries. If the
-' user has multiple profiles/folders and wants to choose, they can do
-' so on the mobile app and the Roku will follow.
+' Mirrors apps/mobile/components/ArrAddPicker.tsx: fetch profiles +
+' root folders, open a picker (Quality Profile / Root Folder / Monitor
+' for Sonarr) preselected from the last-used values in the registry
+' (sonarrProfile / sonarrFolder / sonarrMonitor / radarrProfile /
+' radarrFolder — same keys mobile's lib/storage.ts uses, minus its
+' "whatson_" prefix since our registry section is already "whatson"),
+' then POST /api/<arr>/add. Sonarr adds carry `monitor` +
+' `searchForMissing: true` exactly like mobile.
 
 sub onAddToSonarrPressed()
     if m.selectedItem = invalid then return
@@ -2971,12 +3200,165 @@ sub onAddArrConfigComplete()
         return
     end if
 
-    submitAddArr(m.addArrProfiles[0], m.addArrFolders[0])
+    openArrPicker()
 end sub
 
-sub submitAddArr(profile as object, folder as object)
+' ─── Arr picker overlay ───
+
+sub openArrPicker()
+    isSonarr = (m.addArrType = "sonarr")
+    arrName = capitalizeFirst(m.addArrType)
+    m.arrPickerTitle.text = "Add to " + arrName
+    m.arrAddButton.text = "Add to " + arrName
+    m.arrPickerError.text = ""
+
+    itemTitle = readNodeStr(m.selectedItem, "itemTitle")
+    if itemTitle = "" then itemTitle = readNodeStr(m.selectedItem, "title")
+    m.arrPickerSubtitle.text = itemTitle
+
+    ' Preselect last-used values (mobile getSonarrPrefs / getRadarrPrefs):
+    ' remembered profile id + folder path if they still exist, else the
+    ' first of each; Sonarr monitor mode defaults to "all".
+    savedProfile = readRegistryValue(m.addArrType + "Profile")
+    savedFolder = readRegistryValue(m.addArrType + "Folder")
+    m.arrSelProfile = 0
+    for i = 0 to m.addArrProfiles.Count() - 1
+        if savedProfile <> "" and stringField(m.addArrProfiles[i], "id") = savedProfile then m.arrSelProfile = i
+    end for
+    m.arrSelFolder = 0
+    for i = 0 to m.addArrFolders.Count() - 1
+        if savedFolder <> "" and stringField(m.addArrFolders[i], "path") = savedFolder then m.arrSelFolder = i
+    end for
+    m.arrSelMonitor = 0
+    if isSonarr
+        savedMonitor = readRegistryValue("sonarrMonitor")
+        for i = 0 to m.arrMonitorOptions.Count() - 1
+            if savedMonitor <> "" and m.arrMonitorOptions[i].value = savedMonitor then m.arrSelMonitor = i
+        end for
+    end if
+
+    profileLabels = []
+    for each p in m.addArrProfiles
+        profileLabels.push(stringField(p, "name"))
+    end for
+    folderLabels = []
+    for each f in m.addArrFolders
+        folderLabels.push(stringField(f, "path"))
+    end for
+    monitorLabels = []
+    for each o in m.arrMonitorOptions
+        monitorLabels.push(o.label)
+    end for
+    m.arrProfileList.content = buildArrColumnContent(profileLabels, m.arrSelProfile)
+    m.arrFolderList.content = buildArrColumnContent(folderLabels, m.arrSelFolder)
+    m.arrMonitorList.content = buildArrColumnContent(monitorLabels, m.arrSelMonitor)
+    ' Radarr has no monitor choice (mobile hides the section too).
+    m.arrMonitorList.visible = isSonarr
+    m.arrMonitorHeader.visible = isSonarr
+
+    m.detailAddStatus.visible = false
+    m.arrPickerOpen = true
+    m.arrActiveColumn = 0
+    m.arrPickerView.visible = true
+    m.arrProfileList.setFocus(true)
+end sub
+
+' Columns the D-pad can walk between (Monitor only for Sonarr).
+function arrPickerColumns() as object
+    cols = [m.arrProfileList, m.arrFolderList]
+    if m.addArrType = "sonarr" then cols.push(m.arrMonitorList)
+    return cols
+end function
+
+function buildArrColumnContent(labels as object, selIdx as integer) as object
+    rootNode = CreateObject("roSGNode", "ContentNode")
+    for i = 0 to labels.Count() - 1
+        node = rootNode.createChild("ContentNode")
+        prefix = "[ ]  "
+        if i = selIdx then prefix = "[X]  "
+        node.title = prefix + labels[i]
+    end for
+    return rootNode
+end function
+
+' Repaint the selection marker in place so the list keeps its focus /
+' scroll position (re-assigning content would jump back to row 0).
+sub repaintArrColumn(list as object, selIdx as integer)
+    rows = list.content
+    if rows = invalid then return
+    for i = 0 to rows.getChildCount() - 1
+        node = rows.getChild(i)
+        title = node.title
+        if title = invalid then title = ""
+        if Len(title) >= 5 then title = Mid(title, 6)
+        prefix = "[ ]  "
+        if i = selIdx then prefix = "[X]  "
+        node.title = prefix + title
+    end for
+end sub
+
+sub onArrProfileSelected()
+    if m.arrPickerOpen <> true then return
+    idx = m.arrProfileList.itemSelected
+    if idx = invalid or idx < 0 or idx >= m.addArrProfiles.Count() then return
+    m.arrSelProfile = idx
+    repaintArrColumn(m.arrProfileList, idx)
+end sub
+
+sub onArrFolderSelected()
+    if m.arrPickerOpen <> true then return
+    idx = m.arrFolderList.itemSelected
+    if idx = invalid or idx < 0 or idx >= m.addArrFolders.Count() then return
+    m.arrSelFolder = idx
+    repaintArrColumn(m.arrFolderList, idx)
+end sub
+
+sub onArrMonitorSelected()
+    if m.arrPickerOpen <> true then return
+    idx = m.arrMonitorList.itemSelected
+    if idx = invalid or idx < 0 or idx >= m.arrMonitorOptions.Count() then return
+    m.arrSelMonitor = idx
+    repaintArrColumn(m.arrMonitorList, idx)
+end sub
+
+sub onArrAddPressed()
+    if m.arrPickerOpen <> true then return
+    if m.addArrProfiles = invalid or m.arrSelProfile >= m.addArrProfiles.Count() then return
+    if m.addArrFolders = invalid or m.arrSelFolder >= m.addArrFolders.Count() then return
+    monitor = ""
+    if m.addArrType = "sonarr" then monitor = m.arrMonitorOptions[m.arrSelMonitor].value
+    m.arrPickerError.text = ""
+    m.arrAddButton.text = "Adding..."
+    submitAddArr(m.addArrProfiles[m.arrSelProfile], m.addArrFolders[m.arrSelFolder], monitor)
+end sub
+
+sub closeArrPicker()
+    m.arrPickerOpen = false
+    m.arrPickerView.visible = false
+    ' Return focus to the Add button that opened the picker.
+    if m.addArrType = "radarr" and m.addRadarrButton.visible
+        m.addRadarrButton.setFocus(true)
+    else if m.addSonarrButton.visible
+        m.addSonarrButton.setFocus(true)
+    else
+        focusFirstAction(m.activeDetailActions)
+    end if
+end sub
+
+' Persist the chosen options as the next-time defaults (mobile's
+' setSonarrPrefs / setRadarrPrefs — written only after a successful add).
+sub rememberArrPrefs(profile as object, folder as object, monitor as string)
+    writeRegistryValue(m.addArrType + "Profile", stringField(profile, "id"))
+    writeRegistryValue(m.addArrType + "Folder", stringField(folder, "path"))
+    if m.addArrType = "sonarr" and monitor <> "" then writeRegistryValue("sonarrMonitor", monitor)
+end sub
+
+sub submitAddArr(profile as object, folder as object, monitor as string)
     item = m.selectedItem
     if item = invalid then return
+    m.arrSubmitProfile = profile
+    m.arrSubmitFolder = folder
+    m.arrSubmitMonitor = monitor
 
     ' Try the custom itemTitle first, fall back to the standard title
     ' field — both are populated by attachDiscoverFields/attachTrackedFields,
@@ -3005,6 +3387,13 @@ sub submitAddArr(profile as object, folder as object)
         tmdbNum = Int(Val(tmdbStr))
         if tmdbNum > 0 then body["tmdbId"] = tmdbNum
     end if
+    ' Sonarr only — mobile's addToSonarr sends monitor ("all" | "future")
+    ' + searchForMissing: true; addToRadarr sends neither.
+    if m.addArrType = "sonarr"
+        if monitor = "" then monitor = "all"
+        body["monitor"] = monitor
+        body["searchForMissing"] = true
+    end if
 
     print "[HomeScene] Add body: "; FormatJson(body)
     m.detailAddStatus.text = "Adding to " + capitalizeFirst(m.addArrType) + "…"
@@ -3022,15 +3411,28 @@ end sub
 
 sub onAddArrSubmitResponse()
     response = m.addArrSubmitTask.response
+    arrName = capitalizeFirst(m.addArrType)
     if response = invalid or response.success <> true
         msg = "Add failed"
         if response <> invalid and response.error <> invalid then msg = response.error
+        if m.arrPickerOpen = true
+            ' Keep the picker up so the user can adjust and retry.
+            m.arrPickerError.text = msg
+            m.arrAddButton.text = "Add to " + arrName
+        end if
         m.detailAddStatus.text = msg
         m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
         return
     end if
-    m.detailAddStatus.text = "Added to " + capitalizeFirst(m.addArrType) + "."
+    if m.arrSubmitProfile <> invalid and m.arrSubmitFolder <> invalid
+        rememberArrPrefs(m.arrSubmitProfile, m.arrSubmitFolder, m.arrSubmitMonitor)
+    end if
+    m.arrAddButton.text = "Add to " + arrName
+    if m.arrPickerOpen = true then closeArrPicker()
+    m.detailAddStatus.text = "Added to " + arrName + "."
     m.detailAddStatus.color = "0x77ff77ff"
+    m.detailAddStatus.visible = true
 
     ' New download will appear on the home / TV / movies "Downloading"
     ' shelves on next visit — invalidate so the user sees it.
@@ -3267,16 +3669,124 @@ function onKeyEvent(key as string, press as boolean) as boolean
         m.lastPlayerKeyAt = Uptime(0)
     end if
 
-    ' Pair view shortcuts: OK requests a fresh code, * opens the API URL
-    ' editor (in case the user typed the wrong URL). Both useful when
-    ' the admin is fumbling through /setup on another device.
+    ' Pair view: the action row (New code / Edit server URL / Sign in
+    ' with Whats On / Retry) is a LayoutGroup of TabButtons — step
+    ' left/right manually. OK reaching the Scene (nothing focused) still
+    ' refreshes the code; * still opens the URL editor.
     if m.currentView = "pair"
+        if key = "left" or key = "right"
+            stepActionRow(m.pairButtons, key)
+            return true
+        end if
+        if key = "up" or key = "down"
+            focusFirstAction(m.pairButtons)
+            return true
+        end if
         if key = "OK"
-            startPair()
+            if m.pairMode = "pair" then startPair()
             return true
         end if
         if key = "options"
             onEditApiUrlPressed()
+            return true
+        end if
+    end if
+
+    ' Cloud sign-in view: Try again / Back row.
+    if m.currentView = "cloudSignIn"
+        if key = "left" or key = "right"
+            stepActionRow(m.cloudButtons, key)
+            return true
+        end if
+        if key = "up" or key = "down"
+            focusFirstAction(m.cloudButtons)
+            return true
+        end if
+    end if
+
+    ' Create-profile view: name button → avatar grid → Start watching.
+    ' Grid-interior moves are consumed by the MarkupGrid; we only see
+    ' the boundary presses.
+    if m.currentView = "createProfile" and (key = "up" or key = "down")
+        gridHasItems = (m.avatarGrid.visible and m.avatarGrid.content <> invalid and m.avatarGrid.content.getChildCount() > 0)
+        if key = "down"
+            if m.profileNameButton.isInFocusChain()
+                if gridHasItems then m.avatarGrid.setFocus(true) else m.createProfileButton.setFocus(true)
+            else if m.avatarGrid.isInFocusChain()
+                m.createProfileButton.setFocus(true)
+            end if
+            return true
+        end if
+        if key = "up"
+            if m.createProfileButton.isInFocusChain()
+                if gridHasItems then m.avatarGrid.setFocus(true) else m.profileNameButton.setFocus(true)
+            else if m.avatarGrid.isInFocusChain()
+                m.profileNameButton.setFocus(true)
+            end if
+            return true
+        end if
+    end if
+
+    ' Sports settings: Right from the league list → team list (when a
+    ' followed team-sport league is focused); Left from teams → leagues.
+    if m.currentView = "sportsSettings" and (key = "left" or key = "right")
+        if key = "right" and m.sportsLeagueList.isInFocusChain() and m.sportsTeamList.visible
+            m.sportsTeamList.setFocus(true)
+            return true
+        end if
+        if key = "left" and m.sportsTeamList.isInFocusChain()
+            m.sportsLeagueList.setFocus(true)
+            return true
+        end if
+        return true
+    end if
+
+    ' Add to Sonarr/Radarr picker overlay — three LabelList columns +
+    ' an Add/Cancel row. LabelList consumes interior Up/Down; we only
+    ' see Left/Right and the top/bottom boundary presses.
+    if m.arrPickerOpen = true and m.currentView = "detail"
+        if key = "back"
+            closeArrPicker()
+            return true
+        end if
+        cols = arrPickerColumns()
+        if key = "left" or key = "right"
+            if m.arrPickerActions.isInFocusChain()
+                if key = "right" then m.arrCancelButton.setFocus(true) else m.arrAddButton.setFocus(true)
+                return true
+            end if
+            currentIdx = -1
+            for i = 0 to cols.Count() - 1
+                if cols[i].isInFocusChain() then currentIdx = i
+            end for
+            if currentIdx >= 0
+                delta = -1
+                if key = "right" then delta = 1
+                nextIdx = currentIdx + delta
+                if nextIdx >= 0 and nextIdx < cols.Count()
+                    m.arrActiveColumn = nextIdx
+                    cols[nextIdx].setFocus(true)
+                end if
+            end if
+            return true
+        end if
+        if key = "down"
+            ' Bottom of a column → action row.
+            if not m.arrPickerActions.isInFocusChain()
+                for i = 0 to cols.Count() - 1
+                    if cols[i].isInFocusChain() then m.arrActiveColumn = i
+                end for
+                m.arrAddButton.setFocus(true)
+            end if
+            return true
+        end if
+        if key = "up"
+            ' Action row → back into the column we came from.
+            if m.arrPickerActions.isInFocusChain()
+                col = m.arrActiveColumn
+                if col = invalid or col < 0 or col >= cols.Count() then col = 0
+                cols[col].setFocus(true)
+            end if
             return true
         end if
     end if
@@ -3804,8 +4314,23 @@ function onKeyEvent(key as string, press as boolean) as boolean
             ' Boot path (no user yet): Back here would leave the user
             ' stranded — eat it. They MUST pick someone.
             if not m.initialFetchDone then return true
+            ' Switch User cleared the PIN session token. A PIN-protected
+            ' user can't silently resume without re-entering the PIN
+            ' (the backend 401s under WHATSON_STRICT_PIN), so keep them
+            ' on the picker.
+            if m.sessionToken = "" and currentUserHasPin() then return true
             ' Re-pick path (Settings → Switch User): cancel back to settings.
             showView("settings")
+            return true
+        end if
+        if m.currentView = "createProfile"
+            ' Back to the picker (which offered the New tile).
+            showView("userPicker")
+            if m.usersData <> invalid then renderUserPickerList() else fetchUsers()
+            return true
+        end if
+        if m.currentView = "cloudSignIn"
+            onCloudBackPressed()
             return true
         end if
         if m.currentView = "liveTv"
@@ -3876,7 +4401,9 @@ sub showView(name as string)
         applyLibraryPending()
     end if
     m.userPickerView.visible = (name = "userPicker")
+    m.createProfileView.visible = (name = "createProfile")
     m.pairView.visible = (name = "pair")
+    m.cloudSignInView.visible = (name = "cloudSignIn")
     m.liveTvView.visible = (name = "liveTv")
     m.sportsSettingsView.visible = (name = "sportsSettings")
     m.tunerLiveView.visible = (name = "tunerLive")
@@ -3946,6 +4473,9 @@ end sub
 sub refetchHome()
     print "[HomeScene] refetching home shelves"
     fetchHomeShelves()
+    ' Sports follows may have changed from another device — re-evaluate
+    ' the Sports tab (mobile re-queries prefs with a 60s staleTime).
+    fetchSportsTabPrefs()
 end sub
 
 sub applyDeferredFocus()
@@ -3988,6 +4518,13 @@ sub applyDeferredFocus()
         m.switchUserButton.setFocus(true)
     else if m.currentView = "userPicker"
         if m.userList.visible then m.userList.setFocus(true)
+        if m.userGrid.visible then m.userGrid.setFocus(true)
+    else if m.currentView = "createProfile"
+        m.profileNameButton.setFocus(true)
+    else if m.currentView = "pair"
+        focusFirstAction(m.pairButtons)
+    else if m.currentView = "cloudSignIn"
+        focusFirstAction(m.cloudButtons)
     else if m.currentView = "liveTv"
         ' Land on the channel list when it's already rendered. Before
         ' the /api/live/channels call returns the list is still hidden,
@@ -5603,10 +6140,14 @@ sub onApiUrlKeyboardClosed()
 
     ' If we're stuck on the pair view, the URL change may unblock
     ' the flow — re-run the admin-status probe against the new server.
+    ' Cached candidates belong to whichever server we knew before, so
+    ' don't race them against a hand-typed URL.
     if m.currentView = "pair"
         if m.pairPollTimer <> invalid then m.pairPollTimer.control = "stop"
-        m.pairCode.text = ""
-        m.pairStatus.text = "Checking " + m.apiUrl + "…"
+        m.bootCandidatesTried = true
+        m.pairMode = "connecting"
+        renderPairViewChrome()
+        m.pairSubtitle.text = "Checking " + m.apiUrl + "…"
         checkAdminStatus()
     end if
 end sub
@@ -5654,7 +6195,10 @@ end sub
 
 ' Switch User on Settings just navigates to the dedicated user picker
 ' view — same scene the boot flow shows when no Plex user is saved.
+' The PIN session token is dropped here (mobile treats a switch as a
+' sign-out); picking a user again mints a fresh one.
 sub onSwitchUserPressed()
+    clearSessionToken()
     showView("userPicker")
     if m.usersData = invalid then fetchUsers() else renderUserPickerList()
 end sub
@@ -6232,7 +6776,15 @@ end sub
 ' a fresh code automatically. OK on the remote forces a refresh too.
 
 sub startPair()
+    if m.apiUrl = invalid or m.apiUrl = ""
+        ' Can't mint a code without a server — stay in the no-URL state.
+        m.pairMode = "nourl"
+        renderPairViewChrome()
+        return
+    end if
     if m.pairPollTimer <> invalid then m.pairPollTimer.control = "stop"
+    m.pairMode = "pair"
+    renderPairViewChrome()
     m.pairCode.text = ""
     m.pairStatus.text = "Connecting to " + m.apiUrl + "…"
     m.pairSubtitle.text = "Open " + m.apiUrl + "/setup in a browser, sign in as admin, then enter the code below under Security & Devices → Pair a new device."
@@ -6312,6 +6864,11 @@ sub onPairPollResponse()
 
     if resp.success = true and resp.data <> invalid and resp.data.status = "completed" and resp.data.key <> invalid
         finishPair(resp.data.key.toStr())
+        ' Cache this server's connection candidates NOW, while we're on
+        ' the LAN and hold a key (mobile pair-device.tsx poll() does the
+        ' same) — so a Roku that later moves networks, or a server whose
+        ' LAN IP changes, can still find the server at boot.
+        fetchAndCacheCandidates()
         return
     end if
 
@@ -6340,6 +6897,7 @@ sub finishPair(authKey as string)
         end if
     end if
     m.pairStatus.text = "Paired! Continuing…"
+    if m.currentView = "cloudSignIn" then m.cloudStatus.text = "Connected! Continuing…"
     head = ""
     if Len(authKey) >= 8 then head = Left(authKey, 8) else head = authKey
     print "[HomeScene] paired write="; writeOk; " flush="; flushOk; " verifyExists="; verifyExists
@@ -6540,14 +7098,45 @@ sub renderUserPickerList()
         end if
     end for
 
+    if m.whatsOnEnabled = true
+        ' Trailing "New" tile — mobile select-whatson-user.tsx's "+ New"
+        ' card. Opens the create-profile flow (guest self-serve).
+        newItem = rootNode.createChild("ContentNode")
+        newItem.AddField("itemBgColor", "string", false)
+        newItem.itemBgColor = "0x1a1a1aff"
+        newItem.AddField("itemInitial", "string", false)
+        newItem.itemInitial = "+"
+        newItem.AddField("itemAvatarKey", "string", false)
+        newItem.itemAvatarKey = ""
+        newItem.AddField("itemAvatarUrl", "string", false)
+        newItem.itemAvatarUrl = ""
+        newItem.AddField("itemName", "string", false)
+        newItem.itemName = "New"
+        newItem.AddField("itemHasPin", "boolean", false)
+        newItem.itemHasPin = false
+        newItem.AddField("userId", "string", false)
+        newItem.userId = ""
+        newItem.AddField("hasPin", "boolean", false)
+        newItem.hasPin = false
+        newItem.AddField("itemIsNew", "boolean", false)
+        newItem.itemIsNew = true
+        ' Mobile's empty-state copy when the server has no profiles yet.
+        if m.usersData.Count() = 0
+            m.userPickerSubtitle.text = "You don't have a profile yet — set one up to start watching."
+        else
+            m.userPickerSubtitle.text = "Choose your profile."
+        end if
+    end if
+
     m.userPickerStatus.visible = false
     if m.whatsOnEnabled = true
         ' Centre the grid horizontally. cellWidth (200) + itemSpacing.x
         ' (20) come from userGrid attributes in HomeScene.xml. Screen
         ' width is 1920 (manifest ui_resolutions=fhd). Effective columns
         ' cap at 4 to match numColumns; a single-user picker centres a
-        ' single cell, a 4-user picker centres the whole row.
-        count = m.usersData.Count()
+        ' single cell, a 4-user picker centres the whole row. +1 for the
+        ' New tile.
+        count = m.usersData.Count() + 1
         effectiveCols = count
         if effectiveCols > 4 then effectiveCols = 4
         if effectiveCols < 1 then effectiveCols = 1
@@ -6581,6 +7170,12 @@ sub onUserPicked()
     item = rootNode.getChild(idx)
     if item = invalid then return
 
+    ' "New" tile → guest self-serve profile creation.
+    if item.itemIsNew = true
+        openCreateProfile()
+        return
+    end if
+
     newUserId = item.userId
     if newUserId = "" then return
 
@@ -6601,6 +7196,9 @@ sub onUserPicked()
     sameUser = (newUserId = m.userId and m.userKind = "plex")
     m.userId = newUserId
     m.userKind = "plex"
+    ' Legacy Plex users have no PIN session — make sure a stale Whats On
+    ' token never rides along.
+    clearSessionToken()
 
     section = CreateObject("roRegistrySection", "whatson")
     if section <> invalid
@@ -6678,9 +7276,17 @@ sub onWhatsOnSelectResponse()
     if resp = invalid or resp.success <> true
         msg = "Sign-in failed."
         if resp <> invalid and resp.error <> invalid and resp.error <> "" then msg = resp.error
+        m.pendingWhatsOnUserId = invalid
+        if m.currentView = "createProfile"
+            ' Profile was created but auto-select failed — surface it on
+            ' the create view; the user can Back to the picker and pick it.
+            m.profileStatus.text = msg
+            m.profileStatus.color = "0xff7777ff"
+            m.createProfileButton.setFocus(true)
+            return
+        end if
         m.userPickerStatus.text = msg
         m.userPickerStatus.visible = true
-        m.pendingWhatsOnUserId = invalid
         m.userGrid.setFocus(true)
         return
     end if
@@ -6693,10 +7299,22 @@ sub onWhatsOnSelectResponse()
     m.userId = newUserId
     m.userKind = "whatson"
 
+    ' PIN session token — POST /select returns data.sessionToken (see
+    ' packages/api/src/routes/whatsonUsers.ts). Sent back as
+    ' X-Whatson-Session on every request from here on.
+    token = ""
+    if resp.data <> invalid and resp.data.sessionToken <> invalid then token = resp.data.sessionToken.toStr()
+    m.sessionToken = token
+
     section = CreateObject("roRegistrySection", "whatson")
     if section <> invalid
         section.Write("whatsonUserId", newUserId)
         section.Write("userKind", "whatson")
+        if token <> ""
+            section.Write("whatsonSession", token)
+        else if section.Exists("whatsonSession")
+            section.Delete("whatsonSession")
+        end if
         section.Flush()
     end if
 
@@ -7025,6 +7643,51 @@ sub setApiTaskAuth(task as object)
     task.userKind = m.userKind
     task.connectionType = m.connectionType
     if m.authKey <> invalid then task.authKey = m.authKey
+    ' PIN session (X-Whatson-Session) — only meaningful for Whats On users.
+    if m.userKind = "whatson" and m.sessionToken <> invalid then task.sessionToken = m.sessionToken
+end sub
+
+' Drop the PIN session token (memory + registry). Called on Switch User,
+' Unpair / Re-pair, a rejected auth key, and when falling back to the
+' legacy Plex picker.
+sub clearSessionToken()
+    m.sessionToken = ""
+    deleteRegistryValue("whatsonSession")
+end sub
+
+' True when the active Whats On user is PIN-protected (per the cached
+' users list). Used to keep a user on the picker after Switch User
+' cleared their session token.
+function currentUserHasPin() as boolean
+    if m.userKind <> "whatson" or m.userId = invalid or m.userId = "" or m.usersData = invalid then return false
+    for each u in m.usersData
+        if stringField(u, "id") = m.userId then return (u.hasPin = true)
+    end for
+    return false
+end function
+
+' ─── Registry helpers (string values, "whatson" section) ─────────
+
+function readRegistryValue(key as string) as string
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid or not section.Exists(key) then return ""
+    v = section.Read(key)
+    if v = invalid then return ""
+    return v
+end function
+
+sub writeRegistryValue(key as string, value as string)
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid then return
+    section.Write(key, value)
+    section.Flush()
+end sub
+
+sub deleteRegistryValue(key as string)
+    section = CreateObject("roRegistrySection", "whatson")
+    if section = invalid then return
+    if section.Exists(key) then section.Delete(key)
+    section.Flush()
 end sub
 
 ' Defensive URL normalisation. Handles three forms users typo most.
@@ -7057,12 +7720,27 @@ sub onRepairPressed()
         section.Flush()
     end if
     m.authKey = ""
+    ' A new device identity means a new PIN session too.
+    clearSessionToken()
     showView("pair")
     startPair()
 end sub
 
-' Sports settings — fetch leagues, render with checkbox prefixes,
-' toggle to add/remove from prefs (mode="all" per league for v1).
+' ─── Sports settings (leagues + teams) ────────────────────────────
+'
+' Mirrors apps/mobile/app/sports-settings.tsx:
+'   - GET /api/sports/leagues + GET /api/sports/prefs on open.
+'   - Left column: every league with a follow toggle. Followed team-
+'     sport leagues show their mode ("All games" / "Favorite teams (n)").
+'   - Right column: for the FOCUSED followed team-sport league, its teams
+'     from GET /api/sports/teams?league=<key>, each with a follow toggle,
+'     plus an "All games" row on top standing in for mobile's mode chips.
+'   - Every change PUTs the full SportsPrefs { leagues: [{ key, mode,
+'     teamIds }] } — mobile stages a draft behind a Save button; Roku
+'     saves immediately (recorded divergence).
+' Defaults match draftFromPrefs(): a newly followed team sport starts in
+' "teams" mode with no teams; non-team sports are always "all".
+
 sub ensureSportsSettingsLoaded()
     if m.sportsLeaguesAvailable <> invalid
         renderSportsLeagueList()
@@ -7110,14 +7788,36 @@ sub onSportsPrefsLoaded()
     if m.sportsPrefsLoadTask = invalid then return
     resp = m.sportsPrefsLoadTask.response
     m.sportsPrefsLoadTask = invalid
-    m.sportsLeaguesFollowed = []
+    m.sportsPrefsByKey = {}
     if resp <> invalid and resp.success = true and resp.data <> invalid and resp.data.leagues <> invalid
         for each lp in resp.data.leagues
-            if lp.key <> invalid then m.sportsLeaguesFollowed.push(lp.key)
+            if lp <> invalid and lp.key <> invalid
+                entry = { mode: "all", teamIds: [] }
+                if lp.mode = "teams" then entry.mode = "teams"
+                if lp.teamIds <> invalid
+                    for each tid in lp.teamIds
+                        if tid <> invalid then entry.teamIds.push(tid.toStr())
+                    end for
+                end if
+                m.sportsPrefsByKey[lp.key.toStr()] = entry
+            end if
         end for
     end if
     renderSportsLeagueList()
 end sub
+
+' Row text for one league: "[X]  NFL  ·  Favorite teams (3)" etc.
+function sportsLeagueRowTitle(league as object) as string
+    entry = m.sportsPrefsByKey[stringField(league, "key")]
+    if entry = invalid then return "[ ]  " + stringField(league, "label")
+    suffix = "All games"
+    if league.teamSport <> true
+        suffix = "All events"
+    else if entry.mode = "teams"
+        suffix = "Favorite teams (" + entry.teamIds.Count().toStr() + ")"
+    end if
+    return "[X]  " + stringField(league, "label") + "  ·  " + suffix
+end function
 
 sub renderSportsLeagueList()
     if m.sportsLeaguesAvailable = invalid then return
@@ -7130,70 +7830,270 @@ sub renderSportsLeagueList()
     rows = CreateObject("roSGNode", "ContentNode")
     for each league in m.sportsLeaguesAvailable
         node = rows.createChild("ContentNode")
-        enabled = false
-        for each k in m.sportsLeaguesFollowed
-            if k = league.key then enabled = true
-        end for
-        prefix = "[ ]  "
-        if enabled then prefix = "[X]  "
-        node.title = prefix + league.label
+        node.title = sportsLeagueRowTitle(league)
     end for
     m.sportsLeagueList.content = rows
     m.sportsSettingsStatus.visible = false
     m.sportsLeagueList.visible = true
-    m.sportsLeagueList.setFocus(true)
+    if m.currentView = "sportsSettings" and not m.sportsTeamList.isInFocusChain() then m.sportsLeagueList.setFocus(true)
+    updateSportsTeamColumn()
+end sub
+
+' Repaint one league row in place (keeps focus / scroll position).
+sub repaintSportsLeagueRow(idx as integer)
+    rows = m.sportsLeagueList.content
+    if rows = invalid or idx < 0 or idx >= rows.getChildCount() then return
+    if m.sportsLeaguesAvailable = invalid or idx >= m.sportsLeaguesAvailable.Count() then return
+    node = rows.getChild(idx)
+    node.title = sportsLeagueRowTitle(m.sportsLeaguesAvailable[idx])
 end sub
 
 sub onSportsLeagueToggled()
     idx = m.sportsLeagueList.itemSelected
-    if idx < 0 or m.sportsLeaguesAvailable = invalid or idx >= m.sportsLeaguesAvailable.Count() then return
+    if idx = invalid or idx < 0 or m.sportsLeaguesAvailable = invalid or idx >= m.sportsLeaguesAvailable.Count() then return
     league = m.sportsLeaguesAvailable[idx]
-    key = league.key
+    key = stringField(league, "key")
+    if key = "" then return
 
-    found = -1
-    for i = 0 to m.sportsLeaguesFollowed.Count() - 1
-        if m.sportsLeaguesFollowed[i] = key then found = i
-    end for
-    if found >= 0
-        m.sportsLeaguesFollowed.Delete(found)
+    if m.sportsPrefsByKey[key] <> invalid
+        m.sportsPrefsByKey.Delete(key)
     else
-        m.sportsLeaguesFollowed.push(key)
+        ' draftFromPrefs default: team sports start in "teams" mode with
+        ' no teams picked; non-team sports are always "all".
+        mode = "all"
+        if league.teamSport = true then mode = "teams"
+        m.sportsPrefsByKey[key] = { mode: mode, teamIds: [] }
     end if
 
-    rows = m.sportsLeagueList.content
-    if rows <> invalid and idx < rows.getChildCount()
-        node = rows.getChild(idx)
-        prefix = "[ ]  "
-        if found < 0 then prefix = "[X]  "
-        node.title = prefix + league.label
+    repaintSportsLeagueRow(idx)
+    updateSportsTeamColumn()
+    saveSportsPrefs()
+end sub
+
+' League list focus moved — point the team column at that league.
+sub onSportsLeagueFocused()
+    if m.currentView <> "sportsSettings" then return
+    updateSportsTeamColumn()
+end sub
+
+' Decide what the right column shows for the currently focused league:
+' nothing to pick (not followed / non-team sport), a loading state while
+' teams are fetched, or the team toggles.
+sub updateSportsTeamColumn()
+    if m.sportsLeaguesAvailable = invalid or m.sportsLeaguesAvailable.Count() = 0 then return
+    idx = m.sportsLeagueList.itemFocused
+    if idx = invalid or idx < 0 or idx >= m.sportsLeaguesAvailable.Count() then idx = 0
+    league = m.sportsLeaguesAvailable[idx]
+    key = stringField(league, "key")
+    label = stringField(league, "label")
+    entry = m.sportsPrefsByKey[key]
+
+    m.sportsTeamsHeader.text = label + " teams"
+    if entry = invalid
+        m.sportsTeamsLeagueKey = ""
+        m.sportsTeamList.visible = false
+        m.sportsTeamsStatus.text = "Follow " + label + " to pick teams."
+        m.sportsTeamsStatus.visible = true
+        return
+    end if
+    if league.teamSport <> true
+        m.sportsTeamsLeagueKey = ""
+        m.sportsTeamList.visible = false
+        m.sportsTeamsStatus.text = "Following all events (no team selection for " + stringField(league, "sport") + ")"
+        m.sportsTeamsStatus.visible = true
+        return
     end if
 
+    m.sportsTeamsLeagueKey = key
+    if m.sportsTeamsCache[key] <> invalid
+        renderSportsTeamList()
+        return
+    end if
+    m.sportsTeamList.visible = false
+    m.sportsTeamsStatus.text = "Loading teams…"
+    m.sportsTeamsStatus.visible = true
+    fetchSportsTeams(key)
+end sub
+
+sub fetchSportsTeams(leagueKey as string)
+    ' One fetch at a time; if the user moved on, the response handler
+    ' re-checks which league the column is showing.
+    if m.sportsTeamsTask <> invalid then return
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onSportsTeamsResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/sports/teams?league=" + urlEncodeQuery(leagueKey)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.sportsTeamsTask = task
+    m.sportsTeamsTaskLeague = leagueKey
+end sub
+
+sub onSportsTeamsResponse()
+    if m.sportsTeamsTask = invalid then return
+    resp = m.sportsTeamsTask.response
+    m.sportsTeamsTask = invalid
+    key = m.sportsTeamsTaskLeague
+    if key = invalid then key = ""
+
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        if key = m.sportsTeamsLeagueKey
+            msg = "Couldn't load teams."
+            if resp <> invalid and resp.error <> invalid then msg = msg + " " + resp.error.toStr()
+            m.sportsTeamsStatus.text = msg
+            m.sportsTeamsStatus.visible = true
+            m.sportsTeamList.visible = false
+        end if
+        return
+    end if
+
+    ' Sort A–Z by name like mobile's TeamPicker.
+    sorted = []
+    for each t in resp.data
+        if t <> invalid and t.id <> invalid
+            sorted.push({ sortKey: lcase(stringField(t, "name")), data: t })
+        end if
+    end for
+    sorted.SortBy("sortKey")
+    teams = []
+    for each s in sorted
+        teams.push(s.data)
+    end for
+    m.sportsTeamsCache[key] = teams
+
+    ' If focus moved to another league while loading, re-evaluate; the
+    ' cache now has this league for next time.
+    if m.currentView = "sportsSettings" then updateSportsTeamColumn()
+end sub
+
+' Team row text. Row 0 is the "All games" mode row; rows 1.. are teams.
+function sportsTeamRowTitle(entry as object, rowIdx as integer, teams as object) as string
+    if rowIdx = 0
+        if entry.mode = "all" then return "[X]  All games"
+        return "[ ]  All games"
+    end if
+    team = teams[rowIdx - 1]
+    followed = false
+    if entry.mode = "teams"
+        tid = stringField(team, "id")
+        for each id in entry.teamIds
+            if id = tid then followed = true
+        end for
+    end if
+    prefix = "[ ]  "
+    if followed then prefix = "[X]  "
+    return prefix + stringField(team, "name")
+end function
+
+sub renderSportsTeamList()
+    key = m.sportsTeamsLeagueKey
+    if key = "" then return
+    teams = m.sportsTeamsCache[key]
+    entry = m.sportsPrefsByKey[key]
+    if teams = invalid or entry = invalid then return
+
+    rows = CreateObject("roSGNode", "ContentNode")
+    for i = 0 to teams.Count()
+        node = rows.createChild("ContentNode")
+        node.title = sportsTeamRowTitle(entry, i, teams)
+    end for
+    m.sportsTeamList.content = rows
+    m.sportsTeamsStatus.visible = false
+    m.sportsTeamList.visible = true
+end sub
+
+sub onSportsTeamToggled()
+    key = m.sportsTeamsLeagueKey
+    if key = "" then return
+    teams = m.sportsTeamsCache[key]
+    entry = m.sportsPrefsByKey[key]
+    if teams = invalid or entry = invalid then return
+    idx = m.sportsTeamList.itemSelected
+    if idx = invalid or idx < 0 or idx > teams.Count() then return
+
+    if idx = 0
+        ' "All games" — mobile's ModeChip 'all'. Team picks are kept
+        ' locally so flipping back restores them; the payload sends []
+        ' while mode = "all" (draftToPrefs does the same).
+        entry.mode = "all"
+    else
+        ' Picking a team implies "Favorite teams" mode (mobile sets mode
+        ' = 'teams' when opening the team picker).
+        entry.mode = "teams"
+        tid = stringField(teams[idx - 1], "id")
+        found = -1
+        for i = 0 to entry.teamIds.Count() - 1
+            if entry.teamIds[i] = tid then found = i
+        end for
+        if found >= 0
+            entry.teamIds.Delete(found)
+        else
+            entry.teamIds.push(tid)
+        end if
+    end if
+
+    ' Repaint every team row in place (the mode row and the toggled row
+    ' both change; when switching modes all markers change).
+    rows = m.sportsTeamList.content
+    if rows <> invalid
+        for i = 0 to rows.getChildCount() - 1
+            if i <= teams.Count()
+                rowNode = rows.getChild(i)
+                rowNode.title = sportsTeamRowTitle(entry, i, teams)
+            end if
+        end for
+    end if
+    ' Mirror the mode / count into the league row.
+    if m.sportsLeaguesAvailable <> invalid
+        for i = 0 to m.sportsLeaguesAvailable.Count() - 1
+            if stringField(m.sportsLeaguesAvailable[i], "key") = key then repaintSportsLeagueRow(i)
+        end for
+    end if
     saveSportsPrefs()
 end sub
 
 sub saveSportsPrefs()
-    ' Build the prefs payload — mode="all" per followed league.
-    ' Per-team selection is a follow-up; for now the Roku UI matches
-    ' "Follow whole league" from the mobile picker.
+    ' Serialise to the SportsPrefs shape mobile PUTs (draftToPrefs):
+    ' { leagues: [{ key, mode, teamIds }] }, teamIds empty when mode is
+    ' "all". Case-sensitive bodies — a `{}` literal would lower-case
+    ' `teamIds` (see newPostBody) and the backend would drop the picks.
     leaguesArr = []
-    for each k in m.sportsLeaguesFollowed
-        leaguesArr.push({ key: k, mode: "all", teamIds: [] })
-    end for
-    body = FormatJson({ leagues: leaguesArr })
+    if m.sportsLeaguesAvailable <> invalid
+        for each league in m.sportsLeaguesAvailable
+            key = stringField(league, "key")
+            entry = m.sportsPrefsByKey[key]
+            if key <> "" and entry <> invalid
+                lp = newPostBody()
+                lp["key"] = key
+                lp["mode"] = entry.mode
+                ids = []
+                if entry.mode = "teams"
+                    for each id in entry.teamIds
+                        ids.push(id)
+                    end for
+                end if
+                lp["teamIds"] = ids
+                leaguesArr.push(lp)
+            end if
+        end for
+    end if
+    body = newPostBody()
+    body["leagues"] = leaguesArr
 
     task = CreateObject("roSGNode", "ApiTask")
     task.method = "PUT"
     task.url = m.apiUrl + "/api/sports/prefs"
-    task.body = body
+    task.body = FormatJson(body)
     setApiTaskAuth(task)
     task.control = "RUN"
     m.sportsPrefsSaveTask = task
 
     ' Mark sports caches stale so the next visit refetches with the
-    ' new follow set.
+    ' new follow set, and show/hide the Sports tab to match.
     m.sportsCache = invalid
     m.sportsStale = true
     m.homeStale = true
+    setSportsTabVisible(leaguesArr.Count() > 0)
     print "[HomeScene] sports prefs saved: leagues="; leaguesArr.Count()
 end sub
 
@@ -7290,4 +8190,638 @@ sub setServiceDotBool(dot as object, label as object, name as string, present as
         dot.color = "0x666666ff"
         label.text = name + " — not configured"
     end if
+end sub
+
+' ─── Pair view chrome (per m.pairMode) ────────────────────────────
+'
+' The pair view doubles as mobile pair-device.tsx's two states ("Pair
+' this device" / "Connect to your server") plus two boot states that
+' mobile's connection.ts models as statuses ('connecting' / 'unreachable').
+
+sub renderPairViewChrome()
+    mode = m.pairMode
+    if mode = invalid then mode = "pair"
+    hasUrl = (m.apiUrl <> invalid and m.apiUrl <> "")
+
+    m.pairNewCodeButton.visible = (mode = "pair")
+    m.pairRetryButton.visible = (mode = "unreachable")
+    m.pairCloudButton.visible = (mode <> "connecting")
+    m.pairEditUrlButton.visible = (mode <> "connecting")
+    relayoutButtonRow(m.pairActions, m.pairButtons)
+    if hasUrl
+        m.pairEditUrlButton.label = "Edit server URL"
+    else
+        m.pairEditUrlButton.label = "Set server URL"
+    end if
+    m.pairHint.visible = (mode = "pair")
+    m.pairCloudHint.visible = (mode <> "connecting")
+
+    if mode = "nourl"
+        m.pairTitle.text = "Connect to your server"
+        m.pairSubtitle.text = "Enter the address of your Whats On backend below. It usually looks like http://192.168.x.x:3001."
+        m.pairCode.text = ""
+        m.pairStatus.text = ""
+    else if mode = "connecting"
+        m.pairTitle.text = "Connecting…"
+        m.pairSubtitle.text = "Couldn't reach " + m.apiUrl + ". Trying your server's other addresses…"
+        m.pairCode.text = ""
+        m.pairStatus.text = ""
+    else if mode = "unreachable"
+        m.pairTitle.text = "Can't reach your server"
+        m.pairSubtitle.text = "Couldn't reach " + m.apiUrl + ". Check that the server is online and this Roku is on the same network, then retry — or set the server URL, or sign in with Whats On."
+        m.pairCode.text = ""
+        m.pairStatus.text = ""
+    else
+        m.pairTitle.text = "Pair this device"
+        ' Subtitle / code / status are owned by startPair + poll handlers.
+    end if
+end sub
+
+' LayoutGroup reserves space for invisible children (see PLAN.md), so a
+' hidden button would leave a hole in the row. Detach every button and
+' re-append only the visible ones, preserving order. Observers survive
+' the detach (they're on the node, not the parent).
+sub relayoutButtonRow(group as object, buttons as object)
+    if group = invalid or buttons = invalid then return
+    for each b in buttons
+        if b <> invalid then group.removeChild(b)
+    end for
+    for each b in buttons
+        if b <> invalid and b.visible then group.appendChild(b)
+    end for
+end sub
+
+sub showUnreachableState()
+    m.pairMode = "unreachable"
+    renderPairViewChrome()
+    showView("pair")
+end sub
+
+sub onPairNewCodePressed()
+    startPair()
+end sub
+
+sub onPairEditUrlPressed()
+    onEditApiUrlPressed()
+end sub
+
+sub onPairRetryPressed()
+    if m.apiUrl = invalid or m.apiUrl = "" then return
+    m.bootCandidatesTried = false
+    m.pairMode = "connecting"
+    renderPairViewChrome()
+    m.pairSubtitle.text = "Checking " + m.apiUrl + "…"
+    checkAdminStatus()
+end sub
+
+sub onPairCloudPressed()
+    showView("cloudSignIn")
+    startCloudSignIn()
+end sub
+
+' ─── Cloud sign-in ("Sign in with Whats On") ──────────────────────
+'
+' Mirrors apps/mobile/lib/cloudAuth.ts + app/cloud-signin.tsx:
+'   1. POST https://cloud.whatsontv.net/api/device-code  → { deviceCode,
+'      userCode, verificationUri, interval, expiresIn }
+'   2. Show userCode + verificationUri; poll POST /api/device-code/poll
+'      { deviceCode } every `interval` seconds (min 3) until approved /
+'      denied / expired (HTTP 400).
+'   3. approved → { grant, candidates: { serverId, candidates[] } }.
+'      Cache the candidates, probe them for /api/health (serverId must
+'      match when both sides have one), then POST <winner>/api/auth/
+'      redeem-grant { grant } → { key }. Pin the winner as apiUrl (+
+'      connection type) and hand the key to finishPair.
+'
+' Divergence: mobile races all candidates concurrently (LAN 250ms head
+' start, 2s timeout); BrightScript Tasks run one request each, so we
+' probe sequentially in priority order with a 4s timeout per candidate.
+
+function cloudBaseUrl() as string
+    ' DEFAULT_CLOUD_URL in packages/shared/src/constants.ts.
+    return "https://cloud.whatsontv.net"
+end function
+
+sub startCloudSignIn()
+    stopCloudPolling()
+    m.cloudDeviceCode = ""
+    m.cloudGrant = ""
+    m.cloudCode.text = ""
+    m.cloudSubtitle.text = ""
+    m.cloudRetryButton.visible = false
+    relayoutButtonRow(m.cloudActions, m.cloudButtons)
+    m.cloudStatus.text = "Getting your code…"
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCloudDeviceCodeResponse")
+    task.method = "POST"
+    task.url = cloudBaseUrl() + "/api/device-code"
+    task.body = "{}"
+    task.timeoutMs = 15000
+    ' No setApiTaskAuth — the cloud knows nothing about our backend key,
+    ' and we have none yet on a first-run device anyway.
+    task.control = "RUN"
+    m.cloudStartTask = task
+end sub
+
+sub onCloudDeviceCodeResponse()
+    if m.cloudStartTask = invalid then return
+    resp = m.cloudStartTask.response
+    m.cloudStartTask = invalid
+
+    ' Cloud responses are bare JSON (no { success } envelope) — a good
+    ' reply has deviceCode + userCode; ApiTask's error shape has neither.
+    if resp = invalid or resp.deviceCode = invalid or resp.userCode = invalid
+        msg = "Could not start sign-in"
+        if resp <> invalid and resp.status <> invalid then msg = msg + " (HTTP " + resp.status.toStr() + ")"
+        if resp <> invalid and resp.error <> invalid and resp.status = invalid then msg = msg + " (" + resp.error.toStr() + ")"
+        showCloudError(msg)
+        return
+    end if
+
+    m.cloudDeviceCode = resp.deviceCode.toStr()
+    uri = "whatsontv.net/link"
+    if resp.verificationUri <> invalid and resp.verificationUri.toStr() <> "" then uri = stripUrlScheme(resp.verificationUri.toStr())
+    m.cloudSubtitle.text = "On a computer or phone, open " + uri + ", sign in to your Whats On account, and enter this code:"
+    m.cloudCode.text = resp.userCode.toStr()
+    m.cloudStatus.text = "Waiting for you to approve…"
+
+    interval = 5
+    if resp.interval <> invalid then interval = resp.interval
+    if interval < 3 then interval = 3
+    if m.cloudPollTimer = invalid
+        m.cloudPollTimer = CreateObject("roSGNode", "Timer")
+        m.cloudPollTimer.repeat = true
+        m.cloudPollTimer.observeField("fire", "onCloudPollTick")
+    end if
+    m.cloudPollTimer.duration = interval
+    m.cloudPollTimer.control = "start"
+end sub
+
+sub stopCloudPolling()
+    if m.cloudPollTimer <> invalid then m.cloudPollTimer.control = "stop"
+    m.cloudPollTask = invalid
+end sub
+
+sub onCloudPollTick()
+    if m.cloudDeviceCode = invalid or m.cloudDeviceCode = "" then return
+    ' One poll in flight at a time.
+    if m.cloudPollTask <> invalid then return
+    body = newPostBody()
+    body["deviceCode"] = m.cloudDeviceCode
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCloudPollResponse")
+    task.method = "POST"
+    task.url = cloudBaseUrl() + "/api/device-code/poll"
+    task.body = FormatJson(body)
+    task.timeoutMs = 15000
+    task.control = "RUN"
+    m.cloudPollTask = task
+end sub
+
+sub onCloudPollResponse()
+    if m.cloudPollTask = invalid then return
+    resp = m.cloudPollTask.response
+    m.cloudPollTask = invalid
+    if m.currentView <> "cloudSignIn" then return
+    ' Transient network error — keep polling (mobile does the same).
+    if resp = invalid then return
+
+    ' ApiTask's error envelope: HTTP 400 = expired / unknown device code.
+    if resp.success <> invalid and resp.success = false
+        if resp.status <> invalid and resp.status = 400
+            stopCloudPolling()
+            showCloudError("The code expired. Let’s get a new one.")
+        end if
+        return
+    end if
+
+    st = ""
+    if resp.status <> invalid then st = resp.status.toStr()
+    if st = "pending" then return
+    stopCloudPolling()
+
+    if st = "approved" and resp.grant <> invalid
+        m.cloudStatus.text = "Approved! Connecting to your server…"
+        m.cloudGrant = resp.grant.toStr()
+        serverId = ""
+        cands = []
+        if resp.candidates <> invalid
+            if resp.candidates.serverId <> invalid then serverId = resp.candidates.serverId.toStr()
+            cands = normalizeCandidates(resp.candidates.candidates)
+        end if
+        saveCandidates(cands, serverId)
+        if cands.Count() = 0
+            showCloudError("Approved — but this device can't reach your server from here yet. Make sure remote access is enabled and your server is online, then try again.")
+            return
+        end if
+        startCandidateProbe(cands, serverId, "cloud")
+        return
+    end if
+
+    showCloudError("The request was denied.")
+end sub
+
+sub showCloudError(msg as string)
+    stopCloudPolling()
+    m.cloudCode.text = ""
+    m.cloudStatus.text = msg
+    m.cloudRetryButton.visible = true
+    relayoutButtonRow(m.cloudActions, m.cloudButtons)
+    if m.currentView = "cloudSignIn" then m.cloudRetryButton.setFocus(true)
+end sub
+
+sub onCloudRetryPressed()
+    startCloudSignIn()
+end sub
+
+sub onCloudBackPressed()
+    stopCloudPolling()
+    m.probeQueue = []
+    m.probePurpose = ""
+    renderPairViewChrome()
+    showView("pair")
+end sub
+
+' Redeem the cloud grant against the candidate that answered.
+sub redeemGrant(winner as object)
+    m.cloudWinner = winner
+    body = newPostBody()
+    body["grant"] = m.cloudGrant
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onRedeemGrantResponse")
+    task.method = "POST"
+    task.url = candidateBaseUrl(winner.url) + "/api/auth/redeem-grant"
+    task.body = FormatJson(body)
+    task.timeoutMs = 15000
+    ' Public endpoint — the grant IS the proof; no auth header.
+    task.control = "RUN"
+    m.redeemTask = task
+end sub
+
+sub onRedeemGrantResponse()
+    if m.redeemTask = invalid then return
+    resp = m.redeemTask.response
+    m.redeemTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid or resp.data.key = invalid
+        msg = "Could not finish signing in."
+        if resp <> invalid and resp.error <> invalid then msg = msg + " " + resp.error.toStr()
+        showCloudError(msg)
+        return
+    end if
+    ' Pin the winning connection (mobile pinCandidate) THEN persist the
+    ' key exactly like the LAN pair flow.
+    applyCandidateWinner(m.cloudWinner)
+    finishPair(resp.data.key.toStr())
+end sub
+
+' ─── Connection candidates (cache + probe) ────────────────────────
+'
+' Registry: "candidates" = JSON array of { kind, url, priority };
+' "expectedServerId" = the server identity /api/health should echo.
+' Same data mobile keeps in SecureStore (whatson_candidates /
+' whatson_expectedServerId).
+
+function normalizeCandidates(raw as dynamic) as object
+    out = []
+    if raw = invalid or type(raw) <> "roArray" then return out
+    for each c in raw
+        if c <> invalid and type(c) = "roAssociativeArray" and c.url <> invalid and c.kind <> invalid
+            pr = 9
+            if c.priority <> invalid then pr = c.priority
+            out.push({ kind: c.kind.toStr(), url: c.url.toStr(), priority: pr })
+        end if
+    end for
+    return out
+end function
+
+sub saveCandidates(cands as object, serverId as string)
+    arr = []
+    for each c in cands
+        e = newPostBody()
+        e["kind"] = c.kind
+        e["url"] = c.url
+        e["priority"] = c.priority
+        arr.push(e)
+    end for
+    writeRegistryValue("candidates", FormatJson(arr))
+    if serverId <> invalid and serverId <> ""
+        writeRegistryValue("expectedServerId", serverId)
+    else
+        deleteRegistryValue("expectedServerId")
+    end if
+    print "[HomeScene] cached "; arr.Count(); " connection candidate(s); serverId="; serverId
+end sub
+
+function loadCachedCandidates() as object
+    raw = readRegistryValue("candidates")
+    if raw = "" then return []
+    parsed = ParseJson(raw)
+    return normalizeCandidates(parsed)
+end function
+
+' Candidate URLs are bases (http://host:3001). Strip a trailing /api if
+' one ever sneaks in so we never end up with /api/api/... (mobile's
+' pinCandidate does the same normalisation).
+function candidateBaseUrl(url as string) as string
+    s = normalizeApiUrl(url)
+    if Len(s) > 4 and lcase(Right(s, 4)) = "/api" then s = Left(s, Len(s) - 4)
+    return s
+end function
+
+' GET /api/candidates after a successful LAN pair (mobile pair-device.tsx
+' poll()). Best-effort — failures are logged and ignored.
+sub fetchAndCacheCandidates()
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCandidatesResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/candidates"
+    task.timeoutMs = 6000
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.candidatesTask = task
+end sub
+
+sub onCandidatesResponse()
+    if m.candidatesTask = invalid then return
+    resp = m.candidatesTask.response
+    m.candidatesTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid
+        print "[HomeScene] candidate cache failed"
+        return
+    end if
+    cands = normalizeCandidates(resp.data.candidates)
+    if cands.Count() = 0 then return
+    serverId = ""
+    if resp.data.serverId <> invalid then serverId = resp.data.serverId.toStr()
+    saveCandidates(cands, serverId)
+end sub
+
+' Sequential probe of candidates in priority order (lan 0 → ipv6 1 →
+' wan 2 → relay 3). `purpose` = "cloud" (redeem the grant on the winner)
+' or "boot" (re-run checkAdminStatus against the winner).
+sub startCandidateProbe(cands as object, expectedServerId as string, purpose as string)
+    sorted = []
+    for each c in cands
+        sorted.push(c)
+    end for
+    sorted.SortBy("priority")
+    m.probeQueue = sorted
+    m.probeIndex = -1
+    m.probeExpectedServerId = expectedServerId
+    m.probePurpose = purpose
+    probeNextCandidate()
+end sub
+
+sub probeNextCandidate()
+    m.probeIndex = m.probeIndex + 1
+    if m.probeQueue = invalid or m.probeIndex >= m.probeQueue.Count()
+        onCandidateProbeFinished(invalid)
+        return
+    end if
+    c = m.probeQueue[m.probeIndex]
+    print "[HomeScene] probing candidate "; m.probeIndex + 1; "/"; m.probeQueue.Count(); " "; c.kind; " "; c.url
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCandidateProbeResponse")
+    task.method = "GET"
+    task.url = candidateBaseUrl(c.url) + "/api/health"
+    task.timeoutMs = 4000
+    ' /health is public on every surface — no auth needed (and the cloud
+    ' flow has no key yet).
+    task.control = "RUN"
+    m.probeTask = task
+end sub
+
+sub onCandidateProbeResponse()
+    if m.probeTask = invalid then return
+    resp = m.probeTask.response
+    m.probeTask = invalid
+    if m.probeQueue = invalid or m.probeIndex < 0 or m.probeIndex >= m.probeQueue.Count() then return
+
+    ok = (resp <> invalid and resp.success = true)
+    ' Right-server check (connectionRace.ts): when both the expected id
+    ' and the echoed id exist they must match — a stranger's server on a
+    ' cached LAN address must never win.
+    if ok and m.probeExpectedServerId <> "" and resp.data <> invalid and resp.data.serverId <> invalid
+        if resp.data.serverId.toStr() <> m.probeExpectedServerId then ok = false
+    end if
+    if ok
+        onCandidateProbeFinished(m.probeQueue[m.probeIndex])
+    else
+        probeNextCandidate()
+    end if
+end sub
+
+sub onCandidateProbeFinished(winner as object)
+    purpose = m.probePurpose
+    m.probePurpose = ""
+    if purpose = "cloud"
+        if winner = invalid
+            showCloudError("Approved — but this device can't reach your server from here yet. Make sure remote access is enabled and your server is online, then try again.")
+            return
+        end if
+        redeemGrant(winner)
+        return
+    end if
+    if purpose = "boot"
+        if winner = invalid
+            showUnreachableState()
+            return
+        end if
+        applyCandidateWinner(winner)
+        m.pairSubtitle.text = "Found your server at " + m.apiUrl + " — connecting…"
+        checkAdminStatus()
+        return
+    end if
+end sub
+
+' Pin a winning candidate: apiUrl (+ registry), connection type
+' (lan → local, anything else → remote — mobile pinCandidate), and
+' re-persist the candidate list with the winner first so the next boot
+' tries it before the rest (mobile resolveConnection).
+sub applyCandidateWinner(winner as object)
+    if winner = invalid then return
+    url = candidateBaseUrl(winner.url)
+    if url <> "" and url <> m.apiUrl
+        m.apiUrl = url
+        writeRegistryValue("apiUrl", url)
+        if m.settingsApiUrlValue <> invalid then m.settingsApiUrlValue.text = url
+    end if
+    connType = "local"
+    if winner.kind <> "lan" then connType = "remote"
+    if connType <> m.connectionType
+        m.connectionType = connType
+        writeRegistryValue("connectionType", connType)
+        m.connectionLocal.selected = (connType = "local")
+        m.connectionRemote.selected = (connType = "remote")
+        if m.settingsConnectionValue <> invalid then m.settingsConnectionValue.text = connectionDisplayName(connType)
+    end if
+    reordered = [winner]
+    if m.probeQueue <> invalid
+        for each c in m.probeQueue
+            if c.url <> winner.url then reordered.push(c)
+        end for
+    end if
+    saveCandidates(reordered, m.probeExpectedServerId)
+    print "[HomeScene] pinned candidate "; winner.kind; " "; url; " connectionType="; connType
+end sub
+
+function stripUrlScheme(s as string) as string
+    if s = invalid then return ""
+    l = lcase(s)
+    if Left(l, 8) = "https://" then return Mid(s, 9)
+    if Left(l, 7) = "http://" then return Mid(s, 8)
+    return s
+end function
+
+' ─── Create profile (guest self-serve) ────────────────────────────
+'
+' Mirrors apps/mobile/app/create-profile.tsx: name + avatar →
+' POST /api/whatson-users/guest-profile { name, avatar } → select the
+' new user via the normal /select path. The backend only allows this
+' for guest-role devices (403 otherwise) — same as mobile, the error is
+' surfaced verbatim.
+
+sub openCreateProfile()
+    m.profileName = ""
+    m.profileNameButton.label = "Your name"
+    m.profileStatus.text = ""
+    m.profileStatus.color = "0xb0b0b0ff"
+    m.createProfileButton.text = "Start watching"
+    showView("createProfile")
+    renderAvatarGrid()
+end sub
+
+sub renderAvatarGrid()
+    list = m.whatsOnAvatars
+    if list = invalid or list.Count() = 0
+        ' Same fallback create-profile.tsx uses when the catalogue is empty.
+        list = [{ key: "default", label: "Default", bg: "#1a1a1a" }]
+    end if
+    rootNode = CreateObject("roSGNode", "ContentNode")
+    for each a in list
+        key = stringField(a, "key")
+        label = stringField(a, "label")
+        if label = "" then label = key
+        item = rootNode.createChild("ContentNode")
+        item.AddField("itemBgColor", "string", false)
+        item.itemBgColor = webHexToRokuColor(stringField(a, "bg"))
+        item.AddField("itemInitial", "string", false)
+        item.itemInitial = firstInitial(label)
+        item.AddField("itemAvatarKey", "string", false)
+        item.itemAvatarKey = key
+        item.AddField("itemAvatarUrl", "string", false)
+        if key <> "" then item.itemAvatarUrl = withAuthQuery(m.apiUrl + "/api/whatson-users/avatars/" + key + ".png") else item.itemAvatarUrl = ""
+        item.AddField("itemName", "string", false)
+        item.itemName = label
+        item.AddField("itemHasPin", "boolean", false)
+        item.itemHasPin = false
+    end for
+    m.avatarGrid.content = rootNode
+    m.avatarGrid.visible = true
+    ' Preselect the first avatar (mobile starts on 'default', which the
+    ' backend also falls back to for unknown keys).
+    m.profileAvatarKey = stringField(list[0], "key")
+    if m.profileAvatarKey = "" then m.profileAvatarKey = "default"
+    updateProfileAvatarLabel(stringField(list[0], "label"))
+end sub
+
+sub updateProfileAvatarLabel(label as string)
+    if label = "" then label = m.profileAvatarKey
+    m.profileAvatarLabel.text = "Selected: " + label
+end sub
+
+sub onAvatarPicked()
+    idx = m.avatarGrid.itemSelected
+    rootNode = m.avatarGrid.content
+    if rootNode = invalid or idx = invalid then return
+    node = rootNode.getChild(idx)
+    if node = invalid then return
+    key = node.itemAvatarKey
+    if key = invalid or key = "" then key = "default"
+    m.profileAvatarKey = key
+    label = node.itemName
+    if label = invalid then label = ""
+    updateProfileAvatarLabel(label)
+end sub
+
+sub onProfileNamePressed()
+    dlg = CreateObject("roSGNode", "KeyboardDialog")
+    dlg.title = "Your name"
+    dlg.text = m.profileName
+    dlg.buttons = ["OK", "Cancel"]
+    dlg.observeField("buttonSelected", "onProfileNameDialogClosed")
+    dlg.observeField("wasClosed", "onProfileNameDialogClosed")
+    m.profileNameDialog = dlg
+    m.top.dialog = dlg
+end sub
+
+sub onProfileNameDialogClosed()
+    if m.profileNameDialog = invalid then return
+    btn = m.profileNameDialog.buttonSelected
+    text = m.profileNameDialog.text
+    m.top.dialog = invalid
+    m.profileNameDialog = invalid
+    m.focusTimer.control = "start"
+    if btn <> 0 then return
+    if text = invalid then text = ""
+    text = trimString(text)
+    ' maxLength=40 on mobile's TextInput.
+    if Len(text) > 40 then text = Left(text, 40)
+    m.profileName = text
+    if text = "" then m.profileNameButton.label = "Your name" else m.profileNameButton.label = text
+end sub
+
+sub onCreateProfilePressed()
+    name = trimString(m.profileName)
+    if name = ""
+        m.profileStatus.text = "Name required — please enter a name for your profile."
+        m.profileStatus.color = "0xff7777ff"
+        return
+    end if
+    if m.createProfileTask <> invalid then return
+    m.profileStatus.text = "Creating your profile…"
+    m.profileStatus.color = "0xb0b0b0ff"
+    m.createProfileButton.text = "Creating…"
+
+    body = newPostBody()
+    body["name"] = name
+    body["avatar"] = m.profileAvatarKey
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCreateProfileResponse")
+    task.method = "POST"
+    task.url = m.apiUrl + "/api/whatson-users/guest-profile"
+    task.body = FormatJson(body)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.createProfileTask = task
+end sub
+
+sub onCreateProfileResponse()
+    if m.createProfileTask = invalid then return
+    resp = m.createProfileTask.response
+    m.createProfileTask = invalid
+    m.createProfileButton.text = "Start watching"
+
+    if resp = invalid or resp.success <> true or resp.data = invalid or resp.data.id = invalid
+        msg = "Could not create profile."
+        if resp <> invalid and resp.error <> invalid then msg = msg + " " + resp.error.toStr()
+        m.profileStatus.text = msg
+        m.profileStatus.color = "0xff7777ff"
+        return
+    end if
+
+    user = resp.data
+    newId = user.id.toStr()
+    ' Add to the cached users list so the Settings name/avatar resolve
+    ' and the picker shows it without a refetch.
+    if m.usersData = invalid then m.usersData = []
+    m.usersData.push(user)
+    m.profileStatus.text = "Profile created — signing in…"
+
+    ' Sign in as the new user (no PIN on a fresh guest profile). The
+    ' select response handler persists the user + session token and
+    ' routes to Home.
+    m.pendingWhatsOnUserId = newId
+    selectWhatsOnUser(newId, "")
 end sub

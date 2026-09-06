@@ -55,6 +55,9 @@ sub fetch()
     if m.top.authKey <> invalid and m.top.authKey <> ""
         headers["X-Whatson-Auth"] = m.top.authKey
     end if
+    if m.top.sessionToken <> invalid and m.top.sessionToken <> ""
+        headers["X-Whatson-Session"] = m.top.sessionToken
+    end if
 
     method = m.top.method
     if method = invalid or method = "" then method = "GET"
@@ -80,9 +83,12 @@ sub fetch()
         return
     end if
 
-    ' 60s ceiling — matches the backend's ARR_TIMEOUT for Sonarr/Radarr
-    ' lookups, which are the slowest leg of any of our calls.
-    event = wait(60000, port)
+    ' 60s default ceiling — matches the backend's ARR_TIMEOUT for
+    ' Sonarr/Radarr lookups, which are the slowest leg of any of our
+    ' calls. Callers override via timeoutMs for fail-fast probes.
+    timeoutMs = m.top.timeoutMs
+    if timeoutMs = invalid or timeoutMs <= 0 then timeoutMs = 60000
+    event = wait(timeoutMs, port)
     if type(event) <> "roUrlEvent"
         m.top.response = { success: false, error: "Timeout / no response from " + m.top.url }
         return

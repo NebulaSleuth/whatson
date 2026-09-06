@@ -42,6 +42,12 @@ const BITRATE_OPTIONS = [
 
 const SEEK_STEP_SECONDS = 10; // D-pad seek step
 const SCRUB_STEP_SECONDS = 30; // Progress bar scrub step
+// Live TV: ceiling on the whole tune attempt (API request + ffmpeg first
+// segment + player buffering). Matches Roku's liveTuneTimeoutTimer (12 s,
+// apps/roku/components/HomeScene.brs). Past this the overlay flips to an
+// error — covers HDHomeRun-can't-lock-signal and ffmpeg-crashed cases.
+const LIVE_TUNE_TIMEOUT_MS = 12_000;
+const LIVE_TUNE_TIMEOUT_MSG = 'No signal after 12 seconds. The tuner couldn\'t lock on this channel — try another, or check antenna position.';
 
 interface TrackInfo {
   id: number;
@@ -229,16 +235,20 @@ function TVControls({
 }
 
 // ── Video Player wrapper — remounts on key change to get a fresh player ──
-const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePosition, onPlayer, onPlaying }: {
+const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePosition, onPlayer, onPlaying, onStatus }: {
   url: string;
   resumePosition: number;
   onPlayer: (p: any) => void;
   onPlaying: () => void;
+  /** expo-video statusChange — 'idle' | 'loading' | 'readyToPlay' | 'error'. */
+  onStatus?: (status: string, error?: { message?: string }) => void;
 }) {
   const onPlayerRef = useRef(onPlayer);
   const onPlayingRef = useRef(onPlaying);
+  const onStatusRef = useRef(onStatus);
   onPlayerRef.current = onPlayer;
   onPlayingRef.current = onPlaying;
+  onStatusRef.current = onStatus;
 
   const p = useVideoPlayer(url || '', (player) => {
     console.log('[VideoPlayerView] setup: url=' + (url || '').slice(0, 60) + '... resume=' + resumePosition);
@@ -253,6 +263,17 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
     onPlayingRef.current();
   }, [p]);
 
+  useEffect(() => {
+    if (!onStatusRef.current) return;
+    let sub: { remove: () => void } | null = null;
+    try {
+      sub = p.addListener('statusChange', (payload: { status: string; error?: { message?: string } }) => {
+        onStatusRef.current?.(payload.status, payload.error);
+      });
+    } catch {}
+    return () => { try { sub?.remove(); } catch {} };
+  }, [p]);
+
   return (
     <VideoView
       player={p}
@@ -265,11 +286,12 @@ const VideoPlayerView = React.memo(function VideoPlayerView({ url, resumePositio
 // ── Main Player Screen ──
 export default function PlayerScreen() {
   const queryClient = useQueryClient();
-  const { ratingKey, source: sourceParam, fromStart, liveChannelId } = useLocalSearchParams<{
+  const { ratingKey, source: sourceParam, fromStart, liveChannelId, liveChannelName } = useLocalSearchParams<{
     ratingKey?: string;
     source?: string;
     fromStart?: string;
     liveChannelId?: string;
+    liveChannelName?: string;
   }>();
   const startFromZero = fromStart === '1';
   const isLive = !!liveChannelId;
@@ -283,6 +305,16 @@ export default function PlayerScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Live TV tuning UX (Roku parity): overlay from screen-open until the
+  // player reports readyToPlay; 12 s ceiling → error overlay with Retry/Back.
+  const [liveTuning, setLiveTuning] = useState(isLive);
+  const [tuneError, setTuneError] = useState<string | null>(null);
+  const [tuneAttempt, setTuneAttempt] = useState(0);
+  const liveTuningRef = useRef(isLive);
+  const tuneErrorRef = useRef<string | null>(null);
+  const tuneTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  liveTuningRef.current = liveTuning;
+  tuneErrorRef.current = tuneError;
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
   const [streamUrl, setStreamUrl] = useState<string>('');
   const [playerKey, setPlayerKey] = useState(0);
@@ -403,18 +435,33 @@ export default function PlayerScreen() {
   const showSettingsRef = useRef(showSettings);
   showSettingsRef.current = showSettings;
 
-  // TV D-pad event handler
+  // TV D-pad event handler.
+  // Event names: Android TV D-pad emits left/right/up/down (+ longLeft/
+  // longRight on hold). The Siri Remote D-pad emits the same, but its
+  // trackpad emits swipeLeft/swipeRight/swipeUp/swipeDown instead
+  // (react-native-tvos RCTTVRemoteHandler.m swipe recognizers →
+  // RCTTVRemoteEventSwipe* constants), so treat swipes as their D-pad
+  // equivalents everywhere.
   if (isTV && useTVEventHandler) {
     useTVEventHandler((evt: any) => {
       console.log('[Player] TV event:', evt.eventType);
       if (showSettingsRef.current) return;
+      // Live tuning / tune-error overlays own the remote (no seeking a
+      // stream that hasn't started).
+      if (liveTuningRef.current || tuneErrorRef.current) return;
+      const t = evt.eventType;
+      // Honour Settings → Remote → "D-pad only (disable swipe)".
+      const swipe = t.startsWith('swipe') && !useAppStore.getState().disableTouchSurface;
+      const isRight = t === 'right' || t === 'longRight' || (swipe && t === 'swipeRight');
+      const isLeft = t === 'left' || t === 'longLeft' || (swipe && t === 'swipeLeft');
+      const isVertical = t === 'up' || t === 'down' || (swipe && (t === 'swipeUp' || t === 'swipeDown'));
 
       // When progress bar is focused, left/right scrubs
       if (progressBarFocusedRef.current && showControlsRef.current) {
-        if (evt.eventType === 'right' || evt.eventType === 'longRight') {
+        if (isRight) {
           doSeekRef.current(SCRUB_STEP_SECONDS);
           return;
-        } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
+        } else if (isLeft) {
           doSeekRef.current(-SCRUB_STEP_SECONDS);
           return;
         }
@@ -422,11 +469,11 @@ export default function PlayerScreen() {
 
       // When controls are hidden
       if (!showControlsRef.current) {
-        if (evt.eventType === 'right' || evt.eventType === 'longRight') {
+        if (isRight) {
           doSeekRef.current(SEEK_STEP_SECONDS);
-        } else if (evt.eventType === 'left' || evt.eventType === 'longLeft') {
+        } else if (isLeft) {
           doSeekRef.current(-SEEK_STEP_SECONDS);
-        } else if (evt.eventType === 'down' || evt.eventType === 'up' || evt.eventType === 'select') {
+        } else if (isVertical || t === 'select') {
           resetControlsTimerRef.current();
         }
       }
@@ -468,8 +515,40 @@ export default function PlayerScreen() {
         // it to expo-video. Skip the progress-reporting interval and
         // the resume-seek logic entirely.
         if (isLive && liveChannelId) {
-          const info = await api.getLiveStreamInfo(liveChannelId);
+          // Overlay is already up (liveTuning initialised true); arm the
+          // 12 s ceiling on the whole attempt. Cleared when the player
+          // reports readyToPlay (handleStatus) or on unmount/retry.
+          setTuneError(null);
+          setLiveTuning(true);
+          if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+          tuneTimeout.current = setTimeout(() => {
+            if (cancelled || !liveTuningRef.current) return;
+            console.log('[Player] live tune timeout for', liveChannelId);
+            try { player.current?.pause(); } catch {}
+            setStreamUrl('');
+            setLiveTuning(false);
+            setTuneError(LIVE_TUNE_TIMEOUT_MSG);
+          }, LIVE_TUNE_TIMEOUT_MS);
+
+          let info: Awaited<ReturnType<typeof api.getLiveStreamInfo>>;
+          try {
+            info = await api.getLiveStreamInfo(liveChannelId);
+          } catch (e) {
+            if (cancelled) return;
+            if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+            setLiveTuning(false);
+            setTuneError((e as Error).message || "Couldn't tune to channel.");
+            setLoading(false);
+            return;
+          }
           if (cancelled) return;
+          if (!info?.url) {
+            if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+            setLiveTuning(false);
+            setTuneError('Backend returned an empty stream URL.');
+            setLoading(false);
+            return;
+          }
           setPlaybackInfo({
             sessionId: info.sessionId || '',
             title: info.channel.name + (info.channel.number ? ` · ${info.channel.number}` : ''),
@@ -544,8 +623,36 @@ export default function PlayerScreen() {
     }
 
     startPlayback();
-    return () => { cancelled = true; if (progressInterval.current) clearInterval(progressInterval.current); };
-  }, [ratingKey, resetControlsTimer]);
+    return () => {
+      cancelled = true;
+      if (progressInterval.current) clearInterval(progressInterval.current);
+      if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+    };
+  }, [ratingKey, resetControlsTimer, tuneAttempt]);
+
+  // Live TV: first readyToPlay ends the tuning overlay; a player error
+  // while tuning becomes the tune-error overlay. No-op for VOD.
+  const handleStatus = useCallback((status: string, err?: { message?: string }) => {
+    if (!isLive) return;
+    if (status === 'readyToPlay' && liveTuningRef.current) {
+      if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+      setLiveTuning(false);
+    } else if (status === 'error' && liveTuningRef.current) {
+      if (tuneTimeout.current) clearTimeout(tuneTimeout.current);
+      setLiveTuning(false);
+      setTuneError(err?.message || "Couldn't tune to channel.");
+    }
+  }, [isLive]);
+
+  // Retry a failed tune: fresh player instance + re-run the load effect.
+  const retryTune = useCallback(() => {
+    setTuneError(null);
+    setLiveTuning(true);
+    setStreamUrl('');
+    currentPositionRef.current = 0;
+    setPlayerKey((k) => k + 1);
+    setTuneAttempt((a) => a + 1);
+  }, []);
 
   // Exit player — always exits, used by auto-close on video end
   const exitPlayer = useCallback(async () => {
@@ -595,14 +702,19 @@ export default function PlayerScreen() {
   // Back — hides controls first, then exits player on second press
   const handleBack = useCallback(async () => {
     if (showSettings) { setShowSettings(false); return; }
+    // Live tune error / tuning overlay: Back returns to the channel grid.
+    if (isLive && (tuneError || liveTuning)) { await exitPlayer(); return; }
     if (showControls) {
       setShowControls(false);
       if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
       return;
     }
     await exitPlayer();
-  }, [showSettings, showControls, exitPlayer]);
+  }, [showSettings, showControls, exitPlayer, isLive, tuneError, liveTuning]);
 
+  // hardwareBackPress fires for the Android TV back button and, on tvOS,
+  // for the Siri Remote Menu button (react-native-tvos BackHandler.ios.js
+  // routes TVEventHandler 'menu' events into these subscriptions).
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });
     return () => handler.remove();
@@ -810,18 +922,54 @@ export default function PlayerScreen() {
             }
             onPlayer={handlePlayerReady}
             onPlaying={handlePlayingState}
+            onStatus={isLive ? handleStatus : undefined}
           />
         </View>
 
-        {loading && (
+        {loading && !isLive && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Loading {playbackInfo?.title || ''}...</Text>
           </View>
         )}
 
+        {/* Live TV: tuning overlay — from screen-open until readyToPlay (Roku parity) */}
+        {isLive && liveTuning && !tuneError && (
+          <View style={styles.loadingOverlay}>
+            <Text style={styles.tuneTitle}>Tuning…</Text>
+            <Text style={styles.tuneSubtitle}>{liveChannelName || playbackInfo?.title || ''}</Text>
+            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.lg }} />
+          </View>
+        )}
+
+        {/* Live TV: tune error — timeout / backend error / player error */}
+        {isLive && tuneError && (
+          <View style={styles.loadingOverlay}>
+            <Text style={styles.tuneTitle}>Couldn't tune to this channel</Text>
+            <Text style={styles.tuneErrorMsg}>{tuneError}</Text>
+            <View style={styles.tuneButtons}>
+              <Pressable
+                style={({ focused }) => [styles.backButton, styles.tuneButton, isTV && focused && styles.tuneButtonFocused]}
+                onPress={retryTune}
+                focusable={true}
+                hasTVPreferredFocus={true}
+              >
+                <Text style={styles.backButtonText}>Retry</Text>
+              </Pressable>
+              <Pressable
+                style={({ focused }) => [styles.backButton, styles.tuneButton, styles.tuneBackButton, isTV && focused && styles.tuneButtonFocused]}
+                onPress={exitPlayer}
+                focusable={true}
+              >
+                <Text style={[styles.backButtonText, { color: colors.text }]}>Back</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.tuneHint}>Press Back to return to the channel grid.</Text>
+          </View>
+        )}
+
         {/* Controls overlay */}
-        {!loading && (
+        {!loading && !(isLive && (liveTuning || tuneError)) && (
           <TVControls
             visible={showControls || !!activeMarker}
             playing={isPlaying}
@@ -1007,6 +1155,14 @@ const styles = StyleSheet.create({
   errorText: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: spacing.xl },
   backButton: { backgroundColor: colors.primary, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: 8 },
   backButtonText: { color: '#000', fontSize: 16, fontWeight: '600' },
+  tuneTitle: { color: colors.text, fontSize: isTV ? 28 : 22, fontWeight: '700', textAlign: 'center' },
+  tuneSubtitle: { color: '#b0b0b0', fontSize: isTV ? 20 : 16, marginTop: spacing.sm, textAlign: 'center' },
+  tuneErrorMsg: { color: '#cccccc', fontSize: isTV ? 18 : 14, textAlign: 'center', marginTop: spacing.md, marginBottom: spacing.xl, paddingHorizontal: spacing.xl, maxWidth: 900 },
+  tuneButtons: { flexDirection: 'row', gap: spacing.md },
+  tuneButton: { borderWidth: 2, borderColor: 'transparent' },
+  tuneBackButton: { backgroundColor: '#333' },
+  tuneButtonFocused: { borderWidth: 2, borderColor: colors.focus },
+  tuneHint: { color: '#808080', fontSize: 13, marginTop: spacing.xl },
   settingsOverlay: { flex: 1, justifyContent: 'center', alignItems: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)', paddingRight: isTV ? 60 : 20 },
   settingsPanel: { backgroundColor: '#1A1A1A', borderRadius: 12, padding: spacing.lg, width: isTV ? 350 : 280, maxHeight: '80%' },
   settingsTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: spacing.lg },

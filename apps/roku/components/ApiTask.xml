@@ -26,6 +26,20 @@
         <field id="userKind" type="string" value="plex" />
         <field id="connectionType" type="string" value="local" />
         <field id="authKey" type="string" />
+        <!--
+          PIN session token minted by POST /whatson-users/:id/select. Sent
+          as X-Whatson-Session so PIN-protected Whats On users can't be
+          acted-as by merely asserting X-Whatson-User (userContext.ts
+          verifies it; hard 401 once WHATSON_STRICT_PIN is on).
+        -->
+        <field id="sessionToken" type="string" />
+        <!--
+          Per-request wait ceiling in milliseconds. Default 60s matches
+          the backend's ARR_TIMEOUT. Boot probes (admin-status, candidate
+          /health checks) pass a short value so an unreachable host fails
+          fast instead of freezing boot for a minute.
+        -->
+        <field id="timeoutMs" type="integer" value="60000" />
         <field id="response" type="assocarray" />
     </interface>
 </component>

@@ -14,9 +14,12 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
   monitor in `/setup → Download Monitor` with Dry run on first, then turn dry run off.
   Six `.exe` fakes were sitting in the Sonarr queue when this shipped — the dry run
   flagged all six. No other feature work is in flight.
-- The mobile + Roku working-tree changes are **intentionally uncommitted** (see below) —
-  do not discard them; they contain shipped-to-device UI.
-- Next work candidates, in rough priority: mobile PIN session token → Roku store
+- **Parity pass (2026-09-06, Mac Mini session):** all three TV clients were brought to
+  feature parity in code — see "Parity pass" below. Mobile side is typechecked + tested
+  and **installed on the Apple TV**; the Roku side is **compile-unverified** (no Roku
+  reachable from the Mac) and must be sideloaded from BigROG to compile. SHIELD needs a
+  rebuild from BigROG too. Commit + push this working tree before switching machines.
+- Next work candidates: on-device verification of the parity pass → Roku store
   packaging fix → Phase C library UI (all in `docs/KNOWN-ISSUES.md`).
 
 ## Deploy state
@@ -26,13 +29,42 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 | Backend release | v0.1.147 (`2fde38d`), GitHub release cut; in-channel updater deploys it |
 | Home server | `http://192.168.1.181:3001` — NSSM service `whatson-api`, auto-updates hourly. Was at 0.1.146 when v0.1.147 was released; check `/api/health` + `/api/update/status` |
 | Cloud | `@whatson/cloud` deployed to Azure — `cloud.whatsontv.net`; per-server TLS via `<serverId>.s.whatsontv.net` |
-| SHIELD (Android TV) | `192.168.1.69:5555` via adb — release APK with v0.1.145/146 UI installed |
-| Roku #1 | `192.168.1.129` — sideloaded with v0.1.146-era UI; **needs re-sideload** for the subtitle-on-pause fix (`7b3970f`); dev password `abcdefg` |
+| Apple TV "Bedroom" | `192.168.1.210` (paired to the Mac Mini via Xcode; tvOS 26.6) — `com.extrastrength.whatsontv` Release build installed 2026-09-06 with the parity pass. The older `com.extrastrength.whatson` install is still on the device — delete it by hand. **Pairing not yet confirmed working** (code box stayed empty on first attempt; server reachability from the TV unverified) |
+| SHIELD (Android TV) | `192.168.1.69:5555` via adb — release APK with v0.1.145/146 UI installed; **needs rebuild** for the parity pass (swipe/menu fixes are tvOS-only, but connection toggle, session token, Live TV tuning overlay apply) |
+| Roku #1 | `192.168.1.129` — sideloaded with v0.1.146-era UI; **needs re-sideload** for the subtitle-on-pause fix (`7b3970f`) AND the parity pass (first compile of ~1,700 new BrightScript lines — expect to fix compile errors); dev password `abcdefg` |
 | Roku #2 | `192.168.1.198` ("75\" onn. Roku TV") — sideloaded **keyless**, same state as #1 (needs re-sideload); dev password `abcdefg` |
 | Android phone (RT7 TITAN 5G) | release APK installed 2026-07-26 (same build as SHIELD) |
 
 The LAN devices are only reachable when you're on that network — timeouts just mean
-you're elsewhere, not that something broke.
+you're elsewhere, not that something broke. **Mac Mini gotcha:** the Claude desktop app's
+shell has no macOS Local Network permission, so `curl`/`nc` to any LAN host except the
+router fails with "No route to host" even when the host is up. Xcode's `devicectl` still
+works (system daemon). Don't diagnose server outages from that shell.
+
+## Parity pass (2026-09-06) — what changed, what to verify on-device
+
+Mobile (`apps/mobile`, Apple TV + Android TV; `npm run typecheck`/`test` clean):
+- Player: Siri Remote trackpad `swipeLeft/Right/Up/Down` now seek / reveal controls like
+  the D-pad (honours the "D-pad only" pref). Menu button routed to `BackHandler` via
+  `TVEventControl.enableTVMenuKey()` at boot — previously Menu backgrounded the app from
+  every screen. Trade-off: on a root screen with no handler Menu now does nothing.
+- Settings → Connection: Local (LAN) / Remote (plex.tv) toggle, persisted; when set it
+  suppresses the boot-time Plex local/remote auto-probe.
+- PIN session token: `sessionToken` from `POST /whatson-users/:id/select` is stored and
+  sent as `X-Whatson-Session`; cleared on Switch User / Re-pair / Forget key. Backend
+  `WHATSON_STRICT_PIN` can be flipped on once both mobile and Roku are confirmed sending it.
+- Live TV: "Tuning…" overlay until `readyToPlay`, 12 s ceiling → error overlay with
+  Retry / Back (copy matches Roku).
+
+Roku (`apps/roku`, **uncompiled** — see PLAN.md STATUS for the on-device checklist):
+- "Sign in with Whats On" cloud device-code onboarding + connection-candidate cache/probe.
+- Guest self-serve profile creation ("New" tile on the picker; 403s on an owner device by design).
+- Settings → Sports: league + team follow picker; Sports tab hidden until a league is followed.
+- Sonarr/Radarr add picker: monitor mode + searchForMissing + last-used memory.
+- `X-Whatson-Session` header (ApiTask `sessionToken` field).
+
+How to deploy from BigROG: `git pull`, then Roku `node scripts/deploy.js` per "How to ship"
+(fix any compile errors the sideload reports), SHIELD `gradlew assembleRelease` + `adb install -r`.
 
 ## Working tree
 

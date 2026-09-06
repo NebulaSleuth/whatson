@@ -69,7 +69,10 @@
         <!-- 8 tabs now (Live TV added). Default 220×8tab=1760 + 7×8 gap
              + 80 left = 1896 right edge → overlaps the clock at 1700.
              Sized to 200×8 + 7×4 + 60 = 1688 right edge; clock nudged
-             to 1740 so there's a comfortable ~50px gap. -->
+             to 1740 so there's a comfortable ~50px gap.
+             The Sports tab is conditional (mobile parity): HomeScene.brs
+             detaches it from this LayoutGroup until /api/sports/prefs
+             reports a followed league — see setSportsTabVisible. -->
         <LayoutGroup
             id="tabBar"
             translation="[60, 6]"
@@ -609,40 +612,71 @@
         </Group>
 
         <!-- ─── Sports settings sub-view ──────────────────────────────
-             Reached from Settings → Configure Sports Follows. Shows a
-             checkbox list of supported leagues; toggling sets that
-             league's mode to "all" (or removes it from prefs). Per-team
-             selection is a follow-up — for now Roku covers the league
-             toggle path mobile users hit most. -->
+             Reached from Settings → Configure Sports Follows. Mirrors
+             apps/mobile/app/sports-settings.tsx: a league list with
+             follow toggles on the left; for the focused followed team-
+             sport league, the right column lists that league's teams
+             (from /api/sports/teams?league=) with an "All games" row on
+             top standing in for mobile's mode chips. Changes PUT
+             /api/sports/prefs immediately (SportsPrefs shape). -->
         <Group id="sportsSettingsView" visible="false">
             <Label
-                text="Sports Follows"
+                text="Sports Settings"
                 translation="[80, 110]"
                 font="font:LargeBoldSystemFont"
                 color="0xe5a00dff" />
             <Label
-                text="Toggle the leagues you follow. The Sports tab shows games for selected leagues."
+                text="Toggle the leagues you follow. For team sports, pick favourite teams on the right or follow all games."
                 translation="[80, 190]"
                 width="1700"
                 wrap="true"
                 color="0xb0b0b0ff" />
             <Label
+                text="Leagues"
+                translation="[80, 250]"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff" />
+            <Label
                 id="sportsSettingsStatus"
                 text="Loading leagues…"
-                translation="[80, 280]"
+                translation="[80, 300]"
                 color="0xb0b0b0ff" />
             <LabelList
                 id="sportsLeagueList"
-                translation="[80, 280]"
-                itemSize="[800, 60]"
-                numRows="11"
+                translation="[80, 300]"
+                itemSize="[820, 60]"
+                numRows="10"
                 vertFocusAnimationStyle="floatingFocus"
                 visible="false"
                 focusable="true" />
+
             <Label
-                text="OK toggles a league. Press Back to return — changes save automatically."
+                id="sportsTeamsHeader"
+                text="Teams"
+                translation="[980, 250]"
+                width="860"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff" />
+            <Label
+                id="sportsTeamsStatus"
+                text="Follow a team-sport league to pick its teams."
+                translation="[980, 300]"
+                width="860"
+                wrap="true"
+                color="0xb0b0b0ff" />
+            <LabelList
+                id="sportsTeamList"
+                translation="[980, 300]"
+                itemSize="[860, 60]"
+                numRows="10"
+                vertFocusAnimationStyle="floatingFocus"
+                visible="false"
+                focusable="true" />
+
+            <Label
+                text="OK toggles a league or team · Right moves to the team list · Back returns — changes save automatically."
                 translation="[80, 970]"
-                width="1700"
+                width="1760"
                 color="0x707070ff" />
         </Group>
 
@@ -747,12 +781,153 @@
                 wrap="true"
                 color="0xb0b0b0ff" />
 
+            <!-- Action row — mirrors pair-device.tsx's buttons: New code /
+                 Edit server URL / Sign in with Whats On. pairRetryButton is
+                 shown only in the "can't reach your server" boot state
+                 (cached-candidate fallback exhausted) so the user can
+                 re-probe without re-pairing. -->
+            <LayoutGroup
+                id="pairActions"
+                translation="[80, 640]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <TabButton id="pairNewCodeButton" label="New code" hideIcon="true" buttonWidth="240" focusable="true" />
+                <TabButton id="pairEditUrlButton" label="Edit server URL" hideIcon="true" buttonWidth="300" focusable="true" />
+                <TabButton id="pairCloudButton" label="Sign in with Whats On" hideIcon="true" buttonWidth="380" focusable="true" />
+                <TabButton id="pairRetryButton" label="Retry connection" hideIcon="true" buttonWidth="300" visible="false" focusable="true" />
+            </LayoutGroup>
+
+            <Label
+                id="pairCloudHint"
+                text="Away from home, or on a device that's never been on this network? Sign in with your Whats On account — approve it at whatsontv.net, no server address needed."
+                translation="[80, 750]"
+                width="1700"
+                wrap="true"
+                color="0x707070ff" />
+
             <Label
                 id="pairHint"
-                text="Press OK to refresh the code. Press * to change the server URL."
-                translation="[80, 640]"
+                text="The code expires after 10 minutes; we'll auto-issue a new one if it does."
+                translation="[80, 840]"
                 width="1700"
                 color="0x707070ff" />
+        </Group>
+
+        <!-- ─── Cloud sign-in view ("Sign in with Whats On") ──────────
+             Mirrors apps/mobile/app/cloud-signin.tsx. Onboards a Roku
+             that was never on the server's LAN: POST cloud /api/device-code
+             → show the user code + whatsontv.net/link → poll until the
+             owner approves → probe the returned connection candidates →
+             POST <winner>/api/auth/redeem-grant → save key + URL exactly
+             like the LAN pair flow. -->
+        <Group id="cloudSignInView" visible="false">
+            <Label
+                text="Sign in with Whats On"
+                translation="[80, 200]"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                id="cloudSubtitle"
+                translation="[80, 290]"
+                width="1700"
+                wrap="true"
+                font="font:MediumBoldSystemFont"
+                color="0xc0c0c0ff" />
+
+            <Label
+                id="cloudCode"
+                translation="[80, 400]"
+                width="1700"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+
+            <Label
+                id="cloudStatus"
+                translation="[80, 560]"
+                width="1700"
+                wrap="true"
+                color="0xb0b0b0ff" />
+
+            <LayoutGroup
+                id="cloudActions"
+                translation="[80, 660]"
+                layoutDirection="horiz"
+                itemSpacings="[16]">
+                <TabButton id="cloudRetryButton" label="Try again" hideIcon="true" buttonWidth="240" visible="false" focusable="true" />
+                <TabButton id="cloudBackButton" label="Back" hideIcon="true" buttonWidth="240" focusable="true" />
+            </LayoutGroup>
+        </Group>
+
+        <!-- ─── Create profile view (guest self-serve) ──────────────────
+             Mirrors apps/mobile/app/create-profile.tsx. Reached from the
+             "New" tile on the Whats On picker. Name comes from a
+             KeyboardDialog; avatar from the same catalogue the picker
+             uses (rendered with UserCardItem cells). "Start watching"
+             POSTs /api/whatson-users/guest-profile then selects the new
+             user through the normal /select path. -->
+        <Group id="createProfileView" visible="false">
+            <Label
+                text="Set up your profile"
+                translation="[80, 110]"
+                font="font:LargeBoldSystemFont"
+                color="0xe5a00dff" />
+            <Label
+                text="Pick a name and avatar. This is how you'll show up on this server."
+                translation="[80, 190]"
+                width="1700"
+                wrap="true"
+                color="0xb0b0b0ff" />
+
+            <Label
+                text="Name"
+                translation="[80, 260]"
+                color="0xb0b0b0ff" />
+            <TabButton
+                id="profileNameButton"
+                label="Your name"
+                hideIcon="true"
+                buttonWidth="600"
+                translation="[80, 300]"
+                focusable="true" />
+
+            <Label
+                text="Avatar"
+                translation="[80, 410]"
+                color="0xb0b0b0ff" />
+            <Label
+                id="profileAvatarLabel"
+                translation="[200, 410]"
+                width="800"
+                color="0xe5a00dff" />
+            <!-- 8 columns × 200 + 7 × 20 = 1740 wide; starts at x=80 so
+                 the grid's right edge lands at 1820. Two visible rows;
+                 more avatars scroll. -->
+            <MarkupGrid
+                id="avatarGrid"
+                translation="[80, 450]"
+                itemSize="[200, 260]"
+                itemSpacing="[20, 16]"
+                numColumns="8"
+                numRows="1"
+                itemComponentName="UserCardItem"
+                drawFocusFeedback="false"
+                visible="false"
+                focusable="true" />
+
+            <Label
+                id="profileStatus"
+                translation="[80, 730]"
+                width="1700"
+                wrap="true"
+                color="0xb0b0b0ff" />
+
+            <ActionButton
+                id="createProfileButton"
+                text="Start watching"
+                translation="[80, 800]"
+                buttonWidth="320"
+                focusable="true" />
         </Group>
 
         <!-- ─── Live TV channel picker ───────────────────────────────
@@ -951,6 +1126,76 @@
                 width="1300"
                 color="0xe5a00dff"
                 visible="false" />
+
+            <!-- ─── Add to Sonarr / Radarr picker ───
+                 Mirrors apps/mobile/components/ArrAddPicker.tsx: Quality
+                 Profile / Root Folder / Monitor (Sonarr only) choices
+                 plus Add + Cancel. Options are rendered as three vertical
+                 LabelLists (one per section) instead of mobile's chip
+                 rows — see PLAN.md divergences. Overlay sits on top of
+                 the still-visible detail view, same idiom as tracksView. -->
+            <Group id="arrPickerView" visible="false">
+                <Rectangle width="1920" height="1080" color="0x000000bb" />
+                <Rectangle translation="[260, 120]" width="1400" height="840" color="0x202020ff" />
+                <Rectangle translation="[260, 120]" width="1400" height="140" color="0x161616ff" />
+
+                <Label
+                    id="arrPickerTitle"
+                    text="Add to Sonarr"
+                    translation="[300, 140]"
+                    font="font:LargeBoldSystemFont"
+                    color="0xe5a00dff" />
+                <Label
+                    id="arrPickerSubtitle"
+                    translation="[300, 205]"
+                    width="1320"
+                    wrap="false"
+                    maxLines="1"
+                    color="0xc0c0c0ff" />
+
+                <Label text="Quality Profile" translation="[300, 290]" width="420" font="font:MediumBoldSystemFont" color="0xffffffff" />
+                <Label text="Root Folder"     translation="[760, 290]" width="420" font="font:MediumBoldSystemFont" color="0xffffffff" />
+                <Label id="arrMonitorHeader" text="Monitor" translation="[1220, 290]" width="420" font="font:MediumBoldSystemFont" color="0xffffffff" />
+
+                <LabelList
+                    id="arrProfileList"
+                    translation="[300, 340]"
+                    itemSize="[420, 50]"
+                    numRows="8"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
+                <LabelList
+                    id="arrFolderList"
+                    translation="[760, 340]"
+                    itemSize="[420, 50]"
+                    numRows="8"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
+                <LabelList
+                    id="arrMonitorList"
+                    translation="[1220, 340]"
+                    itemSize="[420, 50]"
+                    numRows="8"
+                    vertFocusAnimationStyle="floatingFocus"
+                    focusable="true" />
+
+                <Label
+                    id="arrPickerError"
+                    translation="[300, 760]"
+                    width="1320"
+                    wrap="true"
+                    maxLines="2"
+                    color="0xff7777ff" />
+
+                <LayoutGroup
+                    id="arrPickerActions"
+                    translation="[300, 860]"
+                    layoutDirection="horiz"
+                    itemSpacings="[24]">
+                    <ActionButton id="arrAddButton" text="Add to Sonarr" buttonWidth="320" focusable="true" />
+                    <ActionButton id="arrCancelButton" text="Cancel" buttonWidth="240" focusable="true" />
+                </LayoutGroup>
+            </Group>
         </Group>
 
         <!-- ─── Show detail view: seasons + episodes browser ─── -->
