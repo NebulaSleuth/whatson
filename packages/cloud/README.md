@@ -6,9 +6,12 @@ user's backend from anywhere and vouches for who a device is, then gets out of
 the way. **No media, watch state, service tokens, PINs, or streams ever touch
 it** ("the cloud is starved by design"). Video never transits the cloud in v1.
 
-This is the **M3 scaffold**: the service runs end to end (register → claim →
-heartbeat → candidates → grant), typechecks, and has the security findings from
-the review baked in. It is not yet wired to the backend (that's M4) or deployed.
+**Status (2026-09): shipped and deployed.** The service is live on Azure at
+`cloud.whatsontv.net`, wired to the backend (M4 registration client in
+`packages/api/src/services/cloud/registration.ts`), with the M8 ACME DNS-01 per-server
+TLS flow implemented (`certManager.ts` + `POST /api/servers/:id/acme-challenge`). The
+M7 guest-**binding** semantics originally planned here were superseded by the unified
+user model (`docs/user-model/`) — invites now just grant server access.
 
 ## What runs today
 
@@ -30,9 +33,12 @@ HTTP + WSS (one port, default 4000)
   GET  /api/servers/:id/reachability    external probe (CGNAT diagnosis)
   PATCH /api/servers/:id                enable/disable, rename
 
-  POST /api/invites                     owner mints a guest invite            (M7 groundwork)
-  POST /api/invites/redeem              guest redeems -> grant + candidates    (M7 groundwork)
-  POST /api/device-code                 RFC 8628 device-code start             (M7 groundwork)
+  POST /api/servers/:id/invites         owner mints an invite (server access)
+  GET  /api/invites/:token              public invite lookup
+  POST /api/invites/redeem              invitee redeems -> grant + candidates
+  POST /api/servers/:id/acme-challenge  backend sets a DNS-01 TXT record (M8 certs)
+  POST /api/servers/:id/acme-challenge/clear
+  POST /api/device-code                 RFC 8628 device-code start
   POST /api/device-code/approve         owner approves a user code
   POST /api/device-code/poll            app polls for the grant
 
@@ -74,35 +80,33 @@ PORT=4111 CLOUD_DATA_DIR=./data npx tsx packages/cloud/src/index.ts
 State persists to `CLOUD_DATA_DIR/cloud-db.json`; the signing key to
 `cloud-ed25519.pem` (keep it — losing it invalidates every issued grant).
 
-## Open decisions (doc 02 §10 — settle before the dependent milestone)
+## Decisions (settled)
 
-- **Cloud DNS zone / domain** (`CLOUD_DOMAIN`) — ✅ decided: **`whatsontv.net`**
-  (per-server hostnames `<serverId>.s.whatsontv.net`, mirroring `plex.direct`).
-  Consolidated onto the branding domain instead of a separate `.direct`: the
-  marketing site lives on the apex/`www`, the per-server machinery on the `s.`
-  subdomain — one domain, no conflict. (`.direct` was dropped because Azure App
-  Service Domains can't sell that TLD, whereas `.net` is supported.) Still to do:
-  register `whatsontv.net`, host the zone in Azure DNS, and delegate/manage the
-  `s.whatsontv.net` records for the M8 DNS-01 cert flow.
-- **Account model** — email + password today. Could federate Plex OAuth (already
-  wired for the PIN flow) instead.
-- **Invite → profile** — redeem currently assumes the WO profile already exists
-  on the backend. Decide auto-create vs pre-create for M7.
+- **Cloud DNS zone / domain** (`CLOUD_DOMAIN`) — ✅ **`whatsontv.net`**, registered,
+  with the `s.whatsontv.net` zone delegated to Azure DNS for per-server hostnames
+  (`<serverId>.s.whatsontv.net`, mirroring `plex.direct`) and the M8 DNS-01 cert flow.
+  See `docs/remote-access/STATUS.md` for the verified setup.
+- **Account model** — email + password. (Plex OAuth federation remains a possible future.)
+- **Invite → profile** — settled by the unified user model: invites grant *server
+  access*; profiles are managed on the backend ("Who's Watching?" picker). The old
+  auto-create-vs-pre-create question is moot. A `provisioningRef` is forwarded to the
+  cloud for the future self-create flow (`docs/user-model/02-remaining.md` #3 — not
+  yet consumed by anything).
 
-## Next steps
+## Done since the scaffold
 
-1. **M4** — backend registration client (`packages/api`): generate the server
-   keypair, hold the persistent outbound WSS, heartbeat, and the
-   `POST /api/auth/redeem-grant` path that verifies a grant against the pinned
-   cloud key and provisions a device via `pairing.ts` (single-use by `jti`).
-2. **Promote the wire types** (`Candidate`, `ServerCandidates`, `GrantPayload`,
-   `CloudEnvelope`, `HeartbeatPayload`) from `src/types.ts` into `@whatson/shared`
-   so the backend and cloud share one contract.
-3. **Swap the JSON store** for Azure Table Storage / Postgres (`store.ts` is the
-   only file that changes).
-4. **Rate limiting** on `/accounts/login`, `/servers/claim`, `/invites/redeem`,
-   and device-code poll/approve — per-credential, not per-IP (finding M1).
-5. **Cert flow (M8)** — DNS-01 per-server or a wildcard shortcut; `serverCert
-   Fingerprint` in the candidates response is stubbed `null` until then.
-6. **Deploy** on Azure App Service or a small container (**not** Functions — the
-   WSS needs a long-lived socket).
+1. ✅ **M4** — backend registration client (`packages/api/src/services/cloud/registration.ts`):
+   server keypair, persistent outbound WSS + heartbeat, `POST /api/auth/redeem-grant`
+   verifying against the pinned cloud key, single-use by `jti`, provisioning via `pairing.ts`.
+2. ✅ **Cert flow (M8)** — per-server DNS-01 via `certManager.ts` + `acme.ts` and the
+   `/acme-challenge` endpoints above.
+3. ✅ **Deployed** — Azure, long-lived WSS (not Functions).
+
+## Remaining hardening (still open)
+
+- **Promote the wire types** (`Candidate`, `ServerCandidates`, `GrantPayload`,
+  `CloudEnvelope`, `HeartbeatPayload`) from `src/types.ts` into `@whatson/shared`.
+- **Swap the JSON store** for Azure Table Storage / Postgres (`store.ts` is the
+  only file that changes).
+- **Rate limiting** on `/accounts/login`, `/servers/claim`, `/invites/redeem`,
+  and device-code poll/approve — per-credential, not per-IP (finding M1).

@@ -1,6 +1,17 @@
 # "Whats On" — Implementation Plan
 
-> **Last Updated**: 2026-04-19
+> **HISTORICAL DOCUMENT (roadmap as of 2026-04-19).** The project has moved far past
+> this plan and it is no longer updated. Notably, since it was written: Live TV shipped
+> (TVmaze guide + HDHomeRun tuner path with ffmpeg HLS proxy), the Roku channel shipped
+> (Phases 0–3, `apps/roku/`), a web SPA shipped (`apps/web/`, served at `/`), Jellyfin +
+> Emby adapters shipped, Sports shelves shipped, device pairing + the unified user model
+> shipped (v0.1.144), remote access via `packages/cloud` shipped, the server auto-updater
+> shipped, and download-queue management + LATE/Search Now shipped (v0.1.145–146).
+> **For current state see `CLAUDE.md` (architecture), `HANDOFF.md` (deploy state), and
+> `docs/KNOWN-ISSUES.md` (open items).** The phase tables below are kept as a historical
+> record of the original build order.
+
+> **Last Updated**: 2026-04-19 (frozen)
 > **Current Phase**: Phases 1, 1.5, 2 complete; Phase 4 partially complete; Phase 3 groundwork in place
 > **Overall Progress**: Phases 1, 1.5, 2 complete; Phase 4 multi-user, recommendations, Add-to-Arr complete
 

@@ -1,5 +1,13 @@
 # Remote Access - Design & Implementation Docs
 
+> **PARTIALLY SUPERSEDED (2026-07):** the M7 guest/invite/viewer-**binding** model
+> described in these docs (an invite maps a guest onto one WO profile) was retired by the
+> **unified user model** — see [`../user-model/STATUS.md`](../user-model/STATUS.md).
+> Invites now just grant server access; identity is the shared "Who's Watching?" picker.
+> The remote-access **infrastructure** here (cloud control plane, per-server TLS,
+> device-code flow, connection racer) shipped and carries forward unchanged — see
+> [`STATUS.md`](STATUS.md) in this folder for what's live.
+
 This folder specifies a cloud-assisted remote-access feature for the Whats On
 backend, plus the backend security hardening that must ship alongside it. The
 goal: let a user reach their own Whats On backend from outside the home the way

@@ -13,14 +13,22 @@
 ```
 whatson/
 ├── apps/
-│   └── mobile/                 # React Native + Expo app (phone + TV)
+│   ├── mobile/                 # React Native + Expo app (phone + TV)
+│   ├── web/                    # React SPA (Vite) — served at / by the backend (dev:web / build:web)
+│   └── roku/                   # SceneGraph / BrightScript channel (roku:deploy / roku:package)
 ├── packages/
 │   ├── api/                    # Node.js + Express backend API
-│   └── shared/                 # Shared TypeScript types and constants
+│   ├── shared/                 # Shared TypeScript types and constants
+│   └── cloud/                  # Remote-access control plane (deployed to Azure)
 ├── docker-compose.yml          # Docker deployment
 ├── tsconfig.base.json          # Shared TypeScript config
 └── package.json                # npm workspaces root
 ```
+
+This guide covers the core dev loop (backend + mobile). Subsystems added later —
+Jellyfin/Emby adapters, HDHomeRun Live TV (+ffmpeg), Sports, device pairing, the unified
+user model, remote access, and the auto-updater — are documented in `CLAUDE.md`; their
+env vars are in `packages/api/.env.example`.
 
 ---
 
@@ -282,7 +290,7 @@ Requires `packages/api/.env` to be configured before building.
 | Grey images on Android TV | expo-image rendering issues | Cards use `transition={0}` on TV, discover cards use RNImage |
 | Keyboard submit navigates away (TV) | IME action propagates to tab bar | `TVTextInput` uses `returnKeyType="none"` on TV |
 | `AsyncStorage` crash in Expo Go | Native module not available | Uses `expo-secure-store` instead |
-| `expo-video` error in Expo Go | Native module not available | Auto-falls back to `expo-av` |
+| `expo-video` error in Expo Go | Native module not available | Playback disabled (`lib/videoPlayer.ts` sets `hasVideoPlayer=false`); use a dev build |
 
 ### Android TV Debugging
 
@@ -393,13 +401,13 @@ cd packages/api && npx tsc --noEmit
 ## Key Architecture Decisions
 
 ### Why npm workspaces (not Turborepo/Nx)?
-Sufficient for 3 packages, zero config, no extra dependency.
+Sufficient for a handful of workspaces (now six), zero config, no extra dependency.
 
 ### Why react-native-tvos fork?
 The only way to get Android TV + Apple TV support in React Native. Swapped via npm alias in `apps/mobile/package.json`: `"react-native": "npm:react-native-tvos@~0.81.5-2"`.
 
-### Why expo-av over expo-video?
-`expo-video` requires native modules not available in Expo Go. The player auto-detects: uses `expo-video` in native builds, falls back to `expo-av` in Expo Go.
+### Why expo-video (and no Expo Go playback)?
+`expo-video` requires native modules not available in Expo Go. There is no fallback player — `lib/videoPlayer.ts` detects the missing module and disables playback; a dev build is required to play video. (`expo-av` was dropped and is no longer a dependency.)
 
 ### Why artwork proxy?
 Plex artwork URLs contain auth tokens and the Plex server may not be reachable from the phone. The backend proxies and caches artwork, serving it to the app through `/api/artwork?url=...`.

@@ -1,16 +1,21 @@
 # Whats On
 
-A multi-platform media aggregation app that shows you what you can watch tonight. Combines content from Plex, Sonarr, Radarr, and streaming services into a single unified experience.
+A multi-platform media aggregation app that shows you what you can watch tonight. Combines content from Plex, Jellyfin, Emby, Sonarr, Radarr, HDHomeRun tuners, and streaming services into a single unified experience.
 
 ## Features
 
-- **Continue Watching** — Resume in-progress content from Plex
-- **Ready to Watch** — Recently downloaded TV episodes and movies available in Plex
-- **Coming Soon** — Upcoming episodes from Sonarr calendar and tracked streaming shows (via TVmaze)
+- **Continue Watching** — Resume in-progress content from any configured media server (Plex, Jellyfin, Emby)
+- **Ready to Watch** — Recently downloaded TV episodes and movies available in your library
+- **Coming Soon** — Upcoming episodes from Sonarr calendar and tracked streaming shows (via TVmaze); past-due items stay visible 7 days with a **LATE** badge and a **Search Now** action
+- **Download Management** — See download progress/ETA on downloading items; cancel or cancel-and-re-search stuck downloads
 - **Discover & Track** — Search for TV shows and add them to your watchlist with a streaming provider, or add directly to Sonarr/Radarr
-- **Built-in Player** — Stream Plex content with HLS transcoding, quality/bitrate selection, and progress tracking
+- **Built-in Player** — Stream with HLS transcoding, quality/bitrate selection, and progress tracking
+- **Live TV** — HDHomeRun tuner channels with EPG + ffmpeg HLS proxy, plus a TVmaze "What's on TV" guide
+- **Sports** — league-based sports shelves (opt-in per user)
+- **User Profiles** — unified "Who's Watching?" users with roles, PINs, avatars, and per-subsystem account mapping
+- **Remote Access** — cloud control plane + per-server TLS; clients race LAN vs. remote connections
 - **29 Streaming Providers** — Netflix, YouTube TV, Hulu, Disney+, Max, Amazon Prime Video, Apple TV+, Paramount+, Peacock, Sling TV, Fubo TV, and more
-- **Mark as Watched** — Scrobble to Plex, track watched state for streaming shows
+- **Mark as Watched** — Scrobble to your media server, track watched state for streaming shows
 - **Add to Sonarr/Radarr** — Add shows and movies directly from discover search with quality profile and monitor selection
 
 ## Platforms
@@ -18,26 +23,31 @@ A multi-platform media aggregation app that shows you what you can watch tonight
 | Platform | Status | Notes |
 |----------|--------|-------|
 | Android (phone/tablet) | Working | Expo Go or dev build |
-| Android TV | Working | Dev build required (`npx expo run:android`) |
+| Android TV | Working | Dev build required (`WHATSON_TV=1 npx expo run:android`) |
 | iOS | Working | Expo Go or dev build |
-| Apple TV (tvOS) | Planned | Supported by react-native-tvos |
+| Apple TV (tvOS) | Working | react-native-tvos build |
+| Web | Working | `apps/web` SPA, served at `/` by the backend |
+| Roku | Working | `apps/roku` BrightScript channel (sideload; store packaging pending) |
 | Windows | Planned | react-native-windows |
-| Roku | Planned | Separate BrightScript codebase |
 
 ## Architecture
 
 ```
-Phone/TV App (React Native + Expo)
-    |
-    |  REST API
-    v
-Whats On Backend (Node.js + Express)
-    |
-    |--- Plex Media Server (auto-discover via plex.tv or direct URL)
-    |--- Sonarr (TV show management)
-    |--- Radarr (Movie management)
-    |--- TVmaze (Episode schedules for tracked shows)
-    |--- TMDB (Discover search, fallback to Sonarr/Radarr lookup)
+Phone / TV app (React Native + Expo)   Web app (React SPA)   Roku channel (SceneGraph)
+        \                  |                  /
+         \                 |  REST API       /
+          v                v                v
+        Whats On Backend (Node.js + Express)
+            |--- Plex / Jellyfin / Emby (media-server adapters)
+            |--- Sonarr (TV show management)
+            |--- Radarr (Movie management)
+            |--- HDHomeRun tuners (Live TV via ffmpeg HLS proxy)
+            |--- TVmaze (Episode schedules, TV guide)
+            |--- TMDB (Discover search, fallback to Sonarr/Radarr lookup)
+            |
+            +--- Whats On Cloud (packages/cloud) — remote-access
+                 control plane: server registry, device-code auth,
+                 invites, ACME DNS-01 for per-server TLS
 ```
 
 ## Quick Start
@@ -117,22 +127,28 @@ npx expo run:android
 ```
 whatson/
 ├── apps/
-│   └── mobile/                 # React Native + Expo app
-│       ├── app/                # Expo Router screens
-│       │   ├── (tabs)/         # Tab screens (Home, TV, Movies, Search, Settings)
-│       │   └── player.tsx      # Built-in video player
-│       ├── components/         # UI components
-│       ├── constants/          # Theme (colors, typography, dimensions)
-│       └── lib/                # API client, storage, TV utilities
+│   ├── mobile/                 # React Native + Expo app (phone + TV)
+│   │   ├── app/                # Expo Router screens
+│   │   │   ├── (tabs)/         # Home, TV, Movies, Live TV, Sports, Library, Search, Settings
+│   │   │   └── player.tsx      # Built-in video player
+│   │   ├── components/         # UI components
+│   │   ├── constants/          # Theme (colors, typography, dimensions)
+│   │   └── lib/                # API client, storage, TV utilities, connection racer
+│   ├── web/                    # React SPA (Vite) — served at / by the backend
+│   └── roku/                   # SceneGraph / BrightScript channel
 ├── packages/
 │   ├── api/                    # Backend API server
 │   │   ├── src/
 │   │   │   ├── routes/         # API endpoints
-│   │   │   └── services/       # Plex, Sonarr, Radarr, TVmaze, TMDB integrations
+│   │   │   ├── services/       # Plex/Jellyfin/Emby adapters, Sonarr, Radarr, live TV, sports, users
+│   │   │   └── middleware/     # apiAuth, userContext, roles, sessionAuth
 │   │   └── .env.example        # Configuration template
-│   └── shared/                 # Shared TypeScript types and constants
-├── research.md                 # API research and framework comparison
-└── plan.md                     # Implementation plan with status tracking
+│   ├── shared/                 # Shared TypeScript types and constants
+│   └── cloud/                  # Remote-access control plane (deployed to Azure)
+├── CLAUDE.md                   # Architecture & contributor guide (kept current)
+├── HANDOFF.md                  # Current deploy state + resume points
+├── research.md                 # API research and framework comparison (historical)
+└── plan.md                     # Original implementation plan (historical)
 ```
 
 ## API Endpoints
@@ -162,7 +178,7 @@ whatson/
 | State Management | TanStack Query, Zustand |
 | Backend | Node.js, Express, TypeScript |
 | Shared Types | @whatson/shared npm workspace |
-| Video Player | expo-av (Expo Go) / expo-video (native builds) |
+| Video Player | expo-video (native builds; playback unavailable in Expo Go) |
 | Storage | expo-secure-store (app prefs), file-based JSON (tracked items) |
 | Cache | node-cache (in-memory with TTL) |
 

@@ -1,5 +1,14 @@
 # Live TV — implementation plan
 
+> **STATUS (2026-09-06): Phase 1 shipped.** The HDHomeRun tuner path is live —
+> `packages/api/src/services/live/{registry,hdhomerun,hlsProxy}.ts`, routes
+> `/live/{tuner-channels,stream/:id,epg,hls/...,sources,all-channels}`, and the mobile
+> Live TV tab. The "open questions / decision points" sections below were **resolved in
+> code** (e.g. format selection = explicit `?format=` param + header/RFC1918 heuristic;
+> mobile forces `?format=hls` — see `routes/live.ts`). **Phase 2 (Plex DVR / Jellyfin /
+> Emby live sources) is not built.** This doc is kept as the design record; trust the
+> code for current behavior.
+
 Adding live-channel browsing + playback to WhatsOn. Two source paths,
 unified behind one UI:
 

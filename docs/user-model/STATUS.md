@@ -1,6 +1,10 @@
 # Unified User Model — Status & Resume Point
 
-**Last updated:** 2026-07-05 · **Status: SHIPPED (v0.1.144) + verified live**
+**Last updated:** 2026-09-06 · **Status: SHIPPED (v0.1.144) + verified live**
+*(The backend has since advanced to v0.1.146 — download-queue cancel/re-search (v0.1.145)
+and LATE + Search Now (v0.1.146). Those are separate features, not user-model work; the
+user-model state below is unchanged and the backlog in `02-remaining.md` is still accurate.
+See `docs/KNOWN-ISSUES.md` for the consolidated open-items list.)*
 **Plan of record:** [`00-vision.md`](00-vision.md) (decided model) +
 [`01-implementation.md`](01-implementation.md) (build blueprint) +
 [`02-remaining.md`](02-remaining.md) (detailed backlog of what's left).

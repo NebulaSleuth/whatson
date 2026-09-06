@@ -2,6 +2,42 @@
 
 This document is the architecture and delivery plan for the Roku client. It assumes the existing `packages/api` backend is unchanged and that the React Native phone/TV codebase under `apps/mobile` is the reference UX. The Roku build is **not** a port — it's a clean-slate channel in BrightScript and SceneGraph that talks to the same HTTP API.
 
+> **STATUS (2026-09-06): Phases 0–3 shipped; store submission (Phase 4) not started.**
+> The channel is live (sideloaded) on two devices and implements: Home shelves, TV,
+> Movies, **Live TV** (now + later via `/api/live/*`), Sports, Library, Search, Settings —
+> **8 tabs** (§7's original 7-tab list predates Live TV). Detail view with Play / Resume /
+> Mark (All) Watched/Unwatched / Add to Sonarr/Radarr / Track / **Go to Show**
+> (seasons+episodes browser), HLS player, Plex **and** unified Whats-On user accounts with
+> per-device auth-key pairing, avatars and Switch User, plus the v0.1.145/146 features:
+> **download status panel with Cancel Download / Cancel & Re-search**, **Search Now**, and
+> the **LATE** badge.
+>
+> **Where the plan diverged from the build** (kept for the record; the sections below
+> describe the original plan):
+> - §4's multi-scene layout was **not** followed — the shipped channel is a single
+>   mega-scene (`components/HomeScene.brs`, ~6,800 lines) holding all tabs, detail,
+>   player, and settings logic, with flat leaf components (ActionButton, ApiTask,
+>   EpisodeListItem, LiveChannelItem, PosterItem, SportsCard, TabButton, ToggleRow,
+>   UserCardItem). No `util/`/`tasks/`/`cards/` dirs; `PosterItem` fills `ContentCard`'s
+>   role. A future refactor into scenes is optional, not planned.
+> - Manifest `title` is `What's On TV` (not `Whats On`), plus `confirm_partner_button=1`
+>   and `bs_const=DEBUG=true`.
+> - Auth went beyond §7's Plex-only design: per-device auth keys (`configAuthKey()` /
+>   `ROKU_AUTH_KEY`, registry-first), `/api/whatson-users/*`, "Remember login".
+>
+> **Recorded parity divergences (per §1's commitment):**
+> - Detail summary is capped at **4 lines instead of 6** whenever a download/search
+>   status panel is visible, so the status line at y≈650 doesn't overlap the summary
+>   (`HomeScene.brs` `populateDetail`). Mobile shows the full summary.
+> - Contextual action buttons (download-cancel, search-now) live in their **own
+>   LayoutGroups** (`downloadActions`, `searchActions`) because SceneGraph LayoutGroups
+>   reserve space for invisible children — mixing them into the main action row pushed
+>   buttons off-screen.
+>
+> **Known issue:** `scripts/package.js` does not include `fonts/**/*` while
+> `scripts/deploy.js` does — a store package would miss NotoSansSymbols.ttf (Settings
+> gear glyph). Fix before Phase 4. See `docs/KNOWN-ISSUES.md`.
+
 ---
 
 ## 1. Goals — Roku must match Android TV / tvOS
@@ -15,11 +51,13 @@ not a permanent decision.
 
 Concrete commitments:
 
-- **Feature set** — same tabs (Home / TV Shows / Movies / Library / Search /
-  Sports / Settings), same shelves on Home (Continue Watching, Ready to
-  Watch — TV/Movies, Coming Soon — TV/Movies, Sports On Now / Later, "What's
-  on TV"), same detail-sheet actions (Play, Mark Watched, Mark Unwatched,
-  Add to Sonarr/Radarr).
+- **Feature set** — same tabs (shipped: Home / TV Shows / Movies / Live TV /
+  Sports / Library / Search / Settings), same shelves on Home (Continue
+  Watching, Ready to Watch — TV/Movies, Coming Soon — TV/Movies, Sports On
+  Now / Later, "What's on TV" + "What's on TV Later"), same detail-sheet
+  actions (Play/Resume, Mark Watched, Mark Unwatched, Mark All, Add to
+  Sonarr/Radarr, Track, Go to Show, and the download-cancel / Search Now
+  actions from v0.1.145/146).
 - **Defaults** — Library tab opens to TV Shows sorted A-Z; Sports On Later
   shows 7 days; Continue Watching items excluded from Ready to Watch;
   one-card-per-show on TV shelves. Same defaults the mobile aggregator
@@ -276,15 +314,13 @@ Section name: `whatson`. Read on boot, written from SettingsScene.
 
 ## 12. Phased roadmap
 
-| Phase | Scope | Effort |
+| Phase | Scope | Status |
 |---|---|---|
-| **0. Spike** | Sideload a 1-screen "hello /api/home" channel that fetches the home payload and renders one Label per item. Validates dev loop, header propagation, CORS. | 1 day |
-| **1. MVP** | Home tab with shelves; Library tab; DetailScene; PlayerScene with HLS playback + position reporting + stop event; Settings (API URL only). | 1.5 weeks |
-| **2. Search + Sports** | Search with KeyboardDialog; Sports tab with live + later shelves and SportsDetail; Plex Home user picker. | 1 week |
-| **3. Polish** | Subtitle / audio track switching; Mark Watched / Unwatched on detail; Continue Watching exclusion logic; pairing flow for Plex token; channel art; signed .pkg build. | 1 week |
-| **4. Store submission** | Channel description, screenshots, content rating, certification testing, response to Roku reviewer feedback. | 1–2 weeks (mostly waiting) |
-
-Total: roughly **4–5 weeks of focused work** for a store-ready channel. MVP usable on a private device after week 2.
+| **0. Spike** | Sideload a 1-screen "hello /api/home" channel that fetches the home payload and renders one Label per item. Validates dev loop, header propagation, CORS. | ✅ Done |
+| **1. MVP** | Home tab with shelves; Library tab; detail view; player with HLS playback + position reporting + stop event; Settings. | ✅ Done |
+| **2. Search + Sports** | Search with KeyboardDialog; Sports tab with live + later shelves and sports detail; user picker. | ✅ Done |
+| **3. Polish** | Mark Watched / Unwatched on detail; Continue Watching exclusion logic; pairing flow; channel art. | ✅ Done (plus beyond-plan: Live TV tab, Whats-On accounts, download-queue management, LATE/Search Now) |
+| **4. Store submission** | Channel description, screenshots, content rating, certification testing, response to Roku reviewer feedback. **Blockers: `package.js` fonts gap (see status header).** | ⬜ Not started |
 
 ---
 
@@ -298,13 +334,8 @@ Total: roughly **4–5 weeks of focused work** for a store-ready channel. MVP us
 
 ---
 
-## 14. What this commit ships
+## 14. What shipped (originally: "What this commit ships")
 
-The accompanying scaffold ships the **Phase 0 spike**, runnable against a real Roku in dev mode with a single `npm run roku:deploy`. Specifically:
-
-- Workspace at `apps/roku/` with valid `manifest`, `package.json`, source layout, and the deploy script.
-- A `HomeScene` that fetches `/api/home` and renders one row per section as posters in a `RowList`.
-- `ApiTask` + `Headers` utility — the foundation that all subsequent screens will reuse.
-- README with the dev-mode enable steps, env vars for the deploy script, and the telnet debug command.
-
-Phases 1+ are follow-ups; nothing in this scaffold is wasted when we expand into them.
+The original scaffold commit shipped the **Phase 0 spike**. The channel has since grown
+through Phase 3 — see the **STATUS** block at the top of this document for the shipped
+feature set, the divergences from this plan, and the store-submission blockers.

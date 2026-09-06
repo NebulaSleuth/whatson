@@ -1,5 +1,10 @@
 # "Whats On" — Research Report
 
+> **HISTORICAL DOCUMENT** — pre-build research, kept for reference. Scope later expanded
+> beyond it: a web client shipped despite the "not recommended" verdict (`apps/web`),
+> Jellyfin/Emby adapters, Sports, and HDHomeRun tuner Live TV were added, and Windows
+> (react-native-windows) remains unshipped.
+
 ## Executive Summary
 
 "Whats On" is a media aggregation app that unifies Plex, Sonarr, Radarr, and live TV into a single "what can I watch tonight?" experience. This document covers APIs, cross-platform frameworks, UX patterns, and suggested enhancements.

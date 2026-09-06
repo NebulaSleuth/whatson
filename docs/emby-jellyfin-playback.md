@@ -163,12 +163,18 @@ Even text subtitles (ASS/SRT) on Emby break when we ask the transcoder to seek A
 
 ```ts
 const isEmbySubBurn = opts.source === 'emby' && subIndexForBody > 0;
+const isJellyfinSeek = opts.source === 'jellyfin' && startTicks > 0;
 const shouldDropStartTicks =
-  sourceHasImageSubs || isImageBasedSub || isEmbySubBurn;
+  sourceHasImageSubs || isImageBasedSub || isEmbySubBurn || isJellyfinSeek;
 const effectiveStartTicks = shouldDropStartTicks ? 0 : startTicks;
 const clientSeekMs = shouldDropStartTicks && startTicks > 0
   ? Math.floor(startTicks / TICKS_PER_MS) : 0;
 ```
+
+`isJellyfinSeek` (added after v0.1.83) drops `StartTimeTicks` on Jellyfin **universally**
+whenever there's a resume point: clients already handle `clientSeekMs` locally on every
+platform, so the server transcodes from t=0 and the client seeks to the resume point.
+Slightly slower start (ffmpeg winds forward before the first segment), but reliable.
 
 When `shouldDropStartTicks` is true:
 - We **delete** `StartTimeTicks` from `streamParams` (this was a bug in v0.1.79 — streamParams was built with raw startTicks *before* effectiveStartTicks was computed).

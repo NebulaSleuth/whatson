@@ -1,25 +1,27 @@
 # Whats On — Architecture & Contributor Guide
 
-A cross-platform "what should I watch tonight?" app that unifies Plex, Sonarr, Radarr, TMDB, and TVmaze into a Netflix-style home experience. Runs on Android, iOS, Android TV, Apple TV today; Roku spike in progress; Windows planned.
+A cross-platform "what should I watch tonight?" app that unifies Plex, Jellyfin, Emby, Sonarr, Radarr, TMDB, TVmaze, and HDHomeRun tuners into a Netflix-style home experience. Runs on Android, iOS, Android TV, Apple TV, Roku, and the web (SPA served by the backend) today; Windows planned.
 
-See `plan.md` for mobile phase-by-phase status, `apps/roku/PLAN.md` for the Roku roadmap, and `docs/emby-jellyfin-playback.md` for the Emby/Jellyfin playback quirks history — every load-bearing line in `embyLike.ts` exists because of a specific bug, so read that before changing playback code. This file describes the architecture that is actually in code.
+See `HANDOFF.md` for current deploy state + resume points, `docs/KNOWN-ISSUES.md` for open issues and incomplete features, `apps/roku/PLAN.md` for the Roku roadmap, and `docs/emby-jellyfin-playback.md` for the Emby/Jellyfin playback quirks history — every load-bearing line in `embyLike.ts` exists because of a specific bug, so read that before changing playback code. (`plan.md`, `LiveTV.md`, and `research.md` are historical planning docs — see their headers.) This file describes the architecture that is actually in code.
 
-**Current model:** `docs/user-model/` — the unified user model (users = people; Whats On owns identity, subsystems are content sources) is **built + shipped as v0.1.144** and live on the fleet; it replaced the M7 guest/viewer/binding model. Start at `docs/user-model/STATUS.md` for the current state + resume point, `02-remaining.md` for the remaining backlog (mobile PIN token, Phase C library UI, self-create provisioning, etc.), and `00-vision.md`/`01-implementation.md` for the design. This superseded the remote-access M7 guest flow (`docs/remote-access/STATUS.md` — now a banner + infra reference); its infrastructure (cloud control plane, per-server TLS, device-code, connection racer) carries forward unchanged.
+**Current model:** `docs/user-model/` — the unified user model (users = people; Whats On owns identity, subsystems are content sources) is **built + shipped as v0.1.144** and live on the fleet (backend has since advanced to v0.1.146 — download-queue cancel/re-search, LATE items + Search Now); it replaced the M7 guest/viewer/binding model. Start at `docs/user-model/STATUS.md` for the current state + resume point, `02-remaining.md` for the remaining backlog (mobile PIN token, Phase C library UI, self-create provisioning, etc.), and `00-vision.md`/`01-implementation.md` for the design. This superseded the remote-access M7 guest flow (`docs/remote-access/STATUS.md` — now a banner + infra reference); its infrastructure (cloud control plane, per-server TLS, device-code, connection racer) carries forward unchanged.
 
 ---
 
 ## Monorepo Layout
 
-npm workspaces at the root. Four workspaces:
+npm workspaces at the root (`apps/*` + `packages/*` globs). Six workspaces:
 
 ```
 apps/mobile            React Native (Expo) app — phone + TV
 apps/roku              SceneGraph / BrightScript channel
+apps/web               React SPA (Vite + Tailwind) — served at / by the backend
 packages/api           Node + Express backend
 packages/shared        Shared TypeScript types + constants
+packages/cloud         Remote-access control plane (@whatson/cloud) — rendezvous/address-book service, deployed to Azure (cloud.whatsontv.net)
 ```
 
-Root scripts (`package.json`): `dev:api`, `dev:mobile`, `build:api`, `build:standalone`, `build:installer`, `service:{install,uninstall,status}`, `lint`, `typecheck`. All delegate to workspace scripts via `-w`.
+Root scripts (`package.json`): `dev:api`, `dev:mobile`, `dev:web`, `build:api`, `build:web`, `build:shared`, `build:standalone`, `build:installer` (builds `apps/web` first, then the API installer), `service:{install,uninstall,status}`, `roku:deploy`, `roku:package`, `lint`, `typecheck`. All delegate to workspace scripts via `-w`.
 
 Node ≥ 20 required. React is pinned to 19.1.0 via `overrides`.
 
@@ -27,7 +29,7 @@ Node ≥ 20 required. React is pinned to 19.1.0 via `overrides`.
 
 ## Backend (`packages/api`)
 
-Express server at `http://localhost:3001` by default. Serves `/api/*` JSON, `/ws` WebSocket, and `/setup` static admin UI.
+Express server at `http://localhost:3001` by default. Serves `/api/*` JSON, `/ws` WebSocket, `/setup` static admin UI, and the `apps/web` SPA at `/`.
 
 ### Entry + startup (`src/index.ts`)
 
@@ -37,10 +39,11 @@ Express server at `http://localhost:3001` by default. Serves `/api/*` JSON, `/ws
    - `C:\ProgramData\WhatsOn\.env` (Windows service default)
    - `process.cwd()/.env`
    - `__dirname/../.env` (dev mode next to `dist/`)
-3. CORS + JSON + `userContext` middleware are mounted.
-4. Routers are mounted under `/api`.
-5. WebSocket server is attached to the same HTTP server.
-6. Plex server discovery is kicked off eagerly so artwork URLs work on the first request.
+3. `hostGuard` (DNS-rebinding guard, `security/httpGuards.ts`) + CORS + JSON are mounted.
+4. `mountApiRoutes(app, 'lan')` (`server/surface.ts`) mounts everything under `/api` — it applies `apiAuth` then `userContext`, and splits the **consumer surface** (available on LAN + remote) from the **admin surface** (LAN only). A second listener for remote/TLS traffic is started via `startRemoteListener()` and mounts the consumer surface only.
+5. The web SPA is served at `/` (mounted after `/api` and `/setup`; checks `apps/web/dist`, a bundled `web/` dir, or next to the exe).
+6. WebSocket server is attached to the same HTTP server.
+7. `ensureDefaultAdmin()` (userBootstrap), `startCertManager()`, and `startCloudRegistration()` run at boot; Plex server discovery is kicked off eagerly so artwork URLs work on the first request.
 
 ### Config (`src/config.ts`)
 
@@ -48,11 +51,14 @@ Exports a **lazy `Proxy`** — `_config` is built on first property read, not at
 
 `saveConfigToEnv()` rewrites `.env` (preserving comments) and `reloadConfig()` forces the proxy to rebuild — this is how the admin UI's hot reload works after Plex OAuth or service edits.
 
-### Middleware (`src/middleware/userContext.ts`)
+### Middleware (`src/middleware/`)
 
-Reads `X-Plex-User` and `X-Plex-Connection: local|remote` headers on every `/api/*` request and attaches a per-request user scope. Plex services resolve the correct per-user token from `services/users.ts`. Per-user data (watched state) is keyed off `req.user.id`.
+Four middleware, mounted by `server/surface.ts` in this order:
 
-The client always sends both headers (`lib/api.ts` `fetchApi`). `X-Plex-Connection` lets Plex pick the LAN connection on the same network vs. plex.tv relay when remote.
+- **`apiAuth.ts`** — device-pairing auth. Validates the per-device auth key (`X-Whatson-Auth` header or `auth=` query param) minted by the `/auth/pair/*` flow. Keyless **LAN reads are allowed** (an *invalid* key is rejected; no key is fine locally); remote surface requires a valid key.
+- **`userContext.ts`** — attaches the per-request user scope. Primary path reads **`X-Whatson-User`** (unified user model id) plus **`X-Whatson-Session`** (PIN session token, enforced only when `WHATSON_STRICT_PIN` is on); `X-Plex-User` is the legacy fallback. Also reads `X-Plex-Connection: local|remote` so Plex picks the LAN connection vs. plex.tv relay. Per-user data (watched state) is keyed off `req.user.id`.
+- **`roles.ts`** — `requireOwner` guard for owner-gated mutations (queue cancel/search, update apply, user admin).
+- **`sessionAuth.ts`** — admin session cookie for the `/setup` UI.
 
 ### Services (`src/services/`)
 
@@ -69,10 +75,20 @@ The client always sends both headers (`lib/api.ts` `fetchApi`). `X-Plex-Connecti
 | `tvmaze.ts` | Show search + episode lookup (Phase 3 groundwork) |
 | `liveTv.ts` | TVmaze-backed "What's on TV" shelves — channel list, currently-airing, next-N-hours |
 | `tracked.ts` | Watchlist (`data/tracked.json`) + per-user watched state (`data/users/{id}/watched.json`) |
-| `users.ts` | Plex Home user list + per-server token resolution |
+| `users.ts` | Plex Home user list + per-server token resolution (legacy; secondary to `whatsonUsers.ts`) |
+| `whatsonUsers.ts` | **Unified user model store** — Whats On users (people) with role, PIN, avatar, and per-subsystem mappings (`mappings.{plex,jellyfin,emby}`); mints PIN session tokens |
+| `subsystemUsers.ts` | Provision/deprovision Jellyfin/Emby accounts for a Whats On user (`provisionUser`, `setLibraries`) |
+| `userBootstrap.ts` | `ensureDefaultAdmin()` — creates the owner account on first boot |
+| `pairing.ts` | Device pairing — pair codes + per-device auth keys consumed by `apiAuth` |
+| `secrets.ts` / `session.ts` | Encrypted-at-rest secret storage; admin session store |
+| `avatars.ts` / `avatar-pngs.ts` | Built-in avatar set for user profiles |
 | `discover.ts` | TMDB search with Sonarr/Radarr fallback when no TMDB key |
 | `updater.ts` | GitHub Releases poller; downloads and silently installs new versions (Windows only) |
-| `aggregator.ts` | Home + search composition; iterates `getConfiguredAdapters()` for library-server data; "Ready to Watch" / "Coming Soon" rules |
+| `aggregator.ts` | Home + search composition; iterates `getConfiguredAdapters()` for library-server data; "Ready to Watch" / "Coming Soon" rules (incl. `isLate` — past-due-undownloaded items stay 7 days) |
+| `live/` | HDHomeRun tuner discovery (`hdhomerun.ts`), ffmpeg HLS proxy (`hlsProxy.ts`), source registry — the tuner-backed Live TV path (`liveTv.ts` above is the older TVmaze guide path; both coexist) |
+| `sports/` | Sports shelves — leagues/games data behind `/sports/*` |
+| `cloud/` | Cloud-registration client (`registration.ts`) + ACME per-server TLS (`certManager.ts`, `acme.ts`) — talks to `packages/cloud` |
+| `streamProxy.ts` | Proxy for remote stream segments |
 
 ### Adapter layer (`src/services/adapters/`)
 
@@ -100,10 +116,17 @@ All mounted at `/api`. Notable endpoints:
 - `POST /scrobble`, `/unscrobble`, `/scrobble/all`, `/unscrobble/all` — `source` in body routes via adapter
 - `GET /playback/:ratingKey?source={plex|jellyfin|emby}`, `POST /playback/progress`, `POST /playback/stop`
 - `GET /auth/providers` — `{ plex, jellyfin, emby, sonarr, radarr }` booleans for client-side flow control
-- `GET /live/channels`, `GET /live/now?channels=`, `GET /live/later?channels=&hours=` — "What's on TV" (TVmaze)
-- `GET /update/status`, `POST /update/check`, `POST /update/apply` — GitHub-Releases auto-update (Windows)
+- `/auth/*` — device pairing + admin auth: `admin-status`, `setup-admin`, `login`, `logout`, `change-password`, `pair/{start,poll,complete,pending}`, `redeem-grant`, `GET/DELETE /auth/devices`
+- `/whatson-users/*` — unified user model: CRUD, `POST /:id/select` (returns `sessionToken`), `/avatars`, `/libraries/:kind`, `/source/{plex,jellyfin,emby}`, `/guest-profile`
+- `POST /queue/cancel`, `/queue/cancel-research`, `/queue/search` — owner-gated Sonarr/Radarr download-queue management (cancel, cancel + re-search, Search Now)
+- `GET /live/channels`, `GET /live/now?channels=`, `GET /live/later?channels=&hours=` — "What's on TV" (TVmaze guide path)
+- `/live/{tuner-channels,stream/:id,epg,hls/...,sources,all-channels}` — HDHomeRun tuner Live TV (ffmpeg HLS proxy; mobile forces `?format=hls`)
+- `/sports/*` — sports shelves + per-user league prefs (mobile hides the tab when no leagues picked)
+- `GET /update/status`, `POST /update/check`, `POST /update/apply` — GitHub-Releases auto-update (Windows; `check` only detects, `apply` is owner-gated)
 - `GET /sonarr/{profiles,rootfolders}`, `POST /sonarr/add` (+ Radarr equivalents)
-- `GET /users`, `POST /users/select`
+- `GET /users`, `POST /users/select` (legacy Plex Home picker)
+- `GET /logs?lines=&filter=`, `GET /logs/info` — log tail for remote debugging
+- `/candidates`, `/remote/*` — remote-access support routes (cloud grants, connection info)
 - `GET /artwork?url=...` — server-side proxy + 24h cache
 - `GET /config`, `/config/status`, `POST /config/test`, `/config/save` + Plex PIN OAuth endpoints
 - `GET /health`
@@ -166,15 +189,23 @@ Expo Router file-based routing.
 
 ```
 app/
-  _layout.tsx        Root: QueryClientProvider, realtime updates, user-auth gate
-  player.tsx         Full-screen expo-video player with TV controls + markers
-  show-detail.tsx    Show/movie detail with seasons + episodes
-  select-user.tsx    "Who's Watching?" picker + PIN entry
+  _layout.tsx              Root: QueryClientProvider, realtime updates, user-auth gate
+  player.tsx               Full-screen expo-video player with TV controls + markers
+  show-detail.tsx          Show/movie detail with seasons + episodes
+  select-user.tsx          Legacy Plex Home "Who's Watching?" picker + PIN entry
+  select-whatson-user.tsx  Unified-user "Who's Watching?" picker (primary)
+  create-profile.tsx       Self-serve profile creation
+  pair-device.tsx          Device pairing (pair-code flow → auth key)
+  cloud-signin.tsx         Cloud account sign-in (remote access)
+  sports-detail.tsx        Sports game detail
+  sports-settings.tsx      League picker for the Sports tab
   (tabs)/
     _layout.tsx      TV: top bar + clock + TVTabButton. Phone: bottom tabs.
     index.tsx        Home (Continue Watching, Ready, Coming Soon, Recommendations)
     tv.tsx           TV Shows
     movies.tsx       Movies
+    live-tv.tsx      Live TV (tuner channels + guide)
+    sports.tsx       Sports (tab hidden when no leagues configured)
     library.tsx      Plex library grid browser
     search.tsx       "My Library" + "Discover & Track" modes
     settings.tsx     Server config, user, playback + TMDB prefs
@@ -182,21 +213,23 @@ app/
 
 ### Components (`components/`)
 
-- **ContentCard** — poster + badge + progress bar; TV focus highlight + long-press context menu; manages its own focus state to avoid FlatList re-renders
+- **ContentCard** — poster + badges (LATE, LIVE, RERUN, group count) + progress bar; TV focus highlight + long-press context menu; manages its own focus state to avoid FlatList re-renders
 - **ContentShelf** — horizontally scrolling row with edge-trap focus wrapping
 - **ShelfList** — stacks multiple shelves; exposes `focusFirst()` for back-button handling
-- **DetailSheet** — bottom-sheet modal (uses `Modal` for Android compatibility)
+- **DetailSheet** — bottom-sheet modal (uses `Modal` for Android compatibility). Shows download status (%, ETA, progress bar) with owner-gated **Cancel Download** / **Cancel & Re-search** for downloading items, and **Search Now** for coming-soon Sonarr/Radarr items
 - **ArrAddPicker** — shared modal for Sonarr/Radarr adds; remembers last-used profile/folder/monitor per service
 - **TVFocusable** — `TVPressable` + `TVTextInput` wrappers with focus border styling
-- **SourceBadge / ProgressBar / SkeletonCard / ErrorState / Clock**
+- **SportsShelf / ViewAllCard / SourceBadge / ProgressBar / SkeletonCard / ErrorState / Clock**
 
 ### Library (`lib/`)
 
-- **api.ts** — typed API client. Always sends `X-Plex-User` and `X-Plex-Connection` headers. `resolveArtworkUrl()` rewrites `/api/artwork?...` paths to absolute backend URLs.
-- **store.ts** — Zustand: `apiUrl`, `isConfigured`, `isReady`, `currentUser`, `rememberUser`, `autoSkipIntro`, `autoSkipCredits`, `disableTouchSurface`, `showBecauseYouWatched`, `plexConnectionType`.
+- **api.ts** — typed API client. Sends `X-Whatson-User` (unified users; `X-Plex-User` only in legacy mode), `X-Plex-Connection`, and the device auth key as `X-Whatson-Auth` + `auth=` query param. `resolveArtworkUrl()` rewrites `/api/artwork?...` paths to absolute backend URLs.
+- **store.ts** — Zustand: `apiUrl`, `isConfigured`, `isReady`, `currentUser` (a `CurrentUser` with `kind: 'plex' | 'whatson'`), `rememberUser`, `authKey`, `autoSkipIntro`, `autoSkipCredits`, `disableTouchSurface`, `showBecauseYouWatched`, `plexConnectionType`, `liveTvChannels`.
 - **storage.ts** — secure persisted settings (expo-secure-store): API URL, saved user, playback prefs, last-used Arr profile/folder/monitor.
 - **videoPlayer.ts** — checks for `expo-video` native module (detects Expo Go vs. dev build).
 - **tv.ts** — `isTV`, `isTVOS`, `isAndroidTV` platform flags.
+- **connection.ts / connectionRace.ts** — remote-access connection racer (races LAN vs. cloud/TLS endpoints, first healthy wins; has unit tests).
+- **cloudAuth.ts** — cloud account tokens for remote access.
 - **useBackHandler.ts** — tab-scoped back handler via `useIsFocused()`; prevents app exit, scrolls to top + focuses first card.
 - **useRealtimeUpdates.ts** — WebSocket client with 5-second auto-reconnect, AppState-driven reconnect on resume, and a suppression flag + pending queue used during video playback (prevents stale data from overwriting live playback position).
 
@@ -228,9 +261,9 @@ TanStack Query (React Query) for all server data. Query keys align 1:1 with the 
 
 ## Shared (`packages/shared`)
 
-Types (`types.ts`): `ContentItem`, `ContentSection`, `Artwork`, `Progress`, `Availability`, `HomeResponse`, `SearchResponse`, `ApiResponse<T>`, `TrackedItem`, `TmdbSearchResult`, `StreamingProvider`, `PlexConfig`, `SonarrConfig`, `RadarrConfig`, `EpgConfig`, `ServerConfig`.
+Types (`types.ts`): `ContentItem` (incl. `isLate` + `download: DownloadStatus`), `ContentSection`, `Artwork`, `Progress`, `Availability`, `DownloadStatus`, `HomeResponse`, `SearchResponse`, `ApiResponse<T>`, `TrackedItem`, `TmdbSearchResult`, `StreamingProvider` + the 29-entry `STREAMING_PROVIDERS` list, `LiveChannel`/`LiveStreamInfo`/`LiveProgram`, `PlexConfig`, `SonarrConfig`, `RadarrConfig`, `EpgConfig`, `ServerConfig`.
 
-Constants (`constants.ts`): `APP_NAME`, `APP_VERSION`, `PLEX_CLIENT_IDENTIFIER`, `PLEX_PRODUCT`, cache TTLs, source colors + labels, `TVMAZE_BASE_URL`, `TMDB_BASE_URL`, `TMDB_IMAGE_BASE`, 13-provider streaming list.
+Constants (`constants.ts`): `APP_NAME`, `APP_VERSION`, `PLEX_CLIENT_IDENTIFIER`, `PLEX_PRODUCT`, cache TTLs, source colors + labels, `TVMAZE_BASE_URL`, `TMDB_BASE_URL`, `TMDB_IMAGE_BASE`, `DEFAULT_CLOUD_URL`, `DEFAULT_EPG_COUNTRY`.
 
 ---
 
@@ -269,7 +302,7 @@ Useful endpoints:
 - `GET /api/logs/info` — log file path + size + last-modified, for sanity-checking logging is alive
 - `GET /api/config/status` — provider config status (which media servers are configured, etc.)
 
-The user's network is local-only and unauthenticated. No tokens needed.
+The user's network is local-only; `apiAuth` allows keyless LAN reads, so no tokens are needed for GETs from inside the LAN (a *stale/invalid* auth key is rejected — omit the key entirely rather than sending an old one).
 
 ### Shipping a backend release
 
