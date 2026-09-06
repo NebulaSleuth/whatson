@@ -34,25 +34,13 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 The LAN devices are only reachable when you're on that network — timeouts just mean
 you're elsewhere, not that something broke.
 
-## Uncommitted working-tree files (KEEP)
+## Working tree
 
-Per the project's commit cadence, backend/shared go to git (the updater deploys from
-GitHub releases) but **mobile client changes stay local** — devices are deployed
-directly (adb). These three files hold the mobile side of the download-cancel
-(v0.1.145) and LATE + Search Now (v0.1.146) features:
-
-- `apps/mobile/components/ContentCard.tsx` — LATE/RERUN badges, group-count chip
-- `apps/mobile/components/DetailSheet.tsx` — download status panel, Cancel / Cancel &
-  Re-search / Search Now buttons
-- `apps/mobile/lib/api.ts` — `cancelDownload`, `cancelAndResearch`, `searchNow`
-
-If a device ever needs rebuilding, these must be present. (Committing them is fine if
-the cadence ever changes; nothing else depends on them staying uncommitted.)
-
-The Roku side of those same features is now **committed** (`7b3970f`, 2026-09-06)
-together with the subtitle-on-pause fix — it shares `HomeScene.brs` with the fix and
-couldn't be split. Roku is therefore in git; only mobile still follows the local-only
-cadence.
+**Everything is committed** as of 2026-09-06 (`ad8eafd`). The Roku (`7b3970f`) and
+mobile (`ad8eafd`) client sides of the v0.1.145/146 features, which had been kept
+local under the old "client changes stay local" cadence, are now in git. Client code
+is still deployed to devices directly (adb / sideload) rather than via releases, but
+it is committed like everything else.
 
 Untracked root files (`AppIcons*/`, `*.png`, `icon.ico`, `logo.psd`, `setroku*.ps1`)
 are icon-design scratch + local deploy helpers. Note `setroku.ps1` contains a **stale
