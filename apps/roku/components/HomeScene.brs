@@ -687,8 +687,8 @@ sub init()
         btn.observeField("buttonSelected", "onTabSelected")
     end for
     ' Sports tab starts hidden (mobile parity — shown once a league is
-    ' followed). This also wires nextFocusLeft / Right across the
-    ' visible strip via rebuildTabStrip.
+    ' followed). This also rebuilds the visible strip (m.tabButtons)
+    ' that onKeyEvent walks for D-pad left/right.
     setSportsTabVisible(false)
     ' Home is the default landing view (homeView.visible=true in XML)
     ' but boot never calls showView("home"), so paint Home as selected.
@@ -715,28 +715,20 @@ sub init()
     m.librarySortWatched.observeField("buttonSelected", "onLibrarySortSelected")
     m.librarySortReady.observeField("buttonSelected", "onLibrarySortSelected")
     m.libraryTypeShow.selected = true
-    m.libraryTypeShow.nextFocusRight = m.libraryTypeMovie
-    m.libraryTypeMovie.nextFocusLeft = m.libraryTypeShow
     m.libraryGrid.observeField("itemSelected", "onLibraryItemSelected")
     m.tunerLiveGrid.observeField("itemSelected", "onTunerLiveChannelSelected")
     m.searchInputButton.observeField("buttonSelected", "onSearchInputPressed")
     ' Each TabButton in the mode + filter toggles fires its own
     ' buttonSelected. Observe all of them with a shared handler that
-    ' inspects which one fired. Wire L/R nextFocus so D-pad steps
-    ' between them.
+    ' inspects which one fired. D-pad left/right between them is
+    ' routed in onKeyEvent.
     m.searchModeLibrary.observeField("buttonSelected", "onSearchModeSelected")
     m.searchModeDiscover.observeField("buttonSelected", "onSearchModeSelected")
     m.searchModeLibrary.selected = true
-    m.searchModeLibrary.nextFocusRight = m.searchModeDiscover
-    m.searchModeDiscover.nextFocusLeft = m.searchModeLibrary
     m.searchFilterAll.observeField("buttonSelected", "onSearchFilterSelected")
     m.searchFilterTv.observeField("buttonSelected", "onSearchFilterSelected")
     m.searchFilterMovie.observeField("buttonSelected", "onSearchFilterSelected")
     m.searchFilterAll.selected = true
-    m.searchFilterAll.nextFocusRight = m.searchFilterTv
-    m.searchFilterTv.nextFocusLeft = m.searchFilterAll
-    m.searchFilterTv.nextFocusRight = m.searchFilterMovie
-    m.searchFilterMovie.nextFocusLeft = m.searchFilterTv
     m.searchResultsGrid.observeField("itemSelected", "onSearchItemSelected")
     m.sportsRowList.observeField("rowItemSelected", "onSportsRowItemSelected")
     m.switchUserButton.observeField("buttonSelected", "onSwitchUserPressed")
@@ -746,8 +738,9 @@ sub init()
     ' which was resolved earlier in init from registry.
     m.connectionLocal.observeField("buttonSelected", "onConnectionTypeSelected")
     m.connectionRemote.observeField("buttonSelected", "onConnectionTypeSelected")
-    m.connectionLocal.nextFocusRight = m.connectionRemote
-    m.connectionRemote.nextFocusLeft = m.connectionLocal
+    ' Left/Right between the two halves is routed in onKeyEvent (custom
+    ' Group components have no nextFocus* fields — setting them only
+    ' logs "nonexistent field" on-device).
     m.connectionLocal.selected = (m.connectionType = "local")
     m.connectionRemote.selected = (m.connectionType = "remote")
 
@@ -788,34 +781,13 @@ sub init()
     m.arrAddButton.observeField("actionSelected", "onArrAddPressed")
     m.arrCancelButton.observeField("actionSelected", "closeArrPicker")
 
-    ' Settings is a long scrolling list — wire nextFocusUp/Down between
-    ' every focusable row top-to-bottom, plus observe focus to scroll the
-    ' settingsContent container so the focused row stays in view.
-    settingsChain = [
-        m.switchUserButton,
-        m.rememberLoginToggle,
-        m.editApiUrlButton,
-        m.connectionLocal,
-        m.autoSkipIntroToggle,
-        m.autoSkipCreditsToggle,
-        m.showBywToggle,
-        m.configureChannelsButton,
-        m.configureSportsButton,
-        m.checkUpdateButton,
-        m.repairButton
-    ]
-    for i = 0 to settingsChain.Count() - 1
-        if i > 0 then settingsChain[i].nextFocusUp = settingsChain[i - 1]
-        if i < settingsChain.Count() - 1 then settingsChain[i].nextFocusDown = settingsChain[i + 1]
-    end for
-    ' connectionRemote shares the connection row with connectionLocal —
-    ' point its up/down at the same neighbours.
-    m.connectionRemote.nextFocusUp = m.editApiUrlButton
-    m.connectionRemote.nextFocusDown = m.autoSkipIntroToggle
-    ' installUpdateButton shares the row with checkUpdateButton.
-    m.installUpdateButton.nextFocusUp = m.configureSportsButton
-    m.installUpdateButton.nextFocusDown = m.repairButton
-
+    ' Settings is a long scrolling list. Up/Down between rows is walked
+    ' explicitly in onKeyEvent via settingsFocusChain() — TabButton /
+    ' ToggleRow are custom Group components with no nextFocusUp/Down
+    ' fields (the first on-device compile of this code logged
+    ' "nonexistent field" for every attempt to set them). Observe focus
+    ' to scroll the settingsContent container so the focused row stays
+    ' in view.
     m.settingsContent.observeField("focusedChild", "adjustSettingsScroll")
     m.checkUpdateButton.observeField("buttonSelected", "onCheckUpdatePressed")
     m.installUpdateButton.observeField("buttonSelected", "onInstallUpdatePressed")
@@ -1450,20 +1422,9 @@ sub rebuildTabStrip()
         end if
     end for
     ' LayoutGroup doesn't auto-traverse focusable siblings the way
-    ' ButtonGroup did — wire each TabButton's nextFocusLeft / Right
-    ' to its neighbour so D-pad left/right walks the strip.
-    for i = 0 to m.tabButtons.Count() - 1
-        if i > 0
-            m.tabButtons[i].nextFocusLeft = m.tabButtons[i - 1]
-        else
-            m.tabButtons[i].nextFocusLeft = invalid
-        end if
-        if i < m.tabButtons.Count() - 1
-            m.tabButtons[i].nextFocusRight = m.tabButtons[i + 1]
-        else
-            m.tabButtons[i].nextFocusRight = invalid
-        end if
-    end for
+    ' ButtonGroup did — D-pad left/right along the strip is walked in
+    ' onKeyEvent over m.tabButtons. (TabButton has no nextFocusLeft /
+    ' Right fields; setting them only logs "nonexistent field".)
     if m.currentView <> invalid then updateTabSelection(m.currentView)
 end sub
 
@@ -3968,6 +3929,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
         currentIdx = -1
         for i = 0 to chain.Count() - 1
             if chain[i] <> invalid and chain[i].isInFocusChain() then currentIdx = i
+            ' Right-hand halves of two-button rows aren't in the chain
+            ' themselves; treat them as their row-mate so Up/Down still
+            ' steps off the row.
+            if chain[i] = m.connectionLocal and m.connectionRemote.isInFocusChain() then currentIdx = i
+            if chain[i] = m.checkUpdateButton and m.installUpdateButton.isInFocusChain() then currentIdx = i
         end for
         if currentIdx >= 0
             delta = -1
@@ -4092,12 +4058,11 @@ function onKeyEvent(key as string, press as boolean) as boolean
                 end if
             end if
         else if m.currentView = "settings"
-            ' Most up/down traversal between settings rows is handled
-            ' declaratively via nextFocusUp / nextFocusDown wired in
-            ' init(). The only edge cases we still handle here are
-            ' the boundaries: the first row hopping back to the tab
-            ' bar and the connection/update toggles where nextFocus
-            ' needs to know which side currently has focus.
+            ' Up/down between settings rows (including the two-button
+            ' connection / update rows) is walked by the
+            ' settingsFocusChain() block earlier in this handler; this
+            ' branch is only reached from the first row, which hops
+            ' back to the tab bar.
             if m.switchUserButton.isInFocusChain()
                 focusActiveTab()
                 return true

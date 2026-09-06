@@ -31,8 +31,8 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 | Cloud | `@whatson/cloud` deployed to Azure — `cloud.whatsontv.net`; per-server TLS via `<serverId>.s.whatsontv.net` |
 | Apple TV "Bedroom" | `192.168.1.210` (paired to the Mac Mini via Xcode; tvOS 26.6) — `com.extrastrength.whatsontv` Release build installed 2026-09-06 with the parity pass. The older `com.extrastrength.whatson` install is still on the device — delete it by hand. **Pairing not yet confirmed working** (code box stayed empty on first attempt; server reachability from the TV unverified) |
 | SHIELD (Android TV) | `192.168.1.69:5555` via adb — release APK with v0.1.145/146 UI installed; **needs rebuild** for the parity pass (swipe/menu fixes are tvOS-only, but connection toggle, session token, Live TV tuning overlay apply) |
-| Roku #1 | `192.168.1.129` — sideloaded with v0.1.146-era UI; **needs re-sideload** for the subtitle-on-pause fix (`7b3970f`) AND the parity pass (first compile of ~1,700 new BrightScript lines — expect to fix compile errors); dev password `abcdefg` |
-| Roku #2 | `192.168.1.198` ("75\" onn. Roku TV") — sideloaded **keyless**, same state as #1 (needs re-sideload); dev password `abcdefg` |
+| Roku #1 | `192.168.1.129` — sideloaded with v0.1.146-era UI; **needs re-sideload** (was unreachable/powered off on 2026-09-06 when #2 was done). Same build as #2 — no compile surprises expected; dev password `abcdefg` |
+| Roku #2 | `192.168.1.198` ("75\" onn. Roku TV") — **current**: sideloaded keyless 2026-09-06 with the parity pass + subtitle-on-pause fix + focus-warning cleanup. Compiled clean (200), boots to the user picker with a clean debug console. On-device *interaction* pass (parity features, pause > 20s subtitle check) still to do; dev password `abcdefg` |
 | Android phone (RT7 TITAN 5G) | release APK installed 2026-07-26 (same build as SHIELD) |
 
 The LAN devices are only reachable when you're on that network — timeouts just mean
@@ -94,7 +94,13 @@ are icon-design scratch + local deploy helpers. Note `setroku.ps1` contains a **
 - **Roku**: `node scripts/deploy.js` from `apps/roku` with `ROKU_HOST`,
   `ROKU_DEV_PASSWORD`, `ROKU_API_URL`, `ROKU_PLEX_USER_ID` (no auth key). A
   `statusCode 200` result means it compiled clean on-device. Drive it for testing via
-  ECP (`http://<ip>:8060/keypress/...`), tail logs via telnet :8085.
+  ECP (`http://<ip>:8060/keypress/...`), tail logs via telnet :8085. `npm run package`
+  builds the same zip without deploying (Config.brs baked from the same env).
+  **A sideload (and ECP `/launch/dev`) restarts the channel — check the telnet console
+  for `onKeyEvent` / `video state -> playing` lines first; the 75" onn. TV is a family
+  TV and someone was watching during a 2026-09-06 redeploy.** Custom Group components
+  (TabButton, ToggleRow) have no `nextFocus*` fields — all D-pad routing is manual in
+  `onKeyEvent`; setting those fields only logs "nonexistent field" (cleaned up 2026-09-06).
 
 ## Machine-specific gotchas (Mike's Windows box "BigROG")
 
