@@ -71,5 +71,23 @@ export function buildDownloadStatus(record: any): DownloadStatus {
     sizeBytes: size || undefined,
     sizeLeftBytes: sizeLeft || undefined,
     errorMessage: record?.errorMessage || undefined,
+    warnings: flattenStatusMessages(record?.statusMessages),
   };
+}
+
+/**
+ * Sonarr/Radarr `statusMessages` is `[{ title, messages: string[] }]`.
+ * Flatten to a de-duplicated string list; undefined when there are none.
+ */
+export function flattenStatusMessages(raw: any): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = new Set<string>();
+  for (const entry of raw) {
+    const msgs = Array.isArray(entry?.messages) ? entry.messages : [];
+    for (const m of msgs) {
+      const s = String(m || '').trim();
+      if (s) out.add(s);
+    }
+  }
+  return out.size > 0 ? [...out] : undefined;
 }

@@ -47,6 +47,7 @@ import { corsMiddleware, hostGuard } from './security/httpGuards.js';
 // memoizing an empty-env snapshot. Force a reload now that process.env is populated.
 reloadConfig();
 import { startUpdateScheduler } from './services/updater.js';
+import { startDownloadMonitor } from './services/downloadMonitor.js';
 import { initWebSocket } from './ws.js';
 import { mountApiRoutes, makeErrorHandler } from './server/surface.js';
 import { startRemoteListener } from './server/remoteListener.js';
@@ -152,6 +153,8 @@ server.listen(config.port, () => {
   console.log(`[Radarr] ${config.radarr.url || 'Not configured'}`);
   console.log(`[EPG] Provider: ${config.epg.provider}, Country: ${config.epg.country}`);
   startUpdateScheduler();
+  // Opt-in Sonarr/Radarr bad-release sweeper (DOWNLOAD_MONITOR=true).
+  startDownloadMonitor();
   // Unified user model (always-on): create a default admin Whats On user mapped
   // to the server's own identities when there are none. Best-effort; on failure
   // the app stays in legacy Plex mode until a user is created.

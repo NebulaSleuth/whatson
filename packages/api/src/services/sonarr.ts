@@ -254,6 +254,30 @@ export async function getQueue(): Promise<ContentItem[]> {
 }
 
 /**
+ * Raw `/queue` records (uncached, un-deduplicated) for the download monitor —
+ * it needs every record's `statusMessages`, `trackedDownloadState` and
+ * `outputPath`, including entries Sonarr couldn't match to a series.
+ */
+export async function getRawQueue(): Promise<any[]> {
+  const http = getClient();
+  const { data } = await http.get('/queue', {
+    params: { pageSize: 500, includeUnknownSeriesItems: true, includeSeries: false, includeEpisode: false },
+  });
+  return toArray(data);
+}
+
+/**
+ * Sonarr's completed-download-handling settings. `autoRedownloadFailed` means
+ * Sonarr itself searches again after a blocklisted removal, so callers can
+ * avoid issuing a duplicate search.
+ */
+export async function getDownloadClientSettings(): Promise<{ autoRedownloadFailed: boolean }> {
+  const http = getClient();
+  const { data } = await http.get('/config/downloadclient');
+  return { autoRedownloadFailed: data?.autoRedownloadFailed !== false };
+}
+
+/**
  * Cancel a queued/downloading item. `blocklist` tells Sonarr to remember the
  * release as bad so it isn't grabbed again on the next search — used by the
  * "cancel and re-search" flow. Invalidates the queue cache so the shelf

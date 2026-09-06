@@ -111,7 +111,43 @@ function loadConfig(): AppConfig {
         .map((s) => s.trim())
         .filter(Boolean),
     },
+    downloadMonitor: {
+      // Opt-in: it deletes downloads, so it must be switched on deliberately.
+      enabled: (process.env.DOWNLOAD_MONITOR || 'false').toLowerCase() === 'true',
+      intervalMinutes: clampInt(process.env.DOWNLOAD_MONITOR_INTERVAL_MIN, 10, 1, 24 * 60),
+      stuckMinutes: clampInt(process.env.DOWNLOAD_MONITOR_STUCK_MIN, 120, 0, 30 * 24 * 60),
+      dryRun: (process.env.DOWNLOAD_MONITOR_DRY_RUN || 'false').toLowerCase() === 'true',
+      research: (process.env.DOWNLOAD_MONITOR_RESEARCH || 'true').toLowerCase() !== 'false',
+      pathMap: parsePathMap(process.env.DOWNLOAD_MONITOR_PATH_MAP),
+    },
   };
+}
+
+function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const n = parseInt((raw || '').trim(), 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * `DOWNLOAD_MONITOR_PATH_MAP` — `remotePrefix=>localPrefix` pairs separated
+ * by `;`, e.g. `/share/Public/=>\\nas\Public\;/share/Videos/=>\\nas\Videos\`.
+ * The remote side is the path as Sonarr/Radarr see it (their `outputPath`),
+ * the local side is how this machine reaches the same folder.
+ */
+export function parsePathMap(raw: string | undefined): Array<{ remote: string; local: string }> {
+  return (raw || '')
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const idx = pair.indexOf('=>');
+      if (idx <= 0) return null;
+      const remote = pair.slice(0, idx).trim();
+      const local = pair.slice(idx + 2).trim();
+      return remote && local ? { remote, local } : null;
+    })
+    .filter((m): m is { remote: string; local: string } => m !== null);
 }
 
 export const config: AppConfig = new Proxy({} as AppConfig, {

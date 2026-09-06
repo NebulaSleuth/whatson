@@ -9,6 +9,7 @@ import * as radarr from '../services/radarr.js';
 import * as jellyfin from '../services/jellyfin.js';
 import * as emby from '../services/emby.js';
 import { startUpdateScheduler } from '../services/updater.js';
+import { startDownloadMonitor } from '../services/downloadMonitor.js';
 import { getCached, setCached, invalidateAll } from '../cache.js';
 import type { ApiResponse } from '@whatson/shared';
 
@@ -64,6 +65,14 @@ configRouter.get('/config', async (_req, res) => {
       enabled: config.update.enabled,
       repo: config.update.repo,
       channel: config.update.channel,
+    },
+    downloadMonitor: {
+      enabled: config.downloadMonitor.enabled,
+      intervalMinutes: config.downloadMonitor.intervalMinutes,
+      stuckMinutes: config.downloadMonitor.stuckMinutes,
+      dryRun: config.downloadMonitor.dryRun,
+      research: config.downloadMonitor.research,
+      pathMap: config.downloadMonitor.pathMap,
     },
   };
 
@@ -250,6 +259,30 @@ configRouter.post('/config/save', async (req, res) => {
       if ('repo' in updateCfg && updateCfg.repo) values.UPDATE_REPO = String(updateCfg.repo);
       if ('channel' in updateCfg && updateCfg.channel) values.UPDATE_CHANNEL = String(updateCfg.channel);
     }
+    const dmCfg = req.body.downloadMonitor;
+    if (dmCfg) {
+      if ('enabled' in dmCfg) values.DOWNLOAD_MONITOR = dmCfg.enabled ? 'true' : 'false';
+      if ('dryRun' in dmCfg) values.DOWNLOAD_MONITOR_DRY_RUN = dmCfg.dryRun ? 'true' : 'false';
+      if ('research' in dmCfg) values.DOWNLOAD_MONITOR_RESEARCH = dmCfg.research ? 'true' : 'false';
+      if ('intervalMinutes' in dmCfg) {
+        const n = parseInt(String(dmCfg.intervalMinutes), 10);
+        if (!Number.isNaN(n)) values.DOWNLOAD_MONITOR_INTERVAL_MIN = String(Math.min(1440, Math.max(1, n)));
+      }
+      if ('stuckMinutes' in dmCfg) {
+        const n = parseInt(String(dmCfg.stuckMinutes), 10);
+        if (!Number.isNaN(n)) values.DOWNLOAD_MONITOR_STUCK_MIN = String(Math.max(0, n));
+      }
+      if ('pathMap' in dmCfg) {
+        // Accept either the raw "remote=>local;…" string or a parsed array.
+        const raw = Array.isArray(dmCfg.pathMap)
+          ? dmCfg.pathMap
+              .filter((m: any) => m && m.remote && m.local)
+              .map((m: any) => `${String(m.remote).trim()}=>${String(m.local).trim()}`)
+              .join(';')
+          : String(dmCfg.pathMap || '');
+        values.DOWNLOAD_MONITOR_PATH_MAP = raw.trim();
+      }
+    }
 
     if (Object.keys(values).length === 0) {
       res.status(400).json({ success: false, error: 'No config values provided' });
@@ -279,6 +312,9 @@ configRouter.post('/config/save', async (req, res) => {
 
     // Re-arm the update scheduler in case AUTO_UPDATE was toggled
     if (updateCfg) startUpdateScheduler();
+    // Re-arm the download monitor when its settings — or the Sonarr/Radarr
+    // connection it depends on — change.
+    if (dmCfg || sonarrCfg || radarrCfg) startDownloadMonitor();
 
     res.json({ success: true, data: { saved: true } });
   } catch (error) {

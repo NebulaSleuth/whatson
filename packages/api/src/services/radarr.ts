@@ -193,6 +193,30 @@ export async function getQueue(): Promise<ContentItem[]> {
 }
 
 /**
+ * Raw `/queue` records (uncached, un-deduplicated) for the download monitor —
+ * it needs every record's `statusMessages`, `trackedDownloadState` and
+ * `outputPath`, including entries Radarr couldn't match to a movie.
+ */
+export async function getRawQueue(): Promise<any[]> {
+  const http = getClient();
+  const { data } = await http.get('/queue', {
+    params: { pageSize: 500, includeUnknownMovieItems: true, includeMovie: false },
+  });
+  return toArray(data);
+}
+
+/**
+ * Radarr's completed-download-handling settings. `autoRedownloadFailed` means
+ * Radarr itself searches again after a blocklisted removal, so callers can
+ * avoid issuing a duplicate search.
+ */
+export async function getDownloadClientSettings(): Promise<{ autoRedownloadFailed: boolean }> {
+  const http = getClient();
+  const { data } = await http.get('/config/downloadclient');
+  return { autoRedownloadFailed: data?.autoRedownloadFailed !== false };
+}
+
+/**
  * Cancel a queued/downloading item. `blocklist` tells Radarr to remember the
  * release as bad so it isn't grabbed again — used by "cancel and re-search".
  * Invalidates the queue cache so the shelf reflects the removal immediately.

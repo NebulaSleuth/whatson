@@ -129,6 +129,30 @@ function resolveFfmpegPath(): string {
   return 'ffmpeg';
 }
 
+/**
+ * ffprobe ships next to ffmpeg in every distribution we resolve, so derive
+ * it from the ffmpeg path. Returns null when ffmpeg itself wasn't found
+ * (bare fallback) or the sibling binary doesn't exist. Used by the download
+ * monitor to validate video files.
+ */
+export function resolveFfprobePath(): string | null {
+  const ffmpeg = resolveFfmpegPath();
+  if (ffmpeg === 'ffmpeg') {
+    // ffmpeg not located — try a bare PATH lookup for ffprobe anyway.
+    try {
+      const tool = process.platform === 'win32' ? 'where' : 'which';
+      const out = execFileSync(tool, ['ffprobe'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const first = out.split(/\r?\n/)[0]?.trim();
+      return first && fs.existsSync(first) ? first : null;
+    } catch {
+      return null;
+    }
+  }
+  const ext = path.extname(ffmpeg);
+  const probe = path.join(path.dirname(ffmpeg), `ffprobe${ext}`);
+  return fs.existsSync(probe) ? probe : null;
+}
+
 /** True if ffmpeg can be located + responds to -version. */
 export function isFfmpegAvailable(): boolean {
   let p = 'ffmpeg';

@@ -47,6 +47,7 @@ import { queueRouter } from '../routes/queue.js';
 import { updateRouter } from '../routes/update.js';
 import { logsRouter } from '../routes/logs.js';
 import { remoteRouter } from '../routes/remote.js';
+import { downloadMonitorRouter } from '../routes/downloadMonitor.js';
 
 export type Surface = 'lan' | 'remote';
 
@@ -110,6 +111,7 @@ export function mountApiRoutes(app: Express, surface: Surface): void {
     app.use('/api/queue', owner);
     app.use('/api/update/apply', owner);
     app.use('/api/remote', owner);
+    app.use('/api/download-monitor', owner);
 
     app.use('/api', configRouter);
     app.use('/api', debugRouter);
@@ -118,6 +120,7 @@ export function mountApiRoutes(app: Express, surface: Surface): void {
     app.use('/api', updateRouter);
     app.use('/api', logsRouter);
     app.use('/api', remoteRouter);
+    app.use('/api', downloadMonitorRouter);
   }
 }
 

@@ -84,6 +84,7 @@ Four middleware, mounted by `server/surface.ts` in this order:
 | `avatars.ts` / `avatar-pngs.ts` | Built-in avatar set for user profiles |
 | `discover.ts` | TMDB search with Sonarr/Radarr fallback when no TMDB key |
 | `updater.ts` | GitHub Releases poller; downloads and silently installs new versions (Windows only) |
+| `downloadMonitor.ts` | **Opt-in** (`DOWNLOAD_MONITOR=true`) in-process sweeper of the Sonarr/Radarr queues: removes completed-but-unimportable downloads — releases Sonarr/Radarr flag as containing executables/scripts, files with video extensions that aren't video, releases with nothing importable, or imports stuck past `DOWNLOAD_MONITOR_STUCK_MIN`. Primary signal is the queue record's own `statusMessages`; optional `DOWNLOAD_MONITOR_PATH_MAP` lets it inspect the download folder itself (extension list, magic bytes, ffprobe) and delete leftovers. Action = `DELETE /queue/:id?removeFromClient=true&blocklist=true` (gone from Sonarr/Radarr **and** the download client) + re-search (skipped when the Arr's own "Redownload Failed" is on). Known-benign warnings (not an upgrade, path not accessible, unpacking, partial season) are never acted on. Dry-run mode + history in `data/download-monitor.json`; admin panel at `/setup → Download Monitor` |
 | `aggregator.ts` | Home + search composition; iterates `getConfiguredAdapters()` for library-server data; "Ready to Watch" / "Coming Soon" rules (incl. `isLate` — past-due-undownloaded items stay 7 days) |
 | `live/` | HDHomeRun tuner discovery (`hdhomerun.ts`), ffmpeg HLS proxy (`hlsProxy.ts`), source registry — the tuner-backed Live TV path (`liveTv.ts` above is the older TVmaze guide path; both coexist) |
 | `sports/` | Sports shelves — leagues/games data behind `/sports/*` |
@@ -123,6 +124,7 @@ All mounted at `/api`. Notable endpoints:
 - `/live/{tuner-channels,stream/:id,epg,hls/...,sources,all-channels}` — HDHomeRun tuner Live TV (ffmpeg HLS proxy; mobile forces `?format=hls`)
 - `/sports/*` — sports shelves + per-user league prefs (mobile hides the tab when no leagues picked)
 - `GET /update/status`, `POST /update/check`, `POST /update/apply` — GitHub-Releases auto-update (Windows; `check` only detects, `apply` is owner-gated)
+- `GET /download-monitor/status`, `POST /download-monitor/scan[?dryRun=1]` — owner-gated download monitor: config + last sweep + items waiting to import + action history; `scan` runs a sweep now (`dryRun=1` previews without removing)
 - `GET /sonarr/{profiles,rootfolders}`, `POST /sonarr/add` (+ Radarr equivalents)
 - `GET /users`, `POST /users/select` (legacy Plex Home picker)
 - `GET /logs?lines=&filter=`, `GET /logs/info` — log tail for remote debugging
@@ -261,7 +263,7 @@ TanStack Query (React Query) for all server data. Query keys align 1:1 with the 
 
 ## Shared (`packages/shared`)
 
-Types (`types.ts`): `ContentItem` (incl. `isLate` + `download: DownloadStatus`), `ContentSection`, `Artwork`, `Progress`, `Availability`, `DownloadStatus`, `HomeResponse`, `SearchResponse`, `ApiResponse<T>`, `TrackedItem`, `TmdbSearchResult`, `StreamingProvider` + the 29-entry `STREAMING_PROVIDERS` list, `LiveChannel`/`LiveStreamInfo`/`LiveProgram`, `PlexConfig`, `SonarrConfig`, `RadarrConfig`, `EpgConfig`, `ServerConfig`.
+Types (`types.ts`): `ContentItem` (incl. `isLate` + `download: DownloadStatus`), `ContentSection`, `Artwork`, `Progress`, `Availability`, `DownloadStatus`, `HomeResponse`, `SearchResponse`, `ApiResponse<T>`, `TrackedItem`, `TmdbSearchResult`, `StreamingProvider` + the 29-entry `STREAMING_PROVIDERS` list, `LiveChannel`/`LiveStreamInfo`/`LiveProgram`, `PlexConfig`, `SonarrConfig`, `RadarrConfig`, `EpgConfig`, `DownloadMonitorConfig`, `ServerConfig`. `DownloadStatus.warnings` carries the Arr's flattened `statusMessages` for a completed-but-unimported item.
 
 Constants (`constants.ts`): `APP_NAME`, `APP_VERSION`, `PLEX_CLIENT_IDENTIFIER`, `PLEX_PRODUCT`, cache TTLs, source colors + labels, `TVMAZE_BASE_URL`, `TMDB_BASE_URL`, `TMDB_IMAGE_BASE`, `DEFAULT_CLOUD_URL`, `DEFAULT_EPG_COUNTRY`.
 

@@ -67,6 +67,7 @@
     .status-dot.connected { background: #4caf50; }
     .status-dot.error { background: #f44336; }
     .status-dot.unconfigured { background: #555; }
+    .status-dot.warning { background: #e5a00d; }
     .status-dot.checking { background: #e5a00d; animation: pulse 1s infinite; }
 
     @keyframes pulse {
@@ -440,6 +441,10 @@
             <span class="status-dot unconfigured" id="nav-status-radarr"></span>
           </button>
           <button type="button" class="nav-item" data-section="tmdb">TMDB</button>
+          <button type="button" class="nav-item" data-section="download-monitor">
+            Download Monitor
+            <span class="status-dot unconfigured" id="nav-status-download-monitor"></span>
+          </button>
           <button type="button" class="nav-item" data-section="tuners">
             Tuners
             <span class="status-dot unconfigured" id="nav-status-hdhomerun"></span>
@@ -980,6 +985,77 @@
     </div>
     </section>
 
+    <!-- Download Monitor -->
+    <section class="section" data-section="download-monitor">
+    <div class="card">
+      <div class="card-header">
+        <h2>Download Monitor</h2>
+        <span style="margin-left:8px"><span class="status-dot unconfigured" id="download-monitor-status"></span><span class="status-label" id="download-monitor-status-label">off</span></span>
+      </div>
+      <p style="color:#888;font-size:13px;margin-bottom:14px">
+        Sweeps the Sonarr and Radarr queues for completed downloads that will never import — fake releases
+        containing executables or scripts (.exe, .bat, .ps1, .scr, .py, …), files with a video extension that
+        aren't video, releases with nothing importable, or imports stuck past a deadline. Flagged downloads are
+        removed from Sonarr/Radarr <em>and</em> the download client (files deleted), blocklisted so the release
+        isn't grabbed again, and re-searched. Runs inside this service.
+      </p>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="dm-enabled" style="width:18px;height:18px;cursor:pointer" />
+          <span>Enable download monitor</span>
+        </label>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="dm-dry-run" style="width:18px;height:18px;cursor:pointer" />
+          <span>Dry run — log what would be removed, don't touch anything</span>
+        </label>
+        <div class="hint">Start here. Watch the log below for a day, then turn it off.</div>
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="dm-research" style="width:18px;height:18px;cursor:pointer" />
+          <span>Search for a replacement after removing a bad release</span>
+        </label>
+        <div class="hint">Skipped automatically when Sonarr/Radarr's own "Redownload Failed" setting already does it.</div>
+      </div>
+      <div class="form-row">
+        <label>Check every (minutes)</label>
+        <input type="number" id="dm-interval" min="1" max="1440" placeholder="10" style="max-width:140px" />
+      </div>
+      <div class="form-row">
+        <label>Treat as stuck after (minutes)</label>
+        <input type="number" id="dm-stuck" min="0" placeholder="120" style="max-width:140px" />
+        <div class="hint">A completed download that Sonarr/Radarr still hasn't imported after this long is removed, unless its warning is a known-benign one (not an upgrade, path not accessible, still unpacking, …). 0 = never remove on time alone.</div>
+      </div>
+      <div class="form-row">
+        <label>Download folder path map (optional)</label>
+        <input type="text" id="dm-path-map" placeholder="/share/Public/=>\\nas\Public\;/share/Videos/=>\\nas\Videos\" />
+        <div class="hint">
+          Lets this server open the download folders Sonarr/Radarr report, to check file contents itself
+          (executable extensions, video header + ffprobe) and to delete leftovers the download client missed.
+          Format: <code>sonarr-side-prefix=>local-prefix</code>, several separated by <code>;</code>. Leave empty
+          to rely on Sonarr/Radarr's own import warnings only.
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveDownloadMonitor()">Save</button>
+        <button class="btn btn-secondary" onclick="runDownloadMonitor(true)">Preview (dry run)</button>
+        <button class="btn btn-secondary" onclick="runDownloadMonitor(false)">Sweep Now</button>
+      </div>
+      <div id="dm-msg" style="margin-top:12px;color:#aaa;font-size:13px"></div>
+
+      <h3 style="margin:22px 0 8px;color:#ccc;font-size:14px">Last sweep</h3>
+      <div id="dm-last" style="color:#888;font-size:13px">Never</div>
+
+      <h3 style="margin:22px 0 8px;color:#ccc;font-size:14px">Waiting to import</h3>
+      <div id="dm-pending" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;padding:8px;font-size:13px;color:#ccc;max-height:260px;overflow-y:auto">—</div>
+
+      <h3 style="margin:22px 0 8px;color:#ccc;font-size:14px">Recent actions</h3>
+      <div id="dm-history" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;padding:8px;font-size:13px;color:#ccc;max-height:380px;overflow-y:auto">—</div>
+    </div>
+    </section>
+
         <div class="footer" style="text-align:left;margin-top:32px">
           Whats On Server &mdash; configuration is saved to the .env file on this machine
         </div>
@@ -1097,6 +1173,18 @@
 
         if (cfg.update) {
           document.getElementById('update-enabled').checked = !!cfg.update.enabled;
+        if (cfg.downloadMonitor) {
+          const dm = cfg.downloadMonitor;
+          document.getElementById('dm-enabled').checked = !!dm.enabled;
+          document.getElementById('dm-dry-run').checked = !!dm.dryRun;
+          document.getElementById('dm-research').checked = dm.research !== false;
+          document.getElementById('dm-interval').value = dm.intervalMinutes || 10;
+          document.getElementById('dm-stuck').value = dm.stuckMinutes != null ? dm.stuckMinutes : 120;
+          document.getElementById('dm-path-map').value = (dm.pathMap || [])
+            .map(m => m.remote + '=>' + m.local).join(';');
+          setDownloadMonitorDot(dm.enabled, dm.dryRun);
+          loadDownloadMonitorStatus();
+        }
         }
 
         // Show current port
@@ -1599,6 +1687,142 @@
         }
       } catch (e) {
         showToast('Save failed: ' + e.message, 'error');
+      }
+    }
+
+    // ── Download Monitor ──
+    function setDownloadMonitorDot(enabled, dryRun) {
+      const cls = enabled ? (dryRun ? 'warning' : 'connected') : 'unconfigured';
+      for (const id of ['download-monitor-status', 'nav-status-download-monitor']) {
+        const el = document.getElementById(id);
+        if (el) el.className = 'status-dot ' + cls;
+      }
+      const label = document.getElementById('download-monitor-status-label');
+      if (label) label.textContent = enabled ? (dryRun ? 'dry run' : 'active') : 'off';
+    }
+
+    // Small DOM builders — all server-provided strings go through textContent.
+    function dmNode(tag, style, text) {
+      const n = document.createElement(tag);
+      if (style) n.setAttribute('style', style);
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    function dmRow(parts, detail, detailColor) {
+      const row = dmNode('div', 'padding:6px 4px;border-bottom:1px solid #1e1e1e');
+      const line = dmNode('div');
+      for (const [text, color] of parts) line.appendChild(dmNode('span', color ? 'color:' + color : '', text));
+      row.appendChild(line);
+      if (detail) row.appendChild(dmNode('div', 'color:' + (detailColor || '#777') + ';font-size:12px;margin-top:2px', detail));
+      return row;
+    }
+    function dmFill(host, nodes, emptyText) {
+      host.replaceChildren();
+      if (!nodes.length) host.appendChild(dmNode('span', 'color:#666', emptyText));
+      else for (const n of nodes) host.appendChild(n);
+    }
+
+    function renderDownloadMonitorStatus(s) {
+      setDownloadMonitorDot(s.enabled, s.dryRun);
+      const last = document.getElementById('dm-last');
+      if (s.lastRun) {
+        const r = s.lastRun;
+        last.textContent = new Date(r.at).toLocaleString() + (r.dryRun ? ' (dry run)' : '') +
+          ' — ' + r.scanned + ' queued, ' + r.pending + ' waiting to import, ' + r.flagged + ' flagged, ' +
+          r.removed + ' removed' + (r.errors ? ', ' + r.errors + ' error(s)' : '') +
+          (s.lastError ? ' — ' + s.lastError : '') +
+          (s.localInspection
+            ? ' · local inspection on' + (s.ffprobe ? ' (ffprobe found)' : ' (ffprobe not found — header check only)')
+            : ' · local inspection off');
+      } else {
+        last.textContent = s.enabled ? 'Not run yet (first sweep ~30s after start)' : 'Never';
+      }
+
+      dmFill(
+        document.getElementById('dm-pending'),
+        (s.pending || []).map(p => dmRow([
+          ['[' + p.source + '] ', '#888'],
+          [p.title, ''],
+          [' · ' + p.classification, p.classification === 'benign' ? '#8a8' : '#e5a00d'],
+          [' · ' + p.state + ' for ' + p.ageMinutes + 'm', '#666'],
+        ], (p.warnings || []).join(' · '))),
+        'Nothing waiting — every completed download has imported.',
+      );
+
+      dmFill(
+        document.getElementById('dm-history'),
+        (s.history || []).slice(0, 50).map(a => {
+          const tone = a.error ? '#e55' : (a.dryRun ? '#e5a00d' : '#6c6');
+          const what = a.dryRun ? 'would remove' : (a.removed ? 'removed' : 'failed');
+          const extras = a.removed
+            ? ' · blocklisted' + (a.researched ? ' · re-searched' : '') + (a.leftoversDeleted ? ' · leftovers deleted' : '')
+            : '';
+          const detail = (a.reasons || []).join(' · ') + (a.error ? '  —  ' + a.error : '');
+          return dmRow([
+            [new Date(a.at).toLocaleString() + ' ', '#666'],
+            [what + ' ', tone],
+            ['[' + a.source + '] ', '#888'],
+            [a.title, ''],
+            [' · ' + a.verdict, '#e5a00d'],
+            [extras, '#666'],
+          ], detail, a.error ? '#e55' : '#777');
+        }),
+        'No actions yet.',
+      );
+    }
+
+    async function loadDownloadMonitorStatus() {
+      try {
+        const res = await fetch(API + '/download-monitor/status').then(r => r.json());
+        if (res.success) renderDownloadMonitorStatus(res.data);
+      } catch {}
+    }
+
+    async function saveDownloadMonitor() {
+      const msg = document.getElementById('dm-msg');
+      const body = {
+        downloadMonitor: {
+          enabled: document.getElementById('dm-enabled').checked,
+          dryRun: document.getElementById('dm-dry-run').checked,
+          research: document.getElementById('dm-research').checked,
+          intervalMinutes: parseInt(document.getElementById('dm-interval').value, 10) || 10,
+          stuckMinutes: parseInt(document.getElementById('dm-stuck').value, 10) || 0,
+          pathMap: document.getElementById('dm-path-map').value.trim(),
+        },
+      };
+      try {
+        const res = await fetch(API + '/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then(r => r.json());
+        if (res.success) {
+          showToast('Download monitor settings saved');
+          msg.textContent = '';
+          loadDownloadMonitorStatus();
+        } else {
+          showToast(res.error || 'Save failed', 'error');
+        }
+      } catch (e) {
+        showToast('Save failed: ' + e.message, 'error');
+      }
+    }
+
+    async function runDownloadMonitor(preview) {
+      if (!preview && !confirm('Run a live sweep now? Flagged downloads will be removed from Sonarr/Radarr and the download client (unless Dry run is saved as on).')) return;
+      const msg = document.getElementById('dm-msg');
+      msg.textContent = preview ? 'Previewing…' : 'Sweeping…';
+      try {
+        const res = await fetch(API + '/download-monitor/scan' + (preview ? '?dryRun=1' : ''), { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+          renderDownloadMonitorStatus(res.data.status);
+          const r = res.data.result;
+          msg.textContent = (preview ? 'Preview: ' : 'Sweep: ') + r.flagged + ' flagged, ' + r.removed + ' removed.';
+        } else {
+          msg.textContent = res.error || 'Sweep failed';
+        }
+      } catch (e) {
+        msg.textContent = 'Sweep failed: ' + e.message;
       }
     }
 

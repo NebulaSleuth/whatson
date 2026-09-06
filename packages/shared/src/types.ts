@@ -44,6 +44,12 @@ export interface DownloadStatus {
   sizeLeftBytes?: number;
   /** Error or warning text from the download client, if any. */
   errorMessage?: string;
+  /**
+   * Sonarr/Radarr import warnings for a completed-but-not-imported item
+   * (flattened `statusMessages`), e.g. "Caution: Found executable file
+   * with extension: '.exe'". Absent while the download is still running.
+   */
+  warnings?: string[];
 }
 
 export interface ContentItem {
@@ -290,6 +296,40 @@ export interface HdHomeRunConfig {
   disabledChannels: string[];
 }
 
+/**
+ * Download monitor — optional background sweep of the Sonarr/Radarr queues
+ * that removes completed downloads which can't be imported because they are
+ * malicious or junk (executables / scripts, files with video extensions that
+ * aren't video, releases with no importable files, or imports stuck past a
+ * deadline). Removed items are deleted from the download client, blocklisted
+ * in Sonarr/Radarr, and re-searched. See services/downloadMonitor.ts.
+ */
+export interface DownloadMonitorConfig {
+  /** Master switch. Off by default — the feature is opt-in. */
+  enabled: boolean;
+  /** Minutes between queue sweeps. */
+  intervalMinutes: number;
+  /**
+   * A completed item that has sat un-imported (importPending / importBlocked /
+   * importFailed) for longer than this is treated as stuck and removed, unless
+   * its warning is a known-benign one (not an upgrade, path not accessible,
+   * unpacking, …). 0 disables the stuck rule; the file-content rules still run.
+   */
+  stuckMinutes: number;
+  /** Log what would be removed without touching anything. */
+  dryRun: boolean;
+  /** After removing a bad release, ask Sonarr/Radarr to search for another. */
+  research: boolean;
+  /**
+   * Path prefixes that let this server read the download folders Sonarr/Radarr
+   * report (`outputPath`), for content inspection and leftover cleanup. Each
+   * entry maps a Sonarr/Radarr-side prefix to a prefix reachable from here.
+   * Empty = no local inspection; the monitor relies on Sonarr/Radarr's own
+   * import warnings alone.
+   */
+  pathMap: Array<{ remote: string; local: string }>;
+}
+
 export interface ServerConfig {
   plex: PlexConfig;
   jellyfin: JellyfinConfig;
@@ -300,6 +340,7 @@ export interface ServerConfig {
   update: UpdateConfig;
   auth: AuthConfig;
   hdhomerun: HdHomeRunConfig;
+  downloadMonitor: DownloadMonitorConfig;
 }
 
 // ── Live TV ──
