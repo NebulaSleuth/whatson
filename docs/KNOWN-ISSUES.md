@@ -1,6 +1,6 @@
 # Known Issues & Incomplete Features
 
-Consolidated list, verified against code **2026-09-06** (backend v0.1.146).
+Consolidated list, verified against code **2026-09-06** (backend v0.1.147).
 Detail lives in the linked docs; this page is the index. Machine/deploy-state
 notes (device fleet, uncommitted files, build-environment quirks) live in
 [`../HANDOFF.md`](../HANDOFF.md).

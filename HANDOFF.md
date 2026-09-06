@@ -7,8 +7,13 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 
 ## TL;DR
 
-- Backend **v0.1.146** is committed, pushed, released on GitHub, and was verified live
-  on the home server. No feature work is in flight; everything shipped is verified.
+- Backend **v0.1.147** (download monitor — auto-removes malicious / unimportable Sonarr &
+  Radarr downloads, opt-in) is committed, pushed, and released on GitHub. The home
+  server's updater saw it (`updateAvailable: true`); it auto-applies on the hourly tick
+  or when the owner clicks Apply in `/setup → Updates`. **After it lands:** enable the
+  monitor in `/setup → Download Monitor` with Dry run on first, then turn dry run off.
+  Six `.exe` fakes were sitting in the Sonarr queue when this shipped — the dry run
+  flagged all six. No other feature work is in flight.
 - The mobile + Roku working-tree changes are **intentionally uncommitted** (see below) —
   do not discard them; they contain shipped-to-device UI.
 - Next work candidates, in rough priority: mobile PIN session token → Roku store
@@ -18,8 +23,8 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 
 | Thing | State |
 |---|---|
-| Backend release | v0.1.146 (`2fb8757`), GitHub release cut; in-channel updater deploys it |
-| Home server | `http://192.168.1.181:3001` — NSSM service `whatson-api`, auto-updates hourly. Confirmed at 0.1.146 |
+| Backend release | v0.1.147 (`2fde38d`), GitHub release cut; in-channel updater deploys it |
+| Home server | `http://192.168.1.181:3001` — NSSM service `whatson-api`, auto-updates hourly. Was at 0.1.146 when v0.1.147 was released; check `/api/health` + `/api/update/status` |
 | Cloud | `@whatson/cloud` deployed to Azure — `cloud.whatsontv.net`; per-server TLS via `<serverId>.s.whatsontv.net` |
 | SHIELD (Android TV) | `192.168.1.69:5555` via adb — release APK with v0.1.145/146 UI installed |
 | Roku #1 | `192.168.1.129` — sideloaded, current; dev password `abcdefg` |
