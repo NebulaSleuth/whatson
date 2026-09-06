@@ -27,8 +27,8 @@ what's deployed where, what's intentionally uncommitted, and machine-specific go
 | Home server | `http://192.168.1.181:3001` — NSSM service `whatson-api`, auto-updates hourly. Was at 0.1.146 when v0.1.147 was released; check `/api/health` + `/api/update/status` |
 | Cloud | `@whatson/cloud` deployed to Azure — `cloud.whatsontv.net`; per-server TLS via `<serverId>.s.whatsontv.net` |
 | SHIELD (Android TV) | `192.168.1.69:5555` via adb — release APK with v0.1.145/146 UI installed |
-| Roku #1 | `192.168.1.129` — sideloaded, current; dev password `abcdefg` |
-| Roku #2 | `192.168.1.198` ("75\" onn. Roku TV") — sideloaded **keyless**, current; dev password `abcdefg` |
+| Roku #1 | `192.168.1.129` — sideloaded with v0.1.146-era UI; **needs re-sideload** for the subtitle-on-pause fix (`7b3970f`); dev password `abcdefg` |
+| Roku #2 | `192.168.1.198` ("75\" onn. Roku TV") — sideloaded **keyless**, same state as #1 (needs re-sideload); dev password `abcdefg` |
 | Android phone (RT7 TITAN 5G) | release APK installed 2026-07-26 (same build as SHIELD) |
 
 The LAN devices are only reachable when you're on that network — timeouts just mean
@@ -37,19 +37,22 @@ you're elsewhere, not that something broke.
 ## Uncommitted working-tree files (KEEP)
 
 Per the project's commit cadence, backend/shared go to git (the updater deploys from
-GitHub releases) but **mobile/Roku client changes stay local** — devices are deployed
-directly (adb / sideload). These six files hold the entire client side of the
-download-cancel (v0.1.145) and LATE + Search Now (v0.1.146) features:
+GitHub releases) but **mobile client changes stay local** — devices are deployed
+directly (adb). These three files hold the mobile side of the download-cancel
+(v0.1.145) and LATE + Search Now (v0.1.146) features:
 
 - `apps/mobile/components/ContentCard.tsx` — LATE/RERUN badges, group-count chip
 - `apps/mobile/components/DetailSheet.tsx` — download status panel, Cancel / Cancel &
   Re-search / Search Now buttons
 - `apps/mobile/lib/api.ts` — `cancelDownload`, `cancelAndResearch`, `searchNow`
-- `apps/roku/components/HomeScene.brs` / `HomeScene.xml` / `PosterItem.brs` — same
-  features on Roku
 
 If a device ever needs rebuilding, these must be present. (Committing them is fine if
 the cadence ever changes; nothing else depends on them staying uncommitted.)
+
+The Roku side of those same features is now **committed** (`7b3970f`, 2026-09-06)
+together with the subtitle-on-pause fix — it shares `HomeScene.brs` with the fix and
+couldn't be split. Roku is therefore in git; only mobile still follows the local-only
+cadence.
 
 Untracked root files (`AppIcons*/`, `*.png`, `icon.ico`, `logo.psd`, `setroku*.ps1`)
 are icon-design scratch + local deploy helpers. Note `setroku.ps1` contains a **stale
@@ -91,6 +94,12 @@ are icon-design scratch + local deploy helpers. Note `setroku.ps1` contains a **
 
 ## Where to resume
 
+0. **Sideload the Roku subtitle fix** (`7b3970f`) to both Rokus — `node scripts/deploy.js`
+   from `apps/roku`, keyless. Bug: subtitles were lost on any pause > 20s because the
+   post-pause session refresh re-requested subtitle 0 (off), which the backend persists
+   to Plex. Fix is committed, **not yet on a device**; compile is verified only at
+   sideload. Users whose Plex default subtitle got cleared must re-pick it once.
+   Mobile is unaffected.
 1. **Mobile PIN session token** (`docs/user-model/02-remaining.md` #1) — capture
    `sessionToken` from `POST /whatson-users/:id/select`, send `X-Whatson-Session`,
    then flip `WHATSON_STRICT_PIN` on. Backend side is done.
