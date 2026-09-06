@@ -488,4 +488,25 @@ export const api = {
   getRadarrRootFolders: () => fetchApi<Array<{ id: number; path: string }>>('/radarr/rootfolders'),
   addToRadarr: (opts: { title: string; tmdbId: number; qualityProfileId: number; rootFolderPath: string }) =>
     fetchApi<{ id: number; title: string }>('/radarr/add', { method: 'POST', body: JSON.stringify(opts) }),
+
+  // Download queue actions (Sonarr/Radarr) — used by the detail sheet for
+  // items currently downloading. `queueId` comes from item.download.queueId.
+  cancelDownload: (source: string, queueId: number) =>
+    fetchApi<{ cancelled: boolean }>('/queue/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ source, queueId }),
+    }),
+  // Cancel + blocklist the current release, then search for a new one.
+  // `sourceId` is the ContentItem.sourceId (episode id for Sonarr, movie id for Radarr).
+  cancelAndResearch: (source: string, queueId: number, sourceId: string) =>
+    fetchApi<{ researching: boolean }>('/queue/cancel-research', {
+      method: 'POST',
+      body: JSON.stringify({ source, queueId, sourceId }),
+    }),
+  // Trigger a Sonarr/Radarr search for a Coming Soon / LATE item (not yet downloading).
+  searchNow: (source: string, sourceId: string) =>
+    fetchApi<{ searching: boolean }>('/queue/search', {
+      method: 'POST',
+      body: JSON.stringify({ source, sourceId }),
+    }),
 };

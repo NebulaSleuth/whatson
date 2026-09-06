@@ -208,7 +208,12 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
               <Text style={styles.downloadingText}>Downloading</Text>
             </View>
           )}
-          {item.status === 'coming_soon' && item.availability.availableAt && (
+          {item.status === 'coming_soon' && item.isLate && (
+            <View style={[styles.statusOverlay, styles.lateOverlay]}>
+              <Text style={styles.lateText}>LATE</Text>
+            </View>
+          )}
+          {item.status === 'coming_soon' && !item.isLate && item.availability.availableAt && (
             <View style={styles.statusOverlay}>
               <Text style={styles.comingSoonText}>{formatAvailableDate(item.availability.availableAt)}</Text>
             </View>
@@ -328,6 +333,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.primary,
     fontWeight: '700',
+  },
+  lateOverlay: {
+    backgroundColor: 'rgba(180,30,30,0.85)',
+  },
+  lateText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   info: {
     marginTop: spacing.sm,

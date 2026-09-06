@@ -12,7 +12,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { Image } from 'expo-image';
-import type { ContentItem } from '@whatson/shared';
+import type { ContentItem, DownloadStatus } from '@whatson/shared';
 import { SourceBadge } from './SourceBadge';
 // Progress bar is inline in this component (not the absolute-positioned ProgressBar)
 import { colors, spacing, typography } from '@/constants/theme';
@@ -23,6 +23,29 @@ import { ArrAddPicker } from './ArrAddPicker';
 import { router } from 'expo-router';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+/** Friendly headline for a queue item's raw status. */
+function downloadStatusLabel(d: DownloadStatus): string {
+  const s = (d.status || '').toLowerCase();
+  if (s === 'paused') return 'Paused';
+  if (s === 'queued' || s === 'delay') return 'Queued';
+  if (s === 'completed') return 'Importing…';
+  if (s === 'warning' || s === 'failed' || s === 'error') return 'Download issue';
+  return `Downloading — ${Math.round(d.percentage)}%`;
+}
+
+/** Compact byte formatter for the size read-out (e.g. "1.4 GB"). */
+function formatBytes(n?: number): string {
+  if (!n || n <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
 
 interface DetailSheetProps {
   item: ContentItem;
@@ -69,6 +92,15 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
   const isLiveItem = item.source === 'live' && !isTrackedItem;
   const isTvShow = item.type === 'episode' || item.type === 'show';
   const [arrPickerType, setArrPickerType] = useState<'sonarr' | 'radarr' | null>(null);
+
+  const dl = item.download;
+  const isDownloading = item.status === 'downloading' && !!dl;
+  const downloadLabel = item.showTitle
+    ? `${item.showTitle}${episodeLabel ? ` - ${episodeLabel}` : ''}`
+    : item.title;
+  // Coming Soon / LATE Sonarr/Radarr items can be told to search now.
+  const canSearchNow =
+    item.status === 'coming_soon' && (item.source === 'sonarr' || item.source === 'radarr');
 
   // On TV, handle back button to close the detail sheet
   React.useEffect(() => {
@@ -159,6 +191,89 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
       },
     ]);
   };
+
+  const handleCancelDownload = () => {
+    if (!dl) return;
+    Alert.alert('Cancel Download', `Stop downloading "${downloadLabel}" and remove it from the queue?`, [
+      { text: 'Keep Downloading', style: 'cancel' },
+      {
+        text: 'Cancel Download',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.cancelDownload(item.source, dl.queueId);
+            onRefresh?.();
+            onClose();
+          } catch (error) {
+            Alert.alert('Error', (error as Error).message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCancelAndResearch = () => {
+    if (!dl) return;
+    Alert.alert(
+      'Cancel & Re-search',
+      `Cancel this download and search for a different release of "${downloadLabel}"? The current release will be blocklisted so it isn't grabbed again.`,
+      [
+        { text: 'Keep Downloading', style: 'cancel' },
+        {
+          text: 'Cancel & Re-search',
+          onPress: async () => {
+            try {
+              await api.cancelAndResearch(item.source, dl.queueId, item.sourceId);
+              onRefresh?.();
+              onClose();
+            } catch (error) {
+              Alert.alert('Error', (error as Error).message);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSearchNow = () => {
+    Alert.alert(
+      'Search Now',
+      `Tell ${item.source === 'radarr' ? 'Radarr' : 'Sonarr'} to search for "${downloadLabel}" now?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Search Now',
+          onPress: async () => {
+            try {
+              await api.searchNow(item.source, item.sourceId);
+              onRefresh?.();
+              onClose();
+            } catch (error) {
+              Alert.alert('Error', (error as Error).message);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const downloadBlock = isDownloading && dl ? (
+    <View style={styles.downloadSection}>
+      <Text style={styles.downloadStatusText}>{downloadStatusLabel(dl)}</Text>
+      <View style={styles.detailProgressTrack}>
+        <View style={[styles.detailProgressFill, { width: `${Math.min(dl.percentage, 100)}%` }]} />
+      </View>
+      <View style={styles.downloadMetaRow}>
+        {dl.timeLeft ? <Text style={styles.downloadMeta}>{dl.timeLeft} remaining</Text> : null}
+        {dl.sizeBytes ? (
+          <Text style={styles.downloadMeta}>
+            {formatBytes(dl.sizeBytes - (dl.sizeLeftBytes || 0))} / {formatBytes(dl.sizeBytes)}
+          </Text>
+        ) : null}
+      </View>
+      {dl.errorMessage ? <Text style={styles.downloadError}>{dl.errorMessage}</Text> : null}
+    </View>
+  ) : null;
 
   const isLibraryItem = item.source === 'plex' || item.source === 'jellyfin' || item.source === 'emby';
   const isPlexItem = item.source === 'plex';
@@ -273,6 +388,11 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
 
                 <View style={styles.metaRow}>
                   <SourceBadge source={item.source} />
+                  {item.isLate ? (
+                    <View style={styles.lateBadge}>
+                      <Text style={styles.lateBadgeText}>LATE</Text>
+                    </View>
+                  ) : null}
                   {item.availability.network ? (
                     <View style={styles.networkBadge}>
                       <Text style={styles.networkText}>{item.availability.network}</Text>
@@ -295,11 +415,42 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                   </View>
                 ) : null}
 
+                {downloadBlock}
+
                 {item.summary ? (
                   <Text style={styles.tvSummary} numberOfLines={3} ellipsizeMode="tail">{item.summary}</Text>
                 ) : null}
 
                 <View style={styles.tvActions}>
+                  {canSearchNow ? (
+                    <FocusButton
+                      title="Search Now"
+                      style={styles.playButton}
+                      textStyle={styles.playButtonText}
+                      onPress={handleSearchNow}
+                      preferFocus={true}
+                    />
+                  ) : null}
+
+                  {isDownloading && dl ? (
+                    <FocusButton
+                      title="Cancel Download"
+                      style={styles.removeButton}
+                      textStyle={styles.removeButtonText}
+                      onPress={handleCancelDownload}
+                      preferFocus={true}
+                    />
+                  ) : null}
+
+                  {isDownloading && dl ? (
+                    <FocusButton
+                      title="Cancel & Re-search"
+                      style={styles.unwatchedButton}
+                      textStyle={styles.unwatchedButtonText}
+                      onPress={handleCancelAndResearch}
+                    />
+                  ) : null}
+
                   {isLibraryItem && hasVideoPlayer ? (
                     <FocusButton
                       title={hasResume ? 'Resume' : 'Play'}
@@ -409,6 +560,11 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
               <View style={styles.content}>
                 <View style={styles.metaRow}>
                   <SourceBadge source={item.source} />
+                  {item.isLate ? (
+                    <View style={styles.lateBadge}>
+                      <Text style={styles.lateBadgeText}>LATE</Text>
+                    </View>
+                  ) : null}
                   {item.availability.network ? (
                     <View style={styles.networkBadge}>
                       <Text style={styles.networkText}>{item.availability.network}</Text>
@@ -431,6 +587,8 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                   </View>
                 ) : null}
 
+                {downloadBlock}
+
                 {item.summary ? <Text style={styles.summary}>{item.summary}</Text> : null}
 
                 {item.genres && item.genres.length > 0 ? (
@@ -444,6 +602,24 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.actions}>
+                  {canSearchNow ? (
+                    <Pressable style={styles.playButton} onPress={handleSearchNow}>
+                      <Text style={styles.playButtonText}>Search Now</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isDownloading && dl ? (
+                    <Pressable style={styles.removeButton} onPress={handleCancelDownload}>
+                      <Text style={styles.removeButtonText}>Cancel Download</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isDownloading && dl ? (
+                    <Pressable style={styles.unwatchedButton} onPress={handleCancelAndResearch}>
+                      <Text style={styles.unwatchedButtonText}>Cancel & Re-search</Text>
+                    </Pressable>
+                  ) : null}
+
                   {isLibraryItem && hasVideoPlayer ? (
                     <Pressable style={styles.playButton} onPress={handlePlay}>
                       <Text style={styles.playButtonText}>{hasResume ? 'Resume' : 'Play'}</Text>
@@ -666,6 +842,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
   },
+  lateBadge: {
+    backgroundColor: 'rgba(180,30,30,0.9)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  lateBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 1,
+  },
   networkText: {
     fontSize: 11,
     fontWeight: '700',
@@ -693,6 +881,35 @@ const styles = StyleSheet.create({
     ...typography.body,
     lineHeight: 22,
     marginBottom: spacing.lg,
+  },
+  downloadSection: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderRadius: 8,
+    backgroundColor: 'rgba(229,160,13,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,160,13,0.25)',
+  },
+  downloadStatusText: {
+    fontSize: isTV ? 16 : 14,
+    fontWeight: '700',
+    color: colors.accent,
+    marginBottom: spacing.sm,
+  },
+  downloadMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  downloadMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  downloadError: {
+    ...typography.caption,
+    color: colors.error,
+    marginTop: spacing.sm,
   },
   genreRow: {
     flexDirection: 'row',
