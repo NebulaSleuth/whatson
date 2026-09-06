@@ -903,6 +903,46 @@
                 <ActionButton id="backButton" text="Back" buttonWidth="240" focusable="true" />
             </LayoutGroup>
 
+            <!-- ─── Download panel (Sonarr/Radarr queue items only) ───
+                 Status read-out + progress bar + its own action row.
+                 The cancel buttons live in a SEPARATE LayoutGroup from
+                 detailActions on purpose: this firmware's LayoutGroup
+                 reserves horizontal space for *invisible* children, so
+                 buttons late in the shared row land off-screen. A
+                 dedicated group with only the download buttons always
+                 renders on-screen. populateDetail toggles this whole
+                 panel vs. detailActions per item type. -->
+            <Label
+                id="detailDownloadStatus"
+                translation="[120, 650]"
+                width="1300"
+                font="font:MediumBoldSystemFont"
+                color="0xe5a00dff"
+                visible="false" />
+            <Rectangle id="downloadBarBg" translation="[120, 692]" width="600" height="8" color="0x333333ff" visible="false" />
+            <Rectangle id="downloadBarFill" translation="[120, 692]" width="0" height="8" color="0xe5a00dff" visible="false" />
+            <LayoutGroup
+                id="downloadActions"
+                translation="[120, 724]"
+                layoutDirection="horiz"
+                itemSpacings="[24]"
+                visible="false">
+                <ActionButton id="cancelDownloadButton" text="Cancel Download" buttonWidth="320" focusable="true" />
+                <ActionButton id="cancelResearchButton" text="Cancel &amp; Re-search" buttonWidth="360" focusable="true" />
+            </LayoutGroup>
+
+            <!-- Coming Soon / LATE action row (Sonarr/Radarr items only).
+                 Its own group for the same off-screen reason as
+                 downloadActions. -->
+            <LayoutGroup
+                id="searchActions"
+                translation="[120, 724]"
+                layoutDirection="horiz"
+                itemSpacings="[24]"
+                visible="false">
+                <ActionButton id="searchNowButton" text="Search Now" buttonWidth="280" focusable="true" />
+            </LayoutGroup>
+
             <!-- Inline status row for Add → "Adding…" / "Added to Sonarr" /
                  error messages. Sits just below the action row. -->
             <Label

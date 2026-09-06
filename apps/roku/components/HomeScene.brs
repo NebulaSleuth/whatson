@@ -34,8 +34,16 @@ sub init()
     m.trackButton = m.top.findNode("trackButton")
     m.addSonarrButton = m.top.findNode("addSonarrButton")
     m.addRadarrButton = m.top.findNode("addRadarrButton")
+    m.cancelDownloadButton = m.top.findNode("cancelDownloadButton")
+    m.cancelResearchButton = m.top.findNode("cancelResearchButton")
     m.backButton = m.top.findNode("backButton")
     m.detailAddStatus = m.top.findNode("detailAddStatus")
+    m.detailDownloadStatus = m.top.findNode("detailDownloadStatus")
+    m.downloadActions = m.top.findNode("downloadActions")
+    m.downloadBarBg = m.top.findNode("downloadBarBg")
+    m.downloadBarFill = m.top.findNode("downloadBarFill")
+    m.searchActions = m.top.findNode("searchActions")
+    m.searchNowButton = m.top.findNode("searchNowButton")
 
     ' Show detail view — seasons + episodes browser, reached via the
     ' Go to Show button on the regular detail view for episode items.
@@ -535,6 +543,9 @@ sub init()
     m.trackButton.observeField("actionSelected", "onTrackPressed")
     m.addSonarrButton.observeField("actionSelected", "onAddToSonarrPressed")
     m.addRadarrButton.observeField("actionSelected", "onAddToRadarrPressed")
+    m.cancelDownloadButton.observeField("actionSelected", "onCancelDownloadPressed")
+    m.cancelResearchButton.observeField("actionSelected", "onCancelResearchPressed")
+    m.searchNowButton.observeField("actionSelected", "onSearchNowPressed")
     m.backButton.observeField("actionSelected", "returnToDetailOrigin")
 
     ' Show detail action row — same pattern.
@@ -550,6 +561,13 @@ sub init()
         m.markUnwatchedButton, m.trackButton, m.addSonarrButton,
         m.addRadarrButton, m.backButton
     ]
+    ' Downloading items use their own action row (see downloadActions in
+    ' the XML). m.activeDetailActions points at whichever set applies to
+    ' the current item — set in populateDetail, consumed by the detail
+    ' view's focus-on-enter + Left/Right traversal.
+    m.downloadActionButtons = [m.cancelDownloadButton, m.cancelResearchButton]
+    m.searchActionButtons = [m.searchNowButton]
+    m.activeDetailActions = m.detailActionButtons
     m.showDetailActionButtons = [
         m.showDetailMarkAllWatched, m.showDetailMarkAllUnwatched,
         m.showDetailBackButton
@@ -3026,6 +3044,198 @@ function capitalizeFirst(s as string) as string
     return Ucase(Left(s, 1)) + Mid(s, 2)
 end function
 
+' ─── Cancel download / Cancel & Re-search ─────────────────────────
+'
+' Shown on the detail view for items in a Sonarr/Radarr queue
+' (status == downloading). Mirrors mobile's DetailSheet actions and
+' hits the same owner-gated /api/queue endpoints.
+
+' Friendly one-line read-out for a queue item's status + ETA.
+function downloadStatusLine(node as object) as string
+    status = node.itemDownloadStatus
+    if status = invalid then status = ""
+    s = LCase(status)
+    pct = 0
+    if node.itemDownloadPercentage <> invalid then pct = node.itemDownloadPercentage
+    if s = "paused"
+        label = "Paused"
+    else if s = "queued" or s = "delay"
+        label = "Queued"
+    else if s = "completed"
+        label = "Importing…"
+    else if s = "warning" or s = "failed" or s = "error"
+        label = "Download issue"
+    else
+        label = "Downloading — " + Str(Int(pct + 0.5)).Trim() + "%"
+    end if
+    timeLeft = node.itemDownloadTimeLeft
+    if timeLeft <> invalid and timeLeft <> ""
+        label = label + "   ·   " + timeLeft + " remaining"
+    end if
+    return label
+end function
+
+sub onCancelDownloadPressed()
+    if m.selectedItem = invalid then return
+    queueId = readNodeStr(m.selectedItem, "itemDownloadQueueId")
+    src = readNodeStr(m.selectedItem, "itemSource")
+    if queueId = "" or src = ""
+        m.detailAddStatus.text = "Can't cancel — no queue id on this item."
+        m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
+        return
+    end if
+    print "[HomeScene] Cancel download: src="; src; " queueId="; queueId
+
+    m.detailAddStatus.text = "Cancelling download…"
+    m.detailAddStatus.color = "0xe5a00dff"
+    m.detailAddStatus.visible = true
+
+    body = newPostBody()
+    body["source"] = src
+    ' Send queueId as a STRING, not Int(Val()) — BrightScript's Val()
+    ' returns a 32-bit float (24-bit mantissa), which can't represent
+    ' Sonarr/Radarr queue ids (often > 16.7M) exactly, so Int(Val()) can
+    ' round to a neighbouring id → the DELETE 404s ("NotFound"). The
+    ' backend does Number(queueId), which parses the string precisely.
+    body["queueId"] = queueId
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCancelDownloadResponse")
+    task.method = "POST"
+    task.url = m.apiUrl + "/api/queue/cancel"
+    task.body = FormatJson(body)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.cancelDownloadTask = task
+end sub
+
+sub onCancelDownloadResponse()
+    handleCancelResponse(m.cancelDownloadTask, "Download cancelled.")
+end sub
+
+sub onCancelResearchPressed()
+    if m.selectedItem = invalid then return
+    queueId = readNodeStr(m.selectedItem, "itemDownloadQueueId")
+    src = readNodeStr(m.selectedItem, "itemSource")
+    srcId = readNodeStr(m.selectedItem, "itemSourceId")
+    if queueId = "" or src = "" or srcId = ""
+        m.detailAddStatus.text = "Can't re-search — missing ids on this item."
+        m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
+        return
+    end if
+    print "[HomeScene] Cancel + re-search: src="; src; " queueId="; queueId; " sourceId="; srcId
+
+    m.detailAddStatus.text = "Cancelling + searching for a new release…"
+    m.detailAddStatus.color = "0xe5a00dff"
+    m.detailAddStatus.visible = true
+
+    body = newPostBody()
+    body["source"] = src
+    ' queueId + sourceId as STRINGS — see onCancelDownloadPressed for why
+    ' Int(Val()) corrupts large ids. The backend Number()-parses both.
+    body["queueId"] = queueId
+    body["sourceId"] = srcId
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onCancelResearchResponse")
+    task.method = "POST"
+    task.url = m.apiUrl + "/api/queue/cancel-research"
+    task.body = FormatJson(body)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.cancelResearchTask = task
+end sub
+
+sub onCancelResearchResponse()
+    handleCancelResponse(m.cancelResearchTask, "Cancelled — searching for a new release.")
+end sub
+
+' Shared success/error handling for both queue actions. On success it
+' clears the now-stale download read-out + cancel buttons and marks the
+' home / TV / movies shelves stale so the queue refreshes on next visit.
+sub handleCancelResponse(task as object, okMsg as string)
+    response = invalid
+    if task <> invalid then response = task.response
+    if response = invalid or response.success <> true
+        msg = "Action failed"
+        if response <> invalid and response.error <> invalid then msg = response.error
+        m.detailAddStatus.text = msg
+        m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
+        return
+    end if
+    m.detailAddStatus.text = okMsg
+    m.detailAddStatus.color = "0x77ff77ff"
+    m.detailAddStatus.visible = true
+    ' The queue item is gone — tear down the whole download panel. Focus
+    ' is left on the (now-hidden) button; the remote Back key still walks
+    ' the view stack via onKeyEvent, so nothing is stranded.
+    m.detailDownloadStatus.visible = false
+    m.downloadBarBg.visible = false
+    m.downloadBarFill.visible = false
+    m.downloadActions.visible = false
+    m.homeStale = true
+    m.tvStale = true
+    m.moviesStale = true
+end sub
+
+' ─── Search Now (Coming Soon / LATE items) ────────────────────────
+'
+' Tells Sonarr/Radarr to search for a not-yet-downloaded upcoming item.
+' Hits POST /api/queue/search — same command the cancel-and-re-search
+' flow uses, minus the cancel.
+
+sub onSearchNowPressed()
+    if m.selectedItem = invalid then return
+    src = readNodeStr(m.selectedItem, "itemSource")
+    srcId = readNodeStr(m.selectedItem, "itemSourceId")
+    if src = "" or srcId = ""
+        m.detailAddStatus.text = "Can't search — missing ids on this item."
+        m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
+        return
+    end if
+    print "[HomeScene] Search now: src="; src; " sourceId="; srcId
+
+    m.detailAddStatus.text = "Searching for a release…"
+    m.detailAddStatus.color = "0xe5a00dff"
+    m.detailAddStatus.visible = true
+
+    body = newPostBody()
+    body["source"] = src
+    body["sourceId"] = srcId
+
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onSearchNowResponse")
+    task.method = "POST"
+    task.url = m.apiUrl + "/api/queue/search"
+    task.body = FormatJson(body)
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.searchNowTask = task
+end sub
+
+sub onSearchNowResponse()
+    response = invalid
+    if m.searchNowTask <> invalid then response = m.searchNowTask.response
+    if response = invalid or response.success <> true
+        msg = "Search failed"
+        if response <> invalid and response.error <> invalid then msg = response.error
+        m.detailAddStatus.text = msg
+        m.detailAddStatus.color = "0xff7777ff"
+        m.detailAddStatus.visible = true
+        return
+    end if
+    m.detailAddStatus.text = "Searching — it'll move to Downloading if a release is found."
+    m.detailAddStatus.color = "0x77ff77ff"
+    m.detailAddStatus.visible = true
+    m.homeStale = true
+    m.tvStale = true
+    m.moviesStale = true
+end sub
+
 ' Override Scene's default key handler so the remote Back button walks
 ' our internal view stack instead of immediately exiting the channel.
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -3111,8 +3321,8 @@ function onKeyEvent(key as string, press as boolean) as boolean
     ' walks through the visible buttons, skipping any that are hidden
     ' for this content type (e.g. Add-to-Sonarr is invisible for
     ' library items). Wraps at the ends rather than bouncing off.
-    if (key = "left" or key = "right") and m.detailActions.isInFocusChain()
-        stepActionRow(m.detailActionButtons, key)
+    if (key = "left" or key = "right") and (m.detailActions.isInFocusChain() or m.downloadActions.isInFocusChain() or m.searchActions.isInFocusChain())
+        stepActionRow(m.activeDetailActions, key)
         return true
     end if
     if (key = "left" or key = "right") and m.showDetailActions.isInFocusChain()
@@ -3794,7 +4004,7 @@ sub applyDeferredFocus()
     else if m.currentView = "sportsSettings"
         if m.sportsLeagueList.visible then m.sportsLeagueList.setFocus(true)
     else if m.currentView = "detail"
-        focusFirstAction(m.detailActionButtons)
+        focusFirstAction(m.activeDetailActions)
     else if m.currentView = "showDetail"
         ' Land on the seasons list — that's where the user wants to be.
         ' If seasons haven't loaded yet (empty list), fall back to the
@@ -3891,6 +4101,67 @@ sub populateDetail(node as object)
 
     m.addSonarrButton.visible = isTrackedTv or isDiscoverTv
     m.addRadarrButton.visible = isTrackedMovie or isDiscoverMovie
+
+    ' Downloading items (Sonarr/Radarr queue) get a live status read-out
+    ' plus Cancel Download / Cancel & Re-search. Mirrors mobile's detail
+    ' sheet. Requires a queue id from the backend — without it we can't
+    ' target the DELETE, so the buttons stay hidden.
+    ' Detail action panel is one of three, mutually exclusive:
+    '   1. downloading (Sonarr/Radarr queue) → status + progress bar +
+    '      Cancel Download / Cancel & Re-search.
+    '   2. coming_soon Sonarr/Radarr → LATE/soon label + Search Now.
+    '   3. everything else → the normal detailActions row.
+    ' Each contextual panel is its own LayoutGroup (see the XML) so its
+    ' buttons always render on-screen.
+    isDownloading = node.itemStatus = "downloading" and node.itemDownloadQueueId <> invalid and node.itemDownloadQueueId <> ""
+    isSearchable = node.itemStatus = "coming_soon" and (node.itemSource = "sonarr" or node.itemSource = "radarr")
+    ' The status line + progress bar + action group live in the lower half
+    ' of the screen. Trim the (up to 6-line, ~50px/line) summary to 4 lines
+    ' when a panel shows so it can't run into the status line at y=650.
+    if isDownloading or isSearchable
+        m.detailSummary.maxLines = 4
+    else
+        m.detailSummary.maxLines = 6
+    end if
+    if isDownloading
+        m.detailDownloadStatus.text = downloadStatusLine(node)
+        m.detailDownloadStatus.color = "0xe5a00dff"
+        m.detailDownloadStatus.visible = true
+        pct = 0
+        if node.itemDownloadPercentage <> invalid then pct = node.itemDownloadPercentage
+        if pct < 0 then pct = 0
+        if pct > 100 then pct = 100
+        m.downloadBarFill.width = Int(600 * pct / 100)
+        m.downloadBarBg.visible = true
+        m.downloadBarFill.visible = true
+        m.downloadActions.visible = true
+        m.searchActions.visible = false
+        m.detailActions.visible = false
+        m.activeDetailActions = m.downloadActionButtons
+    else if isSearchable
+        if node.itemIsLate = true
+            m.detailDownloadStatus.text = "LATE — not downloaded yet"
+            m.detailDownloadStatus.color = "0xff6b6bff"
+        else
+            m.detailDownloadStatus.text = "Coming soon"
+            m.detailDownloadStatus.color = "0xe5a00dff"
+        end if
+        m.detailDownloadStatus.visible = true
+        m.downloadBarBg.visible = false
+        m.downloadBarFill.visible = false
+        m.downloadActions.visible = false
+        m.searchActions.visible = true
+        m.detailActions.visible = false
+        m.activeDetailActions = m.searchActionButtons
+    else
+        m.detailDownloadStatus.visible = false
+        m.downloadBarBg.visible = false
+        m.downloadBarFill.visible = false
+        m.downloadActions.visible = false
+        m.searchActions.visible = false
+        m.detailActions.visible = true
+        m.activeDetailActions = m.detailActionButtons
+    end if
     ' Track button: only Discover-mode TV results that aren't already
     ' tracked. Mobile parity — movies skip Track and go straight to
     ' Radarr; tracked items don't show Track since they're tracked
@@ -4235,6 +4506,14 @@ sub onPlaybackResponse()
 
     info = response.data
     m.playbackInfo = info
+    ' Keep the "what's in effect" track ids in step with the session
+    ' that actually started. Before this they were only captured when
+    ' the picker opened, so a pick made in the picker (or a saved pref
+    ' applied at start) never reached m.currentSubtitleId — and the
+    ' post-pause session refresh then re-requested subtitle 0 (off),
+    ' which the backend persists to Plex. -1 = none selected.
+    m.currentAudioId = selectedTrackId(info.audioTracks)
+    m.currentSubtitleId = selectedTrackId(info.subtitles)
     m.lastReportedPositionTime = 0
     ' Swap completed — restore normal Video.state="stopped" handling.
     m.swapping = false
@@ -4785,6 +5064,18 @@ sub onTracksSubtitleItemSelected()
     swapTracks(false, true)
 end sub
 
+' Id of the track flagged selected=true in a playbackInfo track list
+' (audioTracks / subtitles), or -1 when none is. The backend sets the
+' flag from the session it just built, so this is the ground truth for
+' "what is playing right now".
+function selectedTrackId(tracks as object) as integer
+    if tracks = invalid then return -1
+    for each track in tracks
+        if track.selected = true and track.id <> invalid then return Int(track.id)
+    end for
+    return -1
+end function
+
 ' ─── Subtitle persistence ──────────────────────────────────────
 '
 ' Stored as a single JSON map (sourceId → subtitleId) under the
@@ -4846,20 +5137,23 @@ sub refreshPlaybackSession()
     m.video.control = "stop"
 
     url = m.apiUrl + "/api/playback/" + sourceId + "?source=" + src
-    ' Subtitle selection: prefer the in-picker pending/current value
-    ' (the user just changed it); fall back to the persisted pref so
-    ' we don't lose the user's choice when they pause before ever
-    ' opening the picker.
+    ' Subtitle selection, in order of authority:
+    '   1. The track the current session actually has selected (the
+    '      backend marks it in playbackInfo.subtitles — this reflects a
+    '      picker change, a saved pref applied at start, or the Plex
+    '      default).
+    '   2. The persisted per-video pref (covers an explicit "off" = 0).
+    '   3. Nothing — omit the param so the server keeps its default.
+    ' Never send 0 unless the user chose Off: the backend persists a 0
+    ' to Plex (deselects every subtitle stream), which is how a pause
+    ' used to wipe the user's subtitle choice for good.
     subToUse = -1
-    if m.currentSubtitleId <> invalid and m.currentSubtitleId >= 0
-        subToUse = m.currentSubtitleId
-    else
-        subToUse = readSubtitlePref(sourceId)
-    end if
+    if m.playbackInfo.subtitles <> invalid then subToUse = selectedTrackId(m.playbackInfo.subtitles)
+    if subToUse = -1 then subToUse = readSubtitlePref(sourceId)
     if subToUse <> -1 then url = url + "&subtitleStreamID=" + subToUse.toStr()
-    if m.currentAudioId <> invalid and m.currentAudioId >= 0
-        url = url + "&audioStreamID=" + m.currentAudioId.toStr()
-    end if
+    audToUse = -1
+    if m.playbackInfo.audioTracks <> invalid then audToUse = selectedTrackId(m.playbackInfo.audioTracks)
+    if audToUse <> -1 then url = url + "&audioStreamID=" + audToUse.toStr()
     if m.currentQualityIndex <> invalid and m.qualityPresets <> invalid and m.currentQualityIndex < m.qualityPresets.Count()
         url = url + "&maxBitrate=" + m.qualityPresets[m.currentQualityIndex].maxBitrate.toStr()
     end if
@@ -6568,6 +6862,16 @@ sub attachItemFields(child as object, item as object)
     ' overlay (coming-soon date, downloading badge, live air time).
     child.AddField("itemStatus", "string", false)
     child.AddField("itemAvailableAt", "string", false)
+    ' Download queue fields — populated only for items in a Sonarr/Radarr
+    ' queue (status == downloading). Drive the detail view's download
+    ' read-out + Cancel Download / Cancel & Re-search buttons.
+    child.AddField("itemDownloadQueueId", "string", false)
+    child.AddField("itemDownloadStatus", "string", false)
+    child.AddField("itemDownloadPercentage", "float", false)
+    child.AddField("itemDownloadTimeLeft", "string", false)
+    ' A coming_soon item whose date has passed but still has no file —
+    ' badged "LATE" on the card and offered a "Search Now" action.
+    child.AddField("itemIsLate", "boolean", false)
 
     child.itemSource = stringField(item, "source")
     child.itemSourceId = stringField(item, "sourceId")
@@ -6604,6 +6908,27 @@ sub attachItemFields(child as object, item as object)
     end if
     child.itemWatched = watched
     child.itemProgress = progress
+
+    ' Download status (Sonarr/Radarr queue items). Leaves fields empty
+    ' for everything else so populateDetail hides the download UI.
+    dlQueueId = ""
+    dlStatus = ""
+    dlPct = 0
+    dlTimeLeft = ""
+    if item.download <> invalid
+        dlQueueId = stringField(item.download, "queueId")
+        dlStatus = stringField(item.download, "status")
+        if item.download.percentage <> invalid then dlPct = item.download.percentage
+        dlTimeLeft = stringField(item.download, "timeLeft")
+    end if
+    child.itemDownloadQueueId = dlQueueId
+    child.itemDownloadStatus = dlStatus
+    child.itemDownloadPercentage = dlPct
+    child.itemDownloadTimeLeft = dlTimeLeft
+
+    isLate = false
+    if item.isLate <> invalid then isLate = item.isLate
+    child.itemIsLate = isLate
 end sub
 
 function stringField(item as object, name as string) as string

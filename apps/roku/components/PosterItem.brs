@@ -174,6 +174,9 @@ sub onContentChanged()
     if content.itemStatus = "downloading"
         statusText = "Downloading"
         statusColor = "0x52c1d6ff"
+    else if content.itemStatus = "coming_soon" and content.itemIsLate = true
+        statusText = "LATE"
+        statusColor = "0xff6b6bff"
     else if content.itemStatus = "coming_soon" and content.itemAvailableAt <> invalid and content.itemAvailableAt <> ""
         statusText = formatAvailableDate(content.itemAvailableAt)
     else if content.itemStatus = "ready" and src = "live" and content.itemAvailableAt <> invalid and content.itemAvailableAt <> ""
