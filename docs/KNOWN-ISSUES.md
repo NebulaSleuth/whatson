@@ -7,10 +7,11 @@ notes (device fleet, uncommitted files, build-environment quirks) live in
 
 ## Known issues (bugs / sharp edges)
 
-1. **Roku store package omits fonts.** `apps/roku/scripts/package.js` zips
-   `manifest`, `source/`, `components/`, `images/` but not `fonts/**/*`, while
-   `deploy.js` includes it. A store `.zip` would ship without
-   NotoSansSymbols.ttf (Settings gear glyph). Fix before store submission.
+1. ~~**Roku store package omits fonts.**~~ **Fixed 2026-09-06:** `deploy.js` and
+   `package.js` now share one file list (`scripts/config.js` `CHANNEL_FILES`,
+   includes `fonts/**/*`) and the same `Config.brs` generation, so `npm run package`
+   produces exactly what `deploy.js` sideloads. Verified: the zip contains both
+   NotoSansSymbols fonts.
 2. **Stale `ROKU_AUTH_KEY` breaks Roku deploys.** The backend's `apiAuth`
    allows keyless LAN reads but rejects an *invalid* key — baking an old key
    via `ROKU_AUTH_KEY` (e.g. the stale value in the local `setroku.ps1`)

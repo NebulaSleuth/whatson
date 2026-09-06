@@ -98,9 +98,13 @@ This document is the architecture and delivery plan for the Roku client. It assu
 >   leaves the LAN pair poll running, so whichever completes first wins (mobile navigates
 >   away from the pair screen and stops its poll).
 >
-> **Known issue:** `scripts/package.js` does not include `fonts/**/*` while
-> `scripts/deploy.js` does — a store package would miss NotoSansSymbols.ttf (Settings
-> gear glyph). Fix before Phase 4. See `docs/KNOWN-ISSUES.md`.
+> **Fixed 2026-09-06:** `scripts/package.js` and `scripts/deploy.js` now share one
+> file list + `Config.brs` generation (`scripts/config.js`), so a store package includes
+> `fonts/**/*` and matches what gets sideloaded. `npm run package` (from `apps/roku`)
+> is the "build" step; the on-device compile still only happens at sideload.
+> Note: `manifest` references `images/splash-hd.jpg` / `splash-sd.jpg`, which don't
+> exist in the repo — Roku falls back to `splash_color`. Add real splash art before
+> Phase 4 (a `splash.png` draft sits untracked at the repo root).
 
 ---
 
@@ -384,7 +388,7 @@ Section name: `whatson`. Read on boot, written from SettingsScene.
 | **1. MVP** | Home tab with shelves; Library tab; detail view; player with HLS playback + position reporting + stop event; Settings. | ✅ Done |
 | **2. Search + Sports** | Search with KeyboardDialog; Sports tab with live + later shelves and sports detail; user picker. | ✅ Done |
 | **3. Polish** | Mark Watched / Unwatched on detail; Continue Watching exclusion logic; pairing flow; channel art. | ✅ Done (plus beyond-plan: Live TV tab, Whats-On accounts, download-queue management, LATE/Search Now) |
-| **4. Store submission** | Channel description, screenshots, content rating, certification testing, response to Roku reviewer feedback. **Blockers: `package.js` fonts gap (see status header).** | ⬜ Not started |
+| **4. Store submission** | Channel description, screenshots, content rating, certification testing, response to Roku reviewer feedback. **Blockers: splash art missing (see status header); fonts gap fixed 2026-09-06.** | ⬜ Not started |
 
 ---
 
