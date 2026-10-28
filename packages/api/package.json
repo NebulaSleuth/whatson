@@ -1,6 +1,6 @@
 {
   "name": "@whatson/api",
-  "version": "0.1.148",
+  "version": "0.1.149",
   "private": true,
   "main": "./dist/index.js",
   "scripts": {

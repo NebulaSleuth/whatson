@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { APP_NAME, APP_VERSION, PLEX_CLIENT_IDENTIFIER } from '@whatson/shared';
 import type { ContentItem } from '@whatson/shared';
 import { getCached, setCached } from '../cache.js';
+import { trackAvailability } from './adapters/availability.js';
 import type {
   PlaybackInfo,
   PlaybackOpts,
@@ -119,7 +120,11 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       'X-Emby-Authorization': authHeader(token),
     };
     if (token) headers['X-Emby-Token'] = token;
-    return axios.create({ baseURL: baseUrl, timeout: 15000, headers });
+    const http = axios.create({ baseURL: baseUrl, timeout: 15000, headers });
+    // Feed the per-server circuit breaker so an unreachable server is skipped
+    // instead of stalling every home load on its timeout
+    http.interceptors.response.use(...trackAvailability(opts.source));
+    return http;
   };
 
   const authenticate = async (): Promise<EmbyLikeSession | null> => {

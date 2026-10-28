@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
 import { config } from '../config.js';
 import { getCached, setCached, invalidateAll } from '../cache.js';
+import { isUnreachableError, trackAvailability } from './adapters/availability.js';
 import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
 import type { ContentItem } from '@whatson/shared';
 
@@ -211,16 +212,6 @@ let rediscoverPromise: Promise<void> | null = null;
 let lastRediscoverAt = 0;
 let watchdog: NodeJS.Timeout | null = null;
 
-const UNREACHABLE_CODES = new Set([
-  'ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT',
-  'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN',
-]);
-
-/** True for "couldn't reach the server" failures, as opposed to an HTTP error response */
-function isUnreachableError(err: unknown): boolean {
-  return axios.isAxiosError(err) && !err.response && UNREACHABLE_CODES.has(err.code ?? '');
-}
-
 /**
  * Re-test the current Plex URL and re-run discovery if it's no longer
  * reachable. `force` skips the reachability check and the rate limit —
@@ -319,9 +310,10 @@ async function getClient(userToken?: string): Promise<AxiosInstance> {
       },
       timeout: 30000,
     });
-    newClient.interceptors.response.use(undefined, (err) => {
+    const [onOk, onErr] = trackAvailability('plex');
+    newClient.interceptors.response.use(onOk, (err) => {
       if (isUnreachableError(err)) rediscover(`request failed: ${err.code}`).catch(() => {});
-      return Promise.reject(err);
+      return onErr(err);
     });
 
     if (userToken) {

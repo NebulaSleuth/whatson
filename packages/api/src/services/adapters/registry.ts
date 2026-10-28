@@ -3,6 +3,7 @@ import { plexAdapter } from './plex.js';
 import { jellyfinAdapter } from './jellyfin.js';
 import { embyAdapter } from './emby.js';
 import type { MediaServerAdapter, MediaServerKind } from './types.js';
+import { isServerAvailable } from './availability.js';
 
 /**
  * All known media-server adapters. Order matters only for logging/debugging —
@@ -67,12 +68,17 @@ function isAdapterMappedForScope(kind: MediaServerKind, scope: WhatsOnUserScope)
  * Every adapter the operator has configured AND the active Whats On
  * user (if any) is mapped to. In legacy mode (no active scope) returns
  * every configured adapter, matching pre-WO behaviour.
+ *
+ * Servers currently unreachable (see availability.ts) are left out so
+ * shelves and library lists don't wait on their timeouts; they come back
+ * automatically once a background probe succeeds.
  */
 export function getConfiguredAdapters(): MediaServerAdapter[] {
   const scope = activeScope;
   return Object.values(adapters).filter((a) => {
     if (!a.isConfigured()) return false;
     if (scope && !isAdapterMappedForScope(a.kind, scope)) return false;
+    if (!isServerAvailable(a.kind, () => a.testConnection())) return false;
     return true;
   });
 }

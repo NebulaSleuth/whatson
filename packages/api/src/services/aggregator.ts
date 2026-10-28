@@ -288,11 +288,15 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
   // Each adapter call is isolated via safeCall so one bad server doesn't kill the home payload.
   const mediaAdapters = getConfiguredAdapters();
   const perAdapter = await Promise.all(
-    mediaAdapters.map(async (a) => ({
-      continueWatching: await safeCall(() => a.getContinueWatching(userToken), []),
-      onDeck: await safeCall(() => a.getOnDeck(userToken), []),
-      recent: await safeCall(() => a.getRecentlyAdded(50, userToken), []),
-    })),
+    mediaAdapters.map(async (a) => {
+      // In parallel — run serially, an unreachable server cost three full timeouts
+      const [continueWatching, onDeck, recent] = await Promise.all([
+        safeCall(() => a.getContinueWatching(userToken), []),
+        safeCall(() => a.getOnDeck(userToken), []),
+        safeCall(() => a.getRecentlyAdded(50, userToken), []),
+      ]);
+      return { continueWatching, onDeck, recent };
+    }),
   );
   const continueWatching = perAdapter.flatMap((x) => x.continueWatching);
   const onDeck = perAdapter.flatMap((x) => x.onDeck);
