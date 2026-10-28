@@ -135,12 +135,14 @@ server.on('error', (err: NodeJS.ErrnoException) => {
 });
 
 // Eagerly discover Plex server on startup so artwork URLs work from the first request
-import { getServerUrl } from './services/plex.js';
+import { getServerUrl, startPlexWatchdog } from './services/plex.js';
 if (config.plex.token) {
   getServerUrl().then((url) => {
     if (url) console.log(`[Plex] Server discovered: ${url}`);
   }).catch(() => {});
 }
+// Re-discover Plex if its address changes (new router, DHCP lease) without a restart
+startPlexWatchdog();
 
 server.listen(config.port, () => {
   console.log(`[Whats On API] Ready on port ${config.port}`);

@@ -25,7 +25,7 @@ import net from 'node:net';
 import dns from 'node:dns';
 import type { LookupFunction } from 'node:net';
 import { config } from '../config.js';
-import { getServerUrl } from '../services/plex.js';
+import { getServerUrl, getKnownServerUrls } from '../services/plex.js';
 
 /** Thrown when a fetch target is rejected pre-flight. Handlers map it to 400. */
 export class SsrfError extends Error {
@@ -79,20 +79,16 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
-// Plex is often auto-discovered (no configured URL), so resolve its current
-// server URL and memoise the host briefly to keep artwork fetches cheap.
-let plexHostCache: { host: string | null; at: number } = { host: null, at: 0 };
-async function resolvePlexHost(): Promise<string | null> {
-  const now = Date.now();
-  if (plexHostCache.host && now - plexHostCache.at < 300_000) return plexHostCache.host;
-  try {
-    const url = config.plex.url || (await getServerUrl());
-    const host = hostOf(url || undefined);
-    if (host) plexHostCache = { host, at: now };
-  } catch {
-    /* keep last known host */
+// Plex is often auto-discovered (no configured URL) and can be re-discovered
+// at runtime when its address changes, so read the URLs currently in use
+// rather than memoising a host. Discovery only runs if nothing is resolved yet.
+async function resolvePlexHosts(): Promise<string[]> {
+  let urls = getKnownServerUrls();
+  if (urls.length === 0) {
+    await getServerUrl();
+    urls = getKnownServerUrls();
   }
-  return plexHostCache.host;
+  return urls.map((u) => hostOf(u)).filter((h): h is string => Boolean(h));
 }
 
 /**
@@ -108,7 +104,7 @@ export async function mediaServerHosts(): Promise<Set<string>> {
   add(hostOf(config.jellyfin.url));
   add(hostOf(config.emby.url));
   add(hostOf(config.hdhomerun.url));
-  add(await resolvePlexHost());
+  for (const h of await resolvePlexHosts()) add(h);
   return hosts;
 }
 

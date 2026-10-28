@@ -300,6 +300,8 @@ configRouter.post('/config/save', async (req, res) => {
 
     // Reset service clients so they pick up new config
     plex.resetClient();
+    // Re-resolve the Plex server against the new config (URL / token)
+    plex.rediscover('config saved', { force: true }).catch(() => {});
     sonarr.resetClient();
     radarr.resetClient();
     jellyfin.resetClient();
@@ -369,6 +371,7 @@ configRouter.get('/plex/pin/:pinId', async (req, res) => {
       dotenv.config({ path: getEnvFilePath(), override: true });
       reloadConfig();
       plex.resetClient();
+      plex.rediscover('Plex token updated', { force: true }).catch(() => {});
 
       res.json({ success: true, data: { completed: true, token: '••••' + authToken.slice(-4) } });
     } else {

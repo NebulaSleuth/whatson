@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios';
 import { config } from '../config.js';
-import { getCached, setCached } from '../cache.js';
+import { getCached, setCached, invalidateAll } from '../cache.js';
 import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
 import type { ContentItem } from '@whatson/shared';
 
@@ -12,6 +12,8 @@ let discoveryPromise: Promise<string> | null = null;
 let discoveredConnections: { local: string[]; remote: string[] } = { local: [], remote: [] };
 // The local Plex URL for artwork — always prefer local even if resolvedServerUrl is remote
 let localPlexUrl: string | null = null;
+// Whether resolvedServerUrl is a LAN connection (false = remote / relay)
+let resolvedIsLocal = false;
 
 // ── Plex.tv Server Discovery ──
 
@@ -62,6 +64,7 @@ async function discoverServerUrl(): Promise<string> {
     if (await testPlexConnection(configuredUrl)) {
       resolvedServerUrl = configuredUrl;
       localPlexUrl = configuredUrl; // Only set local URL if actually reachable
+      resolvedIsLocal = true;
       console.log(`[Plex] Using configured URL: ${resolvedServerUrl}`);
       return resolvedServerUrl;
     }
@@ -136,6 +139,7 @@ async function discoverServerUrl(): Promise<string> {
     const reachable = await testPlexConnection(conn.uri);
     if (reachable) {
       resolvedServerUrl = conn.uri;
+      resolvedIsLocal = conn.local;
       if (conn.local && !localPlexUrl) localPlexUrl = conn.uri;
       console.log(`[Plex] Connected via ${conn.local ? 'local' : 'remote'} ${conn.protocol}: ${resolvedServerUrl}`);
       return resolvedServerUrl;
@@ -190,6 +194,102 @@ async function ensureDiscovered(): Promise<string> {
   return discoveryPromise;
 }
 
+// ── Re-discovery ──
+//
+// The resolved URL used to live for the whole process, so a Plex server that
+// changed IP (new router, DHCP lease) left every Plex call timing out until
+// the service was restarted. Now an unreachable-server error, or the
+// periodic watchdog, re-tests the current URL and re-runs discovery if it's
+// dead.
+
+const REDISCOVER_MIN_INTERVAL_MS = 30_000;
+const WATCHDOG_INTERVAL_MS = 60_000;
+// While on a remote/relay connection, retry for a LAN one every N watchdog ticks
+const LOCAL_RETRY_TICKS = 5;
+
+let rediscoverPromise: Promise<void> | null = null;
+let lastRediscoverAt = 0;
+let watchdog: NodeJS.Timeout | null = null;
+
+const UNREACHABLE_CODES = new Set([
+  'ECONNREFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT',
+  'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN',
+]);
+
+/** True for "couldn't reach the server" failures, as opposed to an HTTP error response */
+function isUnreachableError(err: unknown): boolean {
+  return axios.isAxiosError(err) && !err.response && UNREACHABLE_CODES.has(err.code ?? '');
+}
+
+/**
+ * Re-test the current Plex URL and re-run discovery if it's no longer
+ * reachable. `force` skips the reachability check and the rate limit —
+ * used after a config change, and to move from a remote connection back
+ * to a LAN one.
+ */
+export function rediscover(reason: string, opts: { force?: boolean } = {}): Promise<void> {
+  if (!rediscoverPromise) {
+    rediscoverPromise = doRediscover(reason, Boolean(opts.force)).finally(() => {
+      rediscoverPromise = null;
+    });
+  }
+  return rediscoverPromise;
+}
+
+async function doRediscover(reason: string, force: boolean): Promise<void> {
+  if (!config.plex.token && !config.plex.url) return;
+  const prev = { resolvedServerUrl, localPlexUrl, resolvedIsLocal };
+
+  if (!force) {
+    if (prev.resolvedServerUrl && (await testPlexConnection(prev.resolvedServerUrl))) return;
+    if (Date.now() - lastRediscoverAt < REDISCOVER_MIN_INTERVAL_MS) return;
+  }
+  lastRediscoverAt = Date.now();
+
+  console.log(`[Plex] Re-discovering server (${reason}); current: ${prev.resolvedServerUrl ?? 'none'}`);
+  resolvedServerUrl = null;
+  localPlexUrl = null;
+  resolvedIsLocal = false;
+  discoveryPromise = null;
+  client = null;
+  userClients.clear();
+
+  try {
+    const url = await ensureDiscovered();
+    if (url !== prev.resolvedServerUrl) {
+      console.log(`[Plex] Server URL changed: ${prev.resolvedServerUrl ?? 'none'} -> ${url}`);
+      // Cached payloads carry artwork URLs built on the old base
+      invalidateAll();
+    }
+  } catch (e) {
+    // Discovery failed outright (e.g. plex.tv unreachable) — keep the last
+    // known URL so artwork URLs still build, and try again next time.
+    resolvedServerUrl = prev.resolvedServerUrl;
+    localPlexUrl = prev.localPlexUrl;
+    resolvedIsLocal = prev.resolvedIsLocal;
+    console.warn(`[Plex] Re-discovery failed: ${(e as Error).message}`);
+  }
+}
+
+/** Periodically verify the Plex URL is still reachable and re-discover if not */
+export function startPlexWatchdog(): void {
+  if (watchdog) return;
+  let ticks = 0;
+  watchdog = setInterval(() => {
+    if (!resolvedServerUrl) return; // never resolved — the next request runs discovery
+    ticks++;
+    const retryLocal = !resolvedIsLocal && ticks % LOCAL_RETRY_TICKS === 0;
+    rediscover(retryLocal ? 'retrying for a local connection' : 'watchdog', { force: retryLocal })
+      .catch(() => {});
+  }, WATCHDOG_INTERVAL_MS);
+  watchdog.unref();
+}
+
+/** Every Plex base URL currently in use (resolved + local artwork URL) */
+export function getKnownServerUrls(): string[] {
+  return [...new Set([resolvedServerUrl, localPlexUrl].filter((u): u is string => Boolean(u)))];
+}
+
 // Per-user client cache: token -> AxiosInstance
 const userClients = new Map<string, AxiosInstance>();
 
@@ -218,6 +318,10 @@ async function getClient(userToken?: string): Promise<AxiosInstance> {
         'X-Plex-Version': APP_VERSION,
       },
       timeout: 30000,
+    });
+    newClient.interceptors.response.use(undefined, (err) => {
+      if (isUnreachableError(err)) rediscover(`request failed: ${err.code}`).catch(() => {});
+      return Promise.reject(err);
     });
 
     if (userToken) {
@@ -263,7 +367,7 @@ export function getDiscoveredConnections(): { local: string[]; remote: string[];
 /** Get the resolved server URL (triggers discovery if needed) */
 export async function getServerUrl(): Promise<string | null> {
   try {
-    return await discoverServerUrl();
+    return await ensureDiscovered();
   } catch {
     return null;
   }
