@@ -11,7 +11,7 @@ import type { ContentItem, DownloadStatus } from '@whatson/shared';
  * resizes server-side (when clients pass &w=…) and caches resized
  * variants on disk so subsequent renders are cheap.
  */
-function proxyArtworkUrl(url: string): string {
+export function proxyArtworkUrl(url: string): string {
   if (!url) return '';
   return `/api/artwork?url=${encodeURIComponent(url)}`;
 }

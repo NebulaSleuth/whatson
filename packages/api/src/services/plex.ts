@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance } from 'axios';
 import { config } from '../config.js';
-import { getCached, setCached, invalidateAll } from '../cache.js';
+import { getCached, setCached } from '../cache.js';
 import { isUnreachableError, trackAvailability } from './adapters/availability.js';
 import { PLEX_CLIENT_IDENTIFIER, PLEX_PRODUCT, APP_VERSION } from '@whatson/shared';
 import type { ContentItem } from '@whatson/shared';
@@ -248,9 +248,10 @@ async function doRediscover(reason: string, force: boolean): Promise<void> {
   try {
     const url = await ensureDiscovered();
     if (url !== prev.resolvedServerUrl) {
+      // No cache flush: artwork refs are host-independent (`plex:<path>`),
+      // so cached payloads stay valid across a base-URL change. Flushing
+      // here used to wipe the whole poster cache on every LAN/remote flap.
       console.log(`[Plex] Server URL changed: ${prev.resolvedServerUrl ?? 'none'} -> ${url}`);
-      // Cached payloads carry artwork URLs built on the old base
-      invalidateAll();
     }
   } catch (e) {
     // Discovery failed outright (e.g. plex.tv unreachable) — keep the last
@@ -326,11 +327,21 @@ async function getClient(userToken?: string): Promise<AxiosInstance> {
   return client;
 }
 
-function artworkUrl(path: string | undefined, userToken?: string, updatedAt?: number): string {
+/**
+ * Plex artwork is emitted as a host-independent `plex:<path>` reference,
+ * NOT an absolute `http://<plex-ip>:32400/...` URL. The artwork proxy
+ * resolves it against whichever Plex base is current at fetch time
+ * (`resolvePlexArtworkRef`). Baking the host in meant every Plex address
+ * change — DHCP move, or a flap between the LAN and a remote plex.direct
+ * connection — changed every poster URL, so the proxy's disk cache and
+ * every client image cache missed on the whole library at once. It also
+ * kept the Plex token out of client payloads.
+ *
+ * `_userToken` is unused: the proxy fetches with the server token, which
+ * can read all artwork, so per-user variants don't fragment the cache.
+ */
+function artworkUrl(path: string | undefined, _userToken?: string, updatedAt?: number): string {
   if (!path) return '';
-  // Prefer local URL for artwork — the backend proxy fetches it, so it must be reachable from the backend
-  const base = localPlexUrl || resolvedServerUrl;
-  if (!base) return '';
   // Plex artwork paths come back as `/library/metadata/{id}/thumb/{ts}`
   // where {ts} is a poster-version timestamp. Plex serves the SPECIFIC
   // version at that URL — when a user swaps the poster in Plex's UI,
@@ -346,9 +357,39 @@ function artworkUrl(path: string | undefined, userToken?: string, updatedAt?: nu
   const cleanPath = path.replace(/\/(\d+)$/, '');
   // `_v` cache-busts our own artwork proxy when the item's metadata
   // updates. Plex itself ignores unknown query params.
-  let url = `${base}${cleanPath}?X-Plex-Token=${getTokenForClient(userToken)}`;
-  if (updatedAt && updatedAt > 0) url += `&_v=${updatedAt}`;
-  return url;
+  let ref = `${PLEX_ARTWORK_PREFIX}${cleanPath}`;
+  if (updatedAt && updatedAt > 0) ref += `?_v=${updatedAt}`;
+  return ref;
+}
+
+export const PLEX_ARTWORK_PREFIX = 'plex:';
+
+/**
+ * Turn a `plex:<path>` artwork reference into a fetchable URL on the
+ * current Plex server. Prefers the LAN URL (the proxy fetches it, so it
+ * must be reachable from the backend). Returns null when no Plex server
+ * is known or the ref doesn't stay on that server.
+ */
+export async function resolvePlexArtworkRef(ref: string): Promise<string | null> {
+  if (!ref.startsWith(PLEX_ARTWORK_PREFIX)) return null;
+  const pathAndQuery = ref.slice(PLEX_ARTWORK_PREFIX.length);
+  // Must be an absolute path on the server — no scheme-relative `//host`.
+  if (!pathAndQuery.startsWith('/') || pathAndQuery.startsWith('//')) return null;
+  let base = localPlexUrl || resolvedServerUrl;
+  if (!base) {
+    await getServerUrl().catch(() => null);
+    base = localPlexUrl || resolvedServerUrl;
+  }
+  if (!base) return null;
+  let url: URL;
+  try {
+    url = new URL(pathAndQuery, base);
+    if (url.origin !== new URL(base).origin) return null;
+  } catch {
+    return null;
+  }
+  url.searchParams.set('X-Plex-Token', config.plex.token);
+  return url.toString();
 }
 
 /** Get all discovered Plex connections for client-side testing */

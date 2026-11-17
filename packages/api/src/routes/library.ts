@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { ApiResponse, ContentItem, ContentSource } from '@whatson/shared';
 import { getAdapterForSource } from '../services/adapters/registry.js';
-import { proxyArtworkUrls } from '../utils.js';
+import { proxyArtworkUrl, proxyArtworkUrls } from '../utils.js';
 
 export const libraryRouter = Router();
 
@@ -43,7 +43,11 @@ libraryRouter.get('/library/show/:ratingKey/seasons', async (req, res) => {
       return;
     }
     const seasons = await adapter.getShowSeasons(req.params.ratingKey, req.plexUserToken);
-    res.json({ success: true, data: seasons });
+    // Plex season thumbs are `plex:` refs that only the proxy can resolve
+    res.json({
+      success: true,
+      data: seasons.map((s) => (s.thumb ? { ...s, thumb: proxyArtworkUrl(s.thumb) } : s)),
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }

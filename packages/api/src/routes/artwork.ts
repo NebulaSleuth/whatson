@@ -11,9 +11,33 @@ import { ARTWORK_CACHE_TTL } from '@whatson/shared';
 import { config } from '../config.js';
 import { ensureSession as ensureJellyfinSession } from '../services/jellyfin.js';
 import { ensureSession as ensureEmbySession } from '../services/emby.js';
+import type { LookupFunction } from 'node:net';
 import { assertFetchAllowed, mediaServerHosts, guardedLookup, SsrfError } from '../security/urlGuard.js';
+import { PLEX_ARTWORK_PREFIX, resolvePlexArtworkRef } from '../services/plex.js';
 
 export const artworkRouter = Router();
+
+// Connection-time SSRF guard: re-validates every redirect hop and defeats DNS
+// rebinding by checking the resolved IP, not just the pre-flight lookup. The
+// allow-list is read per lookup because Plex can be re-discovered at runtime.
+const guardedDynamicLookup = ((hostname: string, options: unknown, callback?: unknown) => {
+  const cb = (typeof options === 'function' ? options : callback) as (err: Error | null) => void;
+  mediaServerHosts().then(
+    (hosts) => (guardedLookup(hosts) as (...args: unknown[]) => void)(hostname, options, callback),
+    (err: Error) => cb(err),
+  );
+}) as LookupFunction;
+
+// Shared keep-alive agents for upstream artwork fetches. A fresh Agent per
+// request (the old behaviour) opened a brand-new TCP connection for every
+// poster — a home-screen load meant a burst of handshakes to Plex, and on a
+// network where the Plex host intermittently ignores SYNs each one was a
+// fresh chance to stall. Reused sockets skip the handshake entirely, and
+// maxSockets caps how hard one grid load hits a media server. The guard only
+// runs when a socket is opened; a reused socket is to an already-validated host.
+const AGENT_OPTS = { keepAlive: true, maxSockets: 8, maxFreeSockets: 8, timeout: 30_000, lookup: guardedDynamicLookup };
+const upstreamHttpAgent = new http.Agent(AGENT_OPTS);
+const upstreamHttpsAgent = new https.Agent(AGENT_OPTS);
 
 // On-disk cache directory. We pick the runtime-data folder so it
 // follows the same install-mode logic as everything else (next to the
@@ -153,9 +177,22 @@ artworkRouter.get('/artwork', async (req, res) => {
 
   // SSRF guard — reject internal/reserved targets before any outbound fetch.
   // Cache hits above are already-validated URLs, so we only pay this on a miss.
+  // Plex artwork arrives as a host-independent `plex:<path>` ref (the cache
+  // key above is built from the ref, so it survives Plex address changes);
+  // resolve it to the current Plex base only now, on a miss.
+  let fetchUrl = imageUrl;
+  if (imageUrl.startsWith(PLEX_ARTWORK_PREFIX)) {
+    const resolved = await resolvePlexArtworkRef(imageUrl);
+    if (!resolved) {
+      res.status(502).send('Plex server not available');
+      return;
+    }
+    fetchUrl = resolved;
+  }
+
   let parsedUrl: URL;
   try {
-    parsedUrl = await assertFetchAllowed(imageUrl);
+    parsedUrl = await assertFetchAllowed(fetchUrl);
   } catch (err) {
     if (err instanceof SsrfError) {
       console.warn(`[artwork] rejected url: ${(err as Error).message}`);
@@ -168,16 +205,13 @@ artworkRouter.get('/artwork', async (req, res) => {
 
   try {
     const fetchCfg = await buildFetchConfig(parsedUrl);
-    // Connection-time guard: re-validates every redirect hop and defeats DNS
-    // rebinding by checking the resolved IP, not just the pre-flight lookup.
-    const lookup = guardedLookup(await mediaServerHosts());
     const response = await axios.get(fetchCfg.url, {
       responseType: 'arraybuffer',
       timeout: 15000,
       headers: fetchCfg.headers,
       maxRedirects: 3,
-      httpAgent: new http.Agent({ lookup }),
-      httpsAgent: new https.Agent({ lookup }),
+      httpAgent: upstreamHttpAgent,
+      httpsAgent: upstreamHttpsAgent,
     });
 
     const upstreamContentType: string = response.headers['content-type'] || 'image/jpeg';
