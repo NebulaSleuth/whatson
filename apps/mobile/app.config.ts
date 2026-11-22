@@ -28,8 +28,32 @@ const withCleartextTraffic = (cfg: ExpoConfig) =>
  *   eas build --profile android-tv
  *   eas build --profile android-phone
  */
+/**
+ * Store version numbers, derived from WHATSON_VERSION (CI sets it from the
+ * release tag, e.g. v0.1.150 -> "0.1.150"). Play and App Store Connect both
+ * reject an upload whose build number was already used, so every tag must
+ * produce a new, higher number.
+ *
+ *   versionCode = major*1000000 + minor*10000 + patch*10 + (TV ? 1 : 0)
+ *
+ * Phone and TV share one Play package, so the two AABs of the same release
+ * need distinct codes; the TV build gets the odd one.
+ */
+function storeVersion(isTV: boolean) {
+  const raw = (process.env.WHATSON_VERSION ?? '0.1.0').replace(/^v/, '');
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(raw);
+  if (!m) throw new Error(`WHATSON_VERSION must look like 1.2.3, got "${raw}"`);
+  const [major, minor, patch] = m.slice(1).map(Number);
+  if (minor > 99 || patch > 999) throw new Error(`WHATSON_VERSION ${raw} is out of range for versionCode`);
+  return {
+    version: raw,
+    versionCode: major * 1000000 + minor * 10000 + patch * 10 + (isTV ? 1 : 0),
+  };
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const isTV = process.env.WHATSON_TV === '1';
+  const { version, versionCode } = storeVersion(isTV);
 
   const base: ExpoConfig = {
     ...config,
@@ -38,7 +62,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // "What's On TV Player" — plain "What's On TV" was taken).
     name: "What's On TV",
     slug: 'whatson',
-    version: '0.1.0',
+    version,
     orientation: 'default',
     icon: './assets/icon.png',
     scheme: 'whatson',
@@ -54,6 +78,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // App Store product spanning both platforms).
       supportsTablet: true,
       bundleIdentifier: 'com.extrastrength.whatsontv',
+      buildNumber: version,
       infoPlist: {
         // App Store listing name; "What's On TV" was unavailable on Apple.
         CFBundleDisplayName: "What's On TV Player",
@@ -69,6 +94,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#0F0F0F',
       },
       package: 'com.extrastrength.whatsontv',
+      versionCode,
     },
     plugins: [
       ['expo-router', { root: './app' }],
