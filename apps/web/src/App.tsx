@@ -13,7 +13,9 @@ import ShowDetail from './pages/ShowDetail';
 import SelectUser from './pages/SelectUser';
 import SelectWhatsOnUser from './pages/SelectWhatsOnUser';
 import PairDevice from './pages/PairDevice';
+import { DemoBanner } from './components/DemoBanner';
 import { api, getAuthKey, setAuthKey, getCurrentUserId } from './lib/api';
+import { setDemo } from './lib/demo';
 
 type BootStatus = 'checking' | 'needsPair' | 'needsUser' | 'ready';
 
@@ -24,6 +26,15 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
+      // Public read-only demo? Learn it first so no write action renders.
+      let providers: Awaited<ReturnType<typeof api.getAuthProviders>> | null = null;
+      try {
+        providers = await api.getAuthProviders();
+        setDemo(providers.demo === true);
+      } catch {
+        /* older backends / unreachable — not a demo */
+      }
+
       try {
         const status = await api.getAdminStatus();
         if (status.hasAdminPassword && !getAuthKey()) {
@@ -70,7 +81,7 @@ export default function App() {
       }
 
       try {
-        const providers = await api.getAuthProviders();
+        if (!providers) providers = await api.getAuthProviders();
         if (providers.plex && !getCurrentUserId()) {
           setBoot('needsUser');
           navigate('/select-user', { replace: true });
@@ -100,6 +111,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <DemoBanner />
       {showChrome && <TopBar />}
       <main className="flex-1">
         <Routes>

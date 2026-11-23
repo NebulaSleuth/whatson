@@ -1,0 +1,6 @@
+# Runtime state on the demo VM
+.env
+data/*
+!data/.gitkeep
+site/credits.html
+jellyfin-admin-password.txt

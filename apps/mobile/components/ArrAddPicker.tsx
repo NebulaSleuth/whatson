@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, Modal } from 'react-native';
-import { api } from '@/lib/api';
+import { api, isDemoReadOnlyError } from '@/lib/api';
+import { useIsDemo } from '@/lib/demo';
 import { getSonarrPrefs, setSonarrPrefs, getRadarrPrefs, setRadarrPrefs } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
 import { colors, spacing, typography } from '@/constants/theme';
@@ -44,6 +45,8 @@ function FocusOption({
 }
 
 export function ArrAddPicker({ visible, type, item, onClose, onSuccess }: ArrAddPickerProps) {
+  // Read-only demo: adding to Sonarr/Radarr is a write — never show the picker.
+  const demo = useIsDemo();
   const [profiles, setProfiles] = useState<Array<{ id: number; name: string }>>([]);
   const [folders, setFolders] = useState<Array<{ id: number; path: string }>>([]);
   const [selectedProfile, setSelectedProfile] = useState<number | null>(null);
@@ -118,10 +121,13 @@ export function ArrAddPicker({ visible, type, item, onClose, onSuccess }: ArrAdd
       Alert.alert('Added', `"${item.title}" added to ${type === 'sonarr' ? 'Sonarr' : 'Radarr'}`);
       onSuccess();
     } catch (e) {
+      if (isDemoReadOnlyError(e)) { setLoading(false); onClose(); return; }
       setError((e as Error).message);
     }
     setLoading(false);
   };
+
+  if (demo) return null;
 
   const isSonarr = type === 'sonarr';
 

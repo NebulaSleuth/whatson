@@ -17,6 +17,7 @@ import type { Express, ErrorRequestHandler } from 'express';
 import { userContext } from '../middleware/userContext.js';
 import { apiAuth } from '../middleware/apiAuth.js';
 import { requireOwner } from '../middleware/roles.js';
+import { demoGuard } from '../middleware/demoGuard.js';
 
 // Consumer routers — the read/playback surface an app needs. Mounted on both
 // the LAN and remote listeners.
@@ -66,6 +67,10 @@ export type Surface = 'lan' | 'remote';
  * every non-public path on it.
  */
 export function mountApiRoutes(app: Express, surface: Surface): void {
+  // Read-only demo boundary — first, so it decides before auth or any router
+  // (no-op unless WHATSON_DEMO is set). See middleware/demoGuard.ts.
+  app.use('/api', demoGuard);
+
   // apiAuth runs BEFORE userContext so the authenticated device (and its role)
   // is available when userContext enforces guest profile binding.
   app.use('/api', apiAuth(surface));

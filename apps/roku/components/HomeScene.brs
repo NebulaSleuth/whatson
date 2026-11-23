@@ -203,6 +203,7 @@ sub init()
     m.settingsUserAvatarInitial = m.top.findNode("settingsUserAvatarInitial")
     m.switchUserButton = m.top.findNode("switchUserButton")
     m.editApiUrlButton = m.top.findNode("editApiUrlButton")
+    m.leaveDemoButton = m.top.findNode("leaveDemoButton")
     m.settingsConnectionValue = m.top.findNode("settingsConnectionValue")
     m.connectionToggle = m.top.findNode("connectionToggle")
     m.connectionLocal = m.top.findNode("connectionLocal")
@@ -313,7 +314,11 @@ sub init()
     m.pairEditUrlButton = m.top.findNode("pairEditUrlButton")
     m.pairCloudButton = m.top.findNode("pairCloudButton")
     m.pairRetryButton = m.top.findNode("pairRetryButton")
-    m.pairButtons = [m.pairNewCodeButton, m.pairEditUrlButton, m.pairCloudButton, m.pairRetryButton]
+    m.pairDemoButton = m.top.findNode("pairDemoButton")
+    m.pairButtons = [m.pairNewCodeButton, m.pairEditUrlButton, m.pairCloudButton, m.pairRetryButton, m.pairDemoButton]
+    ' True while connected to the public read-only demo server (its
+    ' /api/auth/providers reports demo: true). Hides every write action.
+    m.demo = false
     ' "pair" (LAN code flow) | "nourl" (no server address yet) |
     ' "connecting" (boot fallback probing cached candidates) |
     ' "unreachable" (nothing answered — offer retry / URL / cloud).
@@ -733,6 +738,7 @@ sub init()
     m.sportsRowList.observeField("rowItemSelected", "onSportsRowItemSelected")
     m.switchUserButton.observeField("buttonSelected", "onSwitchUserPressed")
     m.editApiUrlButton.observeField("buttonSelected", "onEditApiUrlPressed")
+    m.leaveDemoButton.observeField("buttonSelected", "onLeaveDemoPressed")
     ' connectionToggle is a LayoutGroup of two TabButtons. Observe each
     ' and wire L/R navigation; initial selection mirrors m.connectionType
     ' which was resolved earlier in init from registry.
@@ -766,6 +772,7 @@ sub init()
     m.pairEditUrlButton.observeField("buttonSelected", "onPairEditUrlPressed")
     m.pairCloudButton.observeField("buttonSelected", "onPairCloudPressed")
     m.pairRetryButton.observeField("buttonSelected", "onPairRetryPressed")
+    m.pairDemoButton.observeField("buttonSelected", "onPairDemoPressed")
     m.cloudRetryButton.observeField("buttonSelected", "onCloudRetryPressed")
     m.cloudBackButton.observeField("buttonSelected", "onCloudBackPressed")
 
@@ -953,6 +960,9 @@ sub onVerifyAuthKeyResponse()
 end sub
 
 sub checkWhatsOnConfig()
+    ' Learn whether this is the public read-only demo before the UI
+    ' renders any write actions. Independent of the WO config fetch.
+    fetchDemoFlag()
     task = CreateObject("roSGNode", "ApiTask")
     task.observeField("response", "onWhatsOnConfigResponse")
     task.method = "GET"
@@ -3025,6 +3035,11 @@ end sub
 
 sub onTrackResponse()
     response = m.trackTask.response
+    ' Read-only demo refused the write — quiet no-op, no error line.
+    if isDemoBlocked(response)
+        m.detailAddStatus.visible = false
+        return
+    end if
     if response = invalid or response.success <> true
         msg = "Track failed"
         if response <> invalid and response.error <> invalid then msg = response.error
@@ -3372,6 +3387,12 @@ end sub
 
 sub onAddArrSubmitResponse()
     response = m.addArrSubmitTask.response
+    ' Read-only demo refused the write — quiet no-op, no error line.
+    if isDemoBlocked(response)
+        if m.arrPickerOpen = true then closeArrPicker()
+        m.detailAddStatus.visible = false
+        return
+    end if
     arrName = capitalizeFirst(m.addArrType)
     if response = invalid or response.success <> true
         msg = "Add failed"
@@ -4588,8 +4609,9 @@ sub populateDetail(node as object)
     ' Go to Show: library episodes only — gives the user a way into the
     ' full seasons / episodes browser from any episode card.
     if m.goToShowButton <> invalid then m.goToShowButton.visible = isLibraryItem and isEpisode and hasShowParent
-    m.markWatchedButton.visible = isLibraryItem and not watched
-    m.markUnwatchedButton.visible = isLibraryItem and watched
+    canWrite = (m.demo <> true)
+    m.markWatchedButton.visible = canWrite and isLibraryItem and not watched
+    m.markUnwatchedButton.visible = canWrite and isLibraryItem and watched
 
     ' Tracked items (TMDB-discovered, not yet downloaded) and Discover
     ' items (live TMDB search results) both get Add buttons routing to
@@ -4601,8 +4623,8 @@ sub populateDetail(node as object)
     isDiscoverMovie = node.itemSource = "discover" and node.itemType = "movie"
     alreadyTracked = node.itemTracked = true
 
-    m.addSonarrButton.visible = isTrackedTv or isDiscoverTv
-    m.addRadarrButton.visible = isTrackedMovie or isDiscoverMovie
+    m.addSonarrButton.visible = canWrite and (isTrackedTv or isDiscoverTv)
+    m.addRadarrButton.visible = canWrite and (isTrackedMovie or isDiscoverMovie)
 
     ' Downloading items (Sonarr/Radarr queue) get a live status read-out
     ' plus Cancel Download / Cancel & Re-search. Mirrors mobile's detail
@@ -4617,6 +4639,11 @@ sub populateDetail(node as object)
     ' buttons always render on-screen.
     isDownloading = node.itemStatus = "downloading" and node.itemDownloadQueueId <> invalid and node.itemDownloadQueueId <> ""
     isSearchable = node.itemStatus = "coming_soon" and (node.itemSource = "sonarr" or node.itemSource = "radarr")
+    ' Read-only demo: the queue / search panels are all writes.
+    if not canWrite
+        isDownloading = false
+        isSearchable = false
+    end if
     ' The status line + progress bar + action group live in the lower half
     ' of the screen. Trim the (up to 6-line, ~50px/line) summary to 4 lines
     ' when a panel shows so it can't run into the status line at y=650.
@@ -4668,7 +4695,7 @@ sub populateDetail(node as object)
     ' tracked. Mobile parity — movies skip Track and go straight to
     ' Radarr; tracked items don't show Track since they're tracked
     ' already.
-    m.trackButton.visible = isDiscoverTv and not alreadyTracked
+    m.trackButton.visible = canWrite and isDiscoverTv and not alreadyTracked
 
     ' Reset the status row whenever we re-populate detail — clears any
     ' "Added to Sonarr" / error from a previous item.
@@ -4714,6 +4741,12 @@ sub openShowDetail()
     m.showDetailEpisodesGrid.visible = false
     m.showDetailEpisodesStatus.text = "Loading seasons…"
     m.showDetailEpisodesStatus.visible = true
+
+    ' Read-only demo: no Mark All (un)watched. Relayout so Back doesn't
+    ' sit after a gap (LayoutGroup reserves space for hidden children).
+    m.showDetailMarkAllWatched.visible = (m.demo <> true)
+    m.showDetailMarkAllUnwatched.visible = (m.demo <> true)
+    relayoutButtonRow(m.showDetailActions, m.showDetailActionButtons)
 
     fetchShowSeasons(ctx.ratingKey, ctx.source)
     showView("showDetail")
@@ -5846,6 +5879,7 @@ function settingsFocusChain() as object
         m.switchUserButton,
         m.rememberLoginToggle,
         m.editApiUrlButton,
+        m.leaveDemoButton,
         m.connectionLocal,
         m.autoSkipIntroToggle,
         m.autoSkipCreditsToggle,
@@ -5910,6 +5944,8 @@ sub setUpdateStatusError(msg as string)
 end sub
 
 sub setUpdateRowsVisible(show as boolean)
+    ' Server updates are admin-only — never shown on the read-only demo.
+    if m.demo = true then show = false
     m.settingsUpdateHeader.visible = show
     m.settingsUpdateCurrentLabel.visible = show
     m.settingsUpdateCurrentValue.visible = show
@@ -5956,7 +5992,7 @@ sub renderUpdateStatus()
         m.settingsUpdateMessage.text = ""
     end if
 
-    m.installUpdateButton.visible = (s.updateAvailable = true)
+    m.installUpdateButton.visible = (s.updateAvailable = true) and (m.demo <> true)
 end sub
 
 ' ISO timestamp → "Apr 26, 11:42 PM" style. Roku has no Intl.DateTimeFormat,
@@ -8109,6 +8145,7 @@ sub onAuthProvidersResponse()
     m.authProvidersTask = invalid
     if resp = invalid or resp.success <> true or resp.data = invalid then return
     p = resp.data
+    setDemoMode(p.demo = true)
     setServiceDotBool(m.serviceStatusJellyfinDot, m.serviceStatusJellyfin, "Jellyfin", p.jellyfin = true)
     setServiceDotBool(m.serviceStatusEmbyDot, m.serviceStatusEmby, "Emby", p.emby = true)
 end sub
@@ -8172,6 +8209,7 @@ sub renderPairViewChrome()
     m.pairRetryButton.visible = (mode = "unreachable")
     m.pairCloudButton.visible = (mode <> "connecting")
     m.pairEditUrlButton.visible = (mode <> "connecting")
+    m.pairDemoButton.visible = (mode <> "connecting")
     relayoutButtonRow(m.pairActions, m.pairButtons)
     if hasUrl
         m.pairEditUrlButton.label = "Edit server URL"
@@ -8238,6 +8276,36 @@ sub onPairRetryPressed()
     m.pairSubtitle.text = "Checking " + m.apiUrl + "…"
     checkAdminStatus()
 end sub
+
+' "Try the demo": point at the public read-only demo server and re-run
+' boot. It has no admin password, so checkAdminStatus continues straight
+' to the profile picker. Mirrors apps/mobile/lib/demo.ts enterDemo().
+' Roku's apiUrl has no /api suffix (task URLs append it).
+sub onPairDemoPressed()
+    if m.pairPollTimer <> invalid then m.pairPollTimer.control = "stop"
+    m.apiUrl = demoApiUrl()
+    writeRegistryValue("apiUrl", m.apiUrl)
+    ' Drop anything tied to the previous server so the candidate racer
+    ' can't swap us back and no stale key / session / user rides along.
+    deleteRegistryValue("candidates")
+    deleteRegistryValue("expectedServerId")
+    deleteRegistryValue("authKey")
+    deleteRegistryValue("whatsonUserId")
+    m.authKey = ""
+    m.userId = ""
+    clearSessionToken()
+    if m.settingsApiUrlValue <> invalid then m.settingsApiUrlValue.text = m.apiUrl
+    m.bootCandidatesTried = true
+    m.pairMode = "connecting"
+    renderPairViewChrome()
+    m.pairSubtitle.text = "Connecting to the demo server…"
+    checkAdminStatus()
+end sub
+
+' Keep in sync with DEMO_API_URL in packages/shared/src/constants.ts.
+function demoApiUrl() as string
+    return "https://demo.whatsontv.net"
+end function
 
 sub onPairCloudPressed()
     showView("cloudSignIn")
@@ -8789,4 +8857,81 @@ sub onCreateProfileResponse()
     ' routes to Home.
     m.pendingWhatsOnUserId = newId
     selectWhatsOnUser(newId, "")
+end sub
+
+' ─── Public read-only demo ────────────────────────────────────────
+'
+' The demo server (DEMO_API_URL) reports demo: true on /api/auth/providers
+' and refuses writes with 403 { demo: true }. While m.demo is set every
+' write action (scrobble, track, Sonarr/Radarr add, queue, updates,
+' sports follows, re-pair) is hidden and Settings offers "Leave demo".
+
+sub fetchDemoFlag()
+    if m.apiUrl = invalid or m.apiUrl = "" then return
+    task = CreateObject("roSGNode", "ApiTask")
+    task.observeField("response", "onDemoFlagResponse")
+    task.method = "GET"
+    task.url = m.apiUrl + "/api/auth/providers"
+    setApiTaskAuth(task)
+    task.control = "RUN"
+    m.demoFlagTask = task
+end sub
+
+sub onDemoFlagResponse()
+    if m.demoFlagTask = invalid then return
+    resp = m.demoFlagTask.response
+    m.demoFlagTask = invalid
+    if resp = invalid or resp.success <> true or resp.data = invalid then return
+    setDemoMode(resp.data.demo = true)
+end sub
+
+sub setDemoMode(demo as boolean)
+    m.demo = demo
+    print "[HomeScene] demo="; demo
+    ' Settings: swap Edit URL for Leave demo; hide admin / write-only rows.
+    m.editApiUrlButton.visible = not demo
+    m.leaveDemoButton.visible = demo
+    m.configureSportsButton.visible = not demo
+    m.repairButton.visible = not demo
+    if demo
+        setUpdateRowsVisible(false)
+        m.installUpdateButton.visible = false
+        m.settingsUpdateMessage.text = ""
+    else if m.updateStatus <> invalid
+        renderUpdateStatus()
+    end if
+end sub
+
+' True when a write was refused by the read-only demo (ApiTask passes the
+' 403 body's demo flag through) — callers treat it as a quiet no-op
+' instead of surfacing an error.
+function isDemoBlocked(resp as dynamic) as boolean
+    if resp = invalid then return false
+    if resp.demo = true
+        if m.demo <> true then setDemoMode(true)
+        return true
+    end if
+    return false
+end function
+
+' "Leave demo": forget the server entirely (apiUrl, candidates, pinned
+' server id, auth key, user + PIN session) and return to the pair view
+' in "nourl" mode. Mirrors apps/mobile/lib/demo.ts forgetServer().
+sub onLeaveDemoPressed()
+    deleteRegistryValue("apiUrl")
+    deleteRegistryValue("candidates")
+    deleteRegistryValue("expectedServerId")
+    deleteRegistryValue("authKey")
+    deleteRegistryValue("whatsonUserId")
+    clearSessionToken()
+    m.authKey = ""
+    m.userId = ""
+    m.apiUrl = ""
+    if m.settingsApiUrlValue <> invalid then m.settingsApiUrlValue.text = ""
+    setDemoMode(false)
+    m.bootCandidatesTried = false
+    m.pairMode = "nourl"
+    renderPairViewChrome()
+    showView("pair")
+    focusFirstAction(m.pairButtons)
 end sub

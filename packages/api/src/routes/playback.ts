@@ -3,6 +3,7 @@ import type { ContentSource } from '@whatson/shared';
 import { notifyDataChanged } from '../ws.js';
 import { getAdapterForSource } from '../services/adapters/registry.js';
 import { isProxiableTarget, buildProxyUrl } from '../services/streamProxy.js';
+import { config } from '../config.js';
 
 export const playbackRouter = Router();
 
@@ -47,8 +48,10 @@ playbackRouter.get('/playback/:ratingKey', async (req, res) => {
     // at the LAN media server. When the client is remote, route the HLS through
     // our proxy on the internet-facing listener so it's reachable off-network.
     // (Plex is untouched — it resolves to its own remote/relay connection.)
+    // In the public demo the media server is on a private network and never
+    // reachable by clients, so its streams are always proxied.
     if (
-      req.plexConnectionType === 'remote' &&
+      (req.plexConnectionType === 'remote' || config.demo) &&
       (source === 'jellyfin' || source === 'emby') &&
       data.streamUrl &&
       isProxiableTarget(data.streamUrl)

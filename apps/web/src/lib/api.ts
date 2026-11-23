@@ -7,6 +7,7 @@ import type {
   LiveStreamInfo,
   LiveProgram,
 } from '@whatson/shared';
+import { setDemo, DemoReadOnlyError } from './demo';
 
 // API base — when served from the backend at /, requests stay relative.
 // In dev (vite serve), the proxy in vite.config.ts forwards /api to
@@ -148,6 +149,12 @@ async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
     body = text;
   }
   if (!res.ok) {
+    if (res.status === 403 && (body as { demo?: boolean })?.demo === true) {
+      // Read-only demo refused a write — remember demo mode (hides write
+      // actions) and throw a typed error callers swallow quietly.
+      setDemo(true);
+      throw new DemoReadOnlyError((body as { error?: string }).error);
+    }
     const err = (body as { error?: string })?.error || `HTTP ${res.status}`;
     throw new Error(err);
   }
@@ -163,7 +170,7 @@ export const api = {
   // Auth + setup
   getAdminStatus: () => fetchApi<{ hasAdminPassword: boolean }>('/api/auth/admin-status'),
   getAuthProviders: () =>
-    fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean }>(
+    fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean; demo?: boolean }>(
       '/api/auth/providers',
     ),
   pairStart: (deviceLabel: string) =>

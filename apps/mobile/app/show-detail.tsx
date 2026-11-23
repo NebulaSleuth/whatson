@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ContentItem } from '@whatson/shared';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
+import { useIsDemo, alertError } from '@/lib/demo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 interface Season {
@@ -100,6 +101,7 @@ export default function ShowDetailScreen() {
   }, [launchEpisode]);
 
   const queryClient = useQueryClient();
+  const demo = useIsDemo();
 
   const showFullyWatched = !!seasons && seasons.length > 0 &&
     seasons.every((s) => s.episodeCount > 0 && s.watchedCount >= s.episodeCount);
@@ -126,7 +128,7 @@ export default function ShowDetailScreen() {
       else await api.markWatched(ratingKey, source);
       await invalidateShow();
     } catch (error) {
-      Alert.alert('Error', (error as Error).message);
+      alertError(error);
     }
   }, [ratingKey, showFullyWatched, invalidateShow, source]);
 
@@ -137,11 +139,13 @@ export default function ShowDetailScreen() {
       else await api.markWatched(selectedSeason.ratingKey, source);
       await invalidateShow();
     } catch (error) {
-      Alert.alert('Error', (error as Error).message);
+      alertError(error);
     }
   }, [selectedSeason, seasonFullyWatched, invalidateShow, source]);
 
   const handleEpisodeLongPress = useCallback((ep: ContentItem) => {
+    // Read-only demo: the only long-press action besides Play is mark-watched.
+    if (demo) { handlePlayEpisode(ep); return; }
     const label = ep.episodeNumber != null
       ? `S${ep.seasonNumber ?? '?'}E${ep.episodeNumber} · ${ep.title}`
       : ep.title;
@@ -154,14 +158,14 @@ export default function ShowDetailScreen() {
             else await api.markWatched(ep.sourceId, ep.source);
             await invalidateShow();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
       { text: 'Play', onPress: () => handlePlayEpisode(ep) },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [handlePlayEpisode, invalidateShow]);
+  }, [demo, handlePlayEpisode, invalidateShow]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -177,7 +181,7 @@ export default function ShowDetailScreen() {
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
           {year ? <Text style={styles.year}>{year}</Text> : null}
           {summary ? <Text style={styles.summary} numberOfLines={isTV ? 3 : 4}>{summary}</Text> : null}
-          {seasons && seasons.length > 0 && (
+          {!demo && seasons && seasons.length > 0 && (
             <Pressable
               style={({ focused }) => [styles.markButton, isTV && focused && styles.markButtonFocused]}
               onPress={toggleShowWatched}
@@ -231,7 +235,7 @@ export default function ShowDetailScreen() {
       )}
 
       {/* Season-level mark button */}
-      {selectedSeason && !loadingSeasons && (
+      {!demo && selectedSeason && !loadingSeasons && (
         <View style={styles.seasonActionRow}>
           <Pressable
             ref={(ref) => {

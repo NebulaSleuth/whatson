@@ -84,6 +84,8 @@ healthRouter.get('/health', async (_req, res) => {
       // Only present when remote access is on — a LAN-only server has no cloud
       // identity, and doesn't need one (M5 / P0 identity check).
       ...(config.remote.enabled ? { serverId: getServerId() } : {}),
+      // Read-only public demo: clients hide write actions and show a banner.
+      ...(config.demo ? { demo: true } : {}),
       services,
     },
   });

@@ -5,14 +5,17 @@ import {
   api, getCurrentUserKind, getRememberUser, setAuthKey,
   setCurrentUserId, setCurrentUserKind, setRememberUser,
 } from '@/lib/api';
+import { useIsDemo } from '@/lib/demo';
 
 export default function Settings() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const providers = useQuery({ queryKey: ['auth', 'providers'], queryFn: api.getAuthProviders });
   const health = useQuery({ queryKey: ['health'], queryFn: api.getHealth });
-  const update = useQuery({ queryKey: ['update', 'status'], queryFn: api.getUpdateStatus });
-  const config = useQuery({ queryKey: ['config'], queryFn: api.getConfig });
+  // Read-only demo: updates, server config and re-pairing are admin-only.
+  const demo = useIsDemo();
+  const update = useQuery({ queryKey: ['update', 'status'], queryFn: api.getUpdateStatus, enabled: !demo });
+  const config = useQuery({ queryKey: ['config'], queryFn: api.getConfig, enabled: !demo });
   const [remember, setRemember] = useState<boolean>(getRememberUser());
 
   function toggleRemember(next: boolean) {
@@ -94,6 +97,7 @@ export default function Settings() {
       </Section>
 
       {/* Server Configuration */}
+      {!demo && (
       <Section title="Server Configuration">
         {config.data
           ? Object.entries(config.data).map(([k, v]) => (
@@ -108,7 +112,10 @@ export default function Settings() {
         }
       </Section>
 
+      )}
+
       {/* Server Updates */}
+      {!demo && (
       <Section title="Server Updates">
         {update.data?.platformSupported === false ? (
           <p className="text-text-muted text-sm">In-process updater available on Windows backends only.</p>
@@ -132,7 +139,10 @@ export default function Settings() {
         ) : <p className="text-text-muted text-sm">Loading…</p>}
       </Section>
 
+      )}
+
       {/* Pair Device */}
+      {!demo && (
       <Section title="Pair Device">
         <p className="text-text-muted text-sm mb-3">
           Reset the local auth key and pair this browser again — useful if the backend's admin password changed.
@@ -141,6 +151,7 @@ export default function Settings() {
           Pair this browser again
         </button>
       </Section>
+      )}
 
       {/* About */}
       <Section title="About">

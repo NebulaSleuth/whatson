@@ -18,6 +18,7 @@ import { SourceBadge } from './SourceBadge';
 import { colors, spacing, typography } from '@/constants/theme';
 import { api, resolveArtworkUrl } from '@/lib/api';
 import { isTV } from '@/lib/tv';
+import { useIsDemo, alertError } from '@/lib/demo';
 import { hasVideoPlayer } from '@/lib/videoPlayer';
 import { ArrAddPicker } from './ArrAddPicker';
 import { router } from 'expo-router';
@@ -92,6 +93,9 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
   const isLiveItem = item.source === 'live' && !isTrackedItem;
   const isTvShow = item.type === 'episode' || item.type === 'show';
   const [arrPickerType, setArrPickerType] = useState<'sonarr' | 'radarr' | null>(null);
+  // Public read-only demo: hide every write action (mark watched, arr add,
+  // queue / search actions, watchlist removal). Play and Go to Show remain.
+  const canWrite = !useIsDemo();
 
   const dl = item.download;
   const isDownloading = item.status === 'downloading' && !!dl;
@@ -125,7 +129,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             onRefresh?.();
             onClose();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
@@ -145,7 +149,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             onRefresh?.();
             onClose();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
@@ -165,7 +169,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             onRefresh?.();
             onClose();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
@@ -185,7 +189,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             onRefresh?.();
             onClose();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
@@ -205,7 +209,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
             onRefresh?.();
             onClose();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       },
@@ -227,7 +231,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
               onRefresh?.();
               onClose();
             } catch (error) {
-              Alert.alert('Error', (error as Error).message);
+              alertError(error);
             }
           },
         },
@@ -249,7 +253,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
               onRefresh?.();
               onClose();
             } catch (error) {
-              Alert.alert('Error', (error as Error).message);
+              alertError(error);
             }
           },
         },
@@ -345,7 +349,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
               onRefresh?.();
               onClose();
             } catch (error) {
-              Alert.alert('Error', (error as Error).message);
+              alertError(error);
             }
           },
         },
@@ -422,7 +426,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.tvActions}>
-                  {canSearchNow ? (
+                  {canWrite && canSearchNow ? (
                     <FocusButton
                       title="Search Now"
                       style={styles.playButton}
@@ -432,7 +436,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isDownloading && dl ? (
+                  {canWrite && isDownloading && dl ? (
                     <FocusButton
                       title="Cancel Download"
                       style={styles.removeButton}
@@ -442,7 +446,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isDownloading && dl ? (
+                  {canWrite && isDownloading && dl ? (
                     <FocusButton
                       title="Cancel & Re-search"
                       style={styles.unwatchedButton}
@@ -470,7 +474,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
                     <FocusButton
                       title="Mark as Watched"
                       style={styles.watchedButton}
@@ -480,7 +484,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
                     <FocusButton
                       title="Mark as Unwatched"
                       style={styles.unwatchedButton}
@@ -489,7 +493,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
                     <FocusButton
                       title="Mark All as Watched"
                       style={styles.watchedButton}
@@ -498,7 +502,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isDiscoveryItem && item.source === 'sonarr' ? (
+                  {canWrite && isDiscoveryItem && item.source === 'sonarr' ? (
                     <FocusButton
                       title="Add to Sonarr"
                       style={styles.playButton}
@@ -508,7 +512,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isDiscoveryItem && item.source === 'radarr' ? (
+                  {canWrite && isDiscoveryItem && item.source === 'radarr' ? (
                     <FocusButton
                       title="Add to Radarr"
                       style={styles.playButton}
@@ -518,7 +522,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isTrackedItem && isTvShow ? (
+                  {canWrite && isTrackedItem && isTvShow ? (
                     <FocusButton
                       title="Mark All as Unwatched"
                       style={styles.unwatchedButton}
@@ -527,7 +531,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     />
                   ) : null}
 
-                  {isTrackedItem ? (
+                  {canWrite && isTrackedItem ? (
                     <FocusButton
                       title="Remove from Watchlist"
                       style={styles.removeButton}
@@ -602,19 +606,19 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                 ) : null}
 
                 <View style={styles.actions}>
-                  {canSearchNow ? (
+                  {canWrite && canSearchNow ? (
                     <Pressable style={styles.playButton} onPress={handleSearchNow}>
                       <Text style={styles.playButtonText}>Search Now</Text>
                     </Pressable>
                   ) : null}
 
-                  {isDownloading && dl ? (
+                  {canWrite && isDownloading && dl ? (
                     <Pressable style={styles.removeButton} onPress={handleCancelDownload}>
                       <Text style={styles.removeButtonText}>Cancel Download</Text>
                     </Pressable>
                   ) : null}
 
-                  {isDownloading && dl ? (
+                  {canWrite && isDownloading && dl ? (
                     <Pressable style={styles.unwatchedButton} onPress={handleCancelAndResearch}>
                       <Text style={styles.unwatchedButtonText}>Cancel & Re-search</Text>
                     </Pressable>
@@ -632,43 +636,43 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && !item.progress.watched ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkWatched}>
                       <Text style={styles.watchedButtonText}>Mark as Watched</Text>
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && (item.status === 'ready' || item.status === 'watching') && item.type !== 'show' && item.progress.watched ? (
                     <Pressable style={styles.unwatchedButton} onPress={handleMarkUnwatched}>
                       <Text style={styles.unwatchedButtonText}>Mark as Unwatched</Text>
                     </Pressable>
                   ) : null}
 
-                  {!isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
+                  {canWrite && !isDiscoveryItem && !isLiveItem && isTvShow && (item.showTitle || item.title) ? (
                     <Pressable style={styles.watchedButton} onPress={handleMarkAllWatched}>
                       <Text style={styles.watchedButtonText}>Mark All as Watched</Text>
                     </Pressable>
                   ) : null}
 
-                  {isDiscoveryItem && item.source === 'sonarr' ? (
+                  {canWrite && isDiscoveryItem && item.source === 'sonarr' ? (
                     <Pressable style={styles.playButton} onPress={() => setArrPickerType('sonarr')}>
                       <Text style={styles.playButtonText}>Add to Sonarr</Text>
                     </Pressable>
                   ) : null}
 
-                  {isDiscoveryItem && item.source === 'radarr' ? (
+                  {canWrite && isDiscoveryItem && item.source === 'radarr' ? (
                     <Pressable style={styles.playButton} onPress={() => setArrPickerType('radarr')}>
                       <Text style={styles.playButtonText}>Add to Radarr</Text>
                     </Pressable>
                   ) : null}
 
-                  {isTrackedItem && isTvShow ? (
+                  {canWrite && isTrackedItem && isTvShow ? (
                     <Pressable style={styles.unwatchedButton} onPress={handleMarkAllUnwatched}>
                       <Text style={styles.unwatchedButtonText}>Mark All as Unwatched</Text>
                     </Pressable>
                   ) : null}
 
-                  {isTrackedItem ? (
+                  {canWrite && isTrackedItem ? (
                     <Pressable style={styles.removeButton} onPress={handleRemoveTracked}>
                       <Text style={styles.removeButtonText}>Remove from Watchlist</Text>
                     </Pressable>
@@ -685,7 +689,7 @@ export function DetailSheet({ item, onClose, onRefresh }: DetailSheetProps) {
       </View>
     </Modal>
 
-    {arrPickerType && (
+    {canWrite && arrPickerType && (
       <ArrAddPicker
         visible={true}
         type={arrPickerType}

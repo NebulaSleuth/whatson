@@ -50,6 +50,11 @@ interface AppState {
   showBecauseYouWatched: boolean;
   plexConnectionType: 'local' | 'remote';
   liveTvChannels: string[];
+  /**
+   * True when the connected server is the public read-only demo (it reports
+   * `demo: true` on /auth/providers and /health). Write actions are hidden.
+   */
+  demo: boolean;
   setApiUrl: (url: string) => void;
   setConfigured: (configured: boolean) => void;
   setReady: (ready: boolean) => void;
@@ -63,6 +68,7 @@ interface AppState {
   setShowBecauseYouWatched: (show: boolean) => void;
   setPlexConnectionType: (type: 'local' | 'remote') => void;
   setLiveTvChannels: (channels: string[]) => void;
+  setDemo: (demo: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -79,6 +85,7 @@ export const useAppStore = create<AppState>((set) => ({
   showBecauseYouWatched: true,
   plexConnectionType: 'local',
   liveTvChannels: [],
+  demo: false,
   setApiUrl: (apiUrl) => set({ apiUrl }),
   setConfigured: (isConfigured) => set({ isConfigured }),
   setReady: (isReady) => set({ isReady }),
@@ -92,4 +99,5 @@ export const useAppStore = create<AppState>((set) => ({
   setShowBecauseYouWatched: (showBecauseYouWatched) => set({ showBecauseYouWatched }),
   setPlexConnectionType: (plexConnectionType) => set({ plexConnectionType }),
   setLiveTvChannels: (liveTvChannels) => set({ liveTvChannels }),
+  setDemo: (demo) => set({ demo }),
 }));

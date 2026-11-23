@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { ContentItem } from '@whatson/shared';
 import { api, resolveArtworkUrl } from '@/lib/api';
+import { useIsDemo, isDemoReadOnlyError } from '@/lib/demo';
 import { SourceBadge } from './SourceBadge';
 import { VideoPlayer } from './VideoPlayer';
 
@@ -50,6 +51,8 @@ export function DetailSheet({ item, onClose }: Props) {
   const isTrackedItem = item.id.startsWith('tracked-');
   const isDiscoveryItem = item.id.startsWith('tmdb-') || item.source === 'sonarr' || item.source === 'radarr';
   const isTvShow = item.type === 'episode' || item.type === 'show';
+  // Public read-only demo: hide every write action (Play / Go to Show stay).
+  const canWrite = !useIsDemo();
 
   async function withWork(label: string, fn: () => Promise<unknown>) {
     setWorking(label);
@@ -58,6 +61,7 @@ export function DetailSheet({ item, onClose }: Props) {
       queryClient.invalidateQueries();
       onClose();
     } catch (e) {
+      if (isDemoReadOnlyError(e)) return;
       alert(`${label} failed: ${(e as Error).message}`);
     } finally {
       setWorking(null);
@@ -201,25 +205,25 @@ export function DetailSheet({ item, onClose }: Props) {
               {isLibraryItem && item.type === 'episode' && (item.showRatingKey || item.showTitle) && (
                 <Btn onClick={goToShow}>Go to Show</Btn>
               )}
-              {isLibraryItem && !isLiveItem && item.type !== 'show' && !item.progress?.watched && (
+              {canWrite && isLibraryItem && !isLiveItem && item.type !== 'show' && !item.progress?.watched && (
                 <Btn onClick={markWatched}>Mark as Watched</Btn>
               )}
-              {isLibraryItem && !isLiveItem && item.type !== 'show' && item.progress?.watched && (
+              {canWrite && isLibraryItem && !isLiveItem && item.type !== 'show' && item.progress?.watched && (
                 <Btn onClick={markUnwatched}>Mark as Unwatched</Btn>
               )}
-              {isLibraryItem && !isLiveItem && isTvShow && (
+              {canWrite && isLibraryItem && !isLiveItem && isTvShow && (
                 <Btn onClick={markAllWatched}>Mark All Watched</Btn>
               )}
-              {isTrackedItem && isTvShow && (
+              {canWrite && isTrackedItem && isTvShow && (
                 <Btn onClick={markAllUnwatched}>Mark All Unwatched</Btn>
               )}
-              {isDiscoveryItem && item.type !== 'movie' && (
+              {canWrite && isDiscoveryItem && item.type !== 'movie' && (
                 <Btn primary onClick={addToSonarr}>Add to Sonarr</Btn>
               )}
-              {isDiscoveryItem && item.type === 'movie' && (
+              {canWrite && isDiscoveryItem && item.type === 'movie' && (
                 <Btn primary onClick={addToRadarr}>Add to Radarr</Btn>
               )}
-              {isTrackedItem && (
+              {canWrite && isTrackedItem && (
                 <Btn danger onClick={removeTracked}>Remove from Watchlist</Btn>
               )}
               {working && <span className="self-center text-sm text-text-muted">{working}…</span>}

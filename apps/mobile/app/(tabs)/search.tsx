@@ -23,7 +23,9 @@ import { STREAMING_PROVIDERS } from '@whatson/shared';
 import type { StreamingProvider } from '@whatson/shared';
 import { ContentCard } from '@/components/ContentCard';
 import { DetailSheet } from '@/components/DetailSheet';
-import { api, resolveArtworkUrl } from '@/lib/api';
+import { api, resolveArtworkUrl, isDemoReadOnlyError } from '@/lib/api';
+import { useAppStore } from '@/lib/store';
+import { useIsDemo, alertError } from '@/lib/demo';
 import { colors, spacing, typography, cardDimensions } from '@/constants/theme';
 
 type SearchMode = 'library' | 'discover';
@@ -33,7 +35,11 @@ export default function SearchScreen() {
   const queryClient = useQueryClient();
   const searchInputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<SearchMode>('library');
+  const [modeState, setMode] = useState<SearchMode>('library');
+  // Read-only demo: Discover & Track is all writes (track / Sonarr / Radarr
+  // add), so the demo is library-search only.
+  const demo = useIsDemo();
+  const mode: SearchMode = demo ? 'library' : modeState;
 
   useTVBackHandler(useCallback(() => {
     searchInputRef.current?.focus();
@@ -67,7 +73,7 @@ export default function SearchScreen() {
   const [showArrPicker, setShowArrPicker] = useState<'sonarr' | 'radarr' | null>(null);
 
   const handleDiscoverSelect = useCallback((item: any) => {
-    if (item.isTracked) return;
+    if (item.isTracked || useAppStore.getState().demo) return;
     setActionItem(item);
 
     if (item.type === 'tv') {
@@ -116,7 +122,7 @@ export default function SearchScreen() {
       queryClient.invalidateQueries({ queryKey: ['tracked'] });
       Alert.alert('Added', `${trackingItem.title} added to your watchlist`);
     } catch (error) {
-      Alert.alert('Error', (error as Error).message);
+      alertError(error);
     }
     setTrackingItem(null);
     setActionItem(null);
@@ -148,6 +154,7 @@ export default function SearchScreen() {
       </View>
 
       {/* Mode Toggle */}
+      {!demo && (
       <View style={styles.modeRow}>
         <TVPressable
           style={[styles.modeChip, mode === 'library' && styles.modeChipActive]}
@@ -162,6 +169,7 @@ export default function SearchScreen() {
           <Text style={[styles.modeText, mode === 'discover' && styles.modeTextActive]}>Discover & Track</Text>
         </TVPressable>
       </View>
+      )}
 
       {/* Filter Chips (library mode only) */}
       {mode === 'library' && (
@@ -413,6 +421,8 @@ function ArrAddPicker({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  // Read-only demo: adding to Sonarr/Radarr is a write — never show the picker.
+  const demo = useIsDemo();
   const [profiles, setProfiles] = useState<Array<{ id: number; name: string }>>([]);
   const [folders, setFolders] = useState<Array<{ id: number; path: string }>>([]);
   const [selectedProfile, setSelectedProfile] = useState<number | null>(null);
@@ -492,10 +502,13 @@ function ArrAddPicker({
       Alert.alert('Added', `${item.title} added to ${type === 'sonarr' ? 'Sonarr' : 'Radarr'}`);
       onSuccess();
     } catch (e) {
+      if (isDemoReadOnlyError(e)) { setLoading(false); onClose(); return; }
       setError((e as Error).message);
     }
     setLoading(false);
   };
+
+  if (demo) return null;
 
   const isSonarr = type === 'sonarr';
   const pickerTitle = item?.title || '';

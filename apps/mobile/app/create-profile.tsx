@@ -1,14 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, TextInput, ScrollView,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '@/lib/api';
+import { api, isDemoReadOnlyError } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { setSavedUser, setStoredSessionToken } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
+import { useIsDemo } from '@/lib/demo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /**
@@ -24,6 +25,11 @@ export default function CreateProfileScreen() {
   const setCurrentUser = useAppStore((s) => s.setCurrentUser);
   const rememberUser = useAppStore((s) => s.rememberUser);
   const queryClient = useQueryClient();
+  // Read-only demo: profiles can't be created — bounce back to the picker.
+  const demo = useIsDemo();
+  useEffect(() => {
+    if (demo) router.replace('/select-whatson-user' as any);
+  }, [demo]);
 
   const { data: avatars } = useQuery({
     queryKey: ['whatson-avatars'],
@@ -50,8 +56,9 @@ export default function CreateProfileScreen() {
       queryClient.clear();
       router.replace('/(tabs)');
     } catch (e) {
-      Alert.alert('Could not create profile', (e as Error).message);
       setSaving(false);
+      if (isDemoReadOnlyError(e)) { router.replace('/select-whatson-user' as any); return; }
+      Alert.alert('Could not create profile', (e as Error).message);
     }
   }, [name, avatarKey, setCurrentUser, rememberUser, queryClient]);
 

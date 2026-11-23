@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { setStoredApiUrl, setStoredAuthKey } from '@/lib/storage';
 import { updateCandidates } from '@/lib/connection';
+import { enterDemo } from '@/lib/demo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /**
@@ -175,6 +176,25 @@ export default function PairDeviceScreen() {
     void requestPairCode();
   }
 
+  // Public read-only demo server — lets store reviewers and visitors try the
+  // app without their own backend. No admin password, so no pairing.
+  async function tryDemo() {
+    if (pollHandle.current) clearInterval(pollHandle.current);
+    pollHandle.current = null;
+    codeRef.current = null;
+    setCode(null);
+    setEditingUrl(false);
+    setBusy(true);
+    setStatusText('Connecting to the demo server…');
+    try {
+      await enterDemo();
+    } catch (e) {
+      setStatusText(`Can't reach the demo server: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const displayUrl = apiUrl.replace(/\/api\/?$/, '');
   const hasUrl = !!apiUrl;
 
@@ -231,6 +251,19 @@ export default function PairDeviceScreen() {
               focused && styles.buttonFocused,
             ]}>
             <Text style={styles.buttonText}>{editingUrl ? 'Cancel' : hasUrl ? 'Edit server URL' : 'Set server URL'}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void tryDemo()}
+            disabled={busy}
+            focusable
+            style={({ pressed, focused }) => [
+              styles.button,
+              styles.buttonSecondary,
+              pressed && styles.buttonPressed,
+              focused && styles.buttonFocused,
+              busy && styles.buttonDisabled,
+            ]}>
+            <Text style={styles.buttonText}>Try the demo</Text>
           </Pressable>
         </View>
 

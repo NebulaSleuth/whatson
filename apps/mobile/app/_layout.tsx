@@ -1,27 +1,17 @@
 import React, { useEffect, useRef } from 'react';
-import { AppState } from 'react-native';
+import { AppState, View } from 'react-native';
 import { useRealtimeUpdates } from '@/lib/useRealtimeUpdates';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { queryClient } from '@/lib/queryClient';
+import { DemoBanner } from '@/components/DemoBanner';
 import { colors } from '@/constants/theme';
 import { useAppStore } from '@/lib/store';
 import { getStoredApiUrl, isAppConfigured, getSavedUser, getRememberUser, setSavedUser, getAutoSkipIntro, getAutoSkipCredits, getDisableTouchSurface, getShowBecauseYouWatched, getLiveTvChannels, getStoredAuthKey, setStoredAuthKey, getStoredSessionToken, setStoredSessionToken, getStoredPlexConnectionType } from '@/lib/storage';
 import { resolveConnection, updateCandidates } from '@/lib/connection';
 import { isTV, isTVOS } from '@/lib/tv';
 import { api } from '@/lib/api';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 2 * 60 * 1000,       // Data is fresh for 2 minutes
-      gcTime: 10 * 60 * 1000,          // Keep unused data for 10 minutes
-      refetchOnWindowFocus: true,       // Refetch when app comes to foreground
-      refetchOnReconnect: true,
-      retry: 2,
-    },
-  },
-});
 
 // Refetch queries when app comes back to foreground
 focusManager.setEventListener((handleFocus) => {
@@ -228,7 +218,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       try {
         const providers = await api.getAuthProviders();
         plexConfigured = providers.plex;
-        console.log(`[Init] Providers: plex=${providers.plex} jellyfin=${providers.jellyfin} emby=${providers.emby}`);
+        // Public read-only demo server: hide write actions app-wide.
+        useAppStore.getState().setDemo(providers.demo === true);
+        console.log(`[Init] Providers: plex=${providers.plex} jellyfin=${providers.jellyfin} emby=${providers.emby} demo=${providers.demo === true}`);
       } catch {}
 
       // Test Plex connection — determine if client can reach Plex directly (local) or needs remote.
@@ -328,6 +320,8 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AppInitializer>
         <StatusBar style="light" />
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <DemoBanner />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -350,6 +344,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        </View>
       </AppInitializer>
     </QueryClientProvider>
   );

@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ContentItem } from '@whatson/shared';
 import { api, resolveArtworkUrl } from '@/lib/api';
+import { useIsDemo, isDemoReadOnlyError } from '@/lib/demo';
 import { SourceBadge } from '@/components/SourceBadge';
 import { DetailSheet } from '@/components/DetailSheet';
 
@@ -33,6 +34,7 @@ export default function ShowDetail() {
   const [selectedSeason, setSelectedSeason] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<ContentItem | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+  const demo = useIsDemo();
 
   const seasonsQ = useQuery({
     queryKey: ['show-seasons', source, ratingKey],
@@ -63,6 +65,7 @@ export default function ShowDetail() {
       queryClient.invalidateQueries({ queryKey: ['show-seasons', source, ratingKey] });
       queryClient.invalidateQueries({ queryKey: ['season-episodes', source] });
     } catch (e) {
+      if (isDemoReadOnlyError(e)) return;
       alert(`${label} failed: ${(e as Error).message}`);
     } finally {
       setWorking(null);
@@ -116,8 +119,8 @@ export default function ShowDetail() {
             )}
 
             <div className="flex flex-wrap gap-2">
-              <Btn onClick={markAllWatched}>Mark All Watched</Btn>
-              <Btn onClick={markAllUnwatched}>Mark All Unwatched</Btn>
+              {!demo && <Btn onClick={markAllWatched}>Mark All Watched</Btn>}
+              {!demo && <Btn onClick={markAllUnwatched}>Mark All Unwatched</Btn>}
               {working && (
                 <span className="self-center text-sm text-text-muted">{working}…</span>
               )}

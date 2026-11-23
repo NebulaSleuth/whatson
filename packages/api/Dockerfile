@@ -10,19 +10,28 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/shared/src packages/shared/src/
 COPY packages/shared/tsconfig.json packages/shared/
 
-# Copy api package
+# Copy api package (admin/ is the /setup UI, served as static files)
 COPY packages/api/package.json packages/api/
 COPY packages/api/src packages/api/src/
 COPY packages/api/tsconfig.json packages/api/
+COPY packages/api/admin packages/api/admin/
 
-# Install dependencies
-RUN npm install --workspaces --include-workspace-root
+# Copy the web app (served by the API at /)
+COPY apps/web/package.json apps/web/
+COPY apps/web/index.html apps/web/vite.config.ts apps/web/tsconfig.json apps/web/postcss.config.js apps/web/tailwind.config.js apps/web/
+COPY apps/web/src apps/web/src/
+
+# Install dependencies (only the workspaces copied above exist in the image)
+RUN npm install --workspaces --include-workspace-root --legacy-peer-deps
 
 # Build shared types
 RUN cd packages/shared && npx tsc
 
 # Build api
 RUN cd packages/api && npx tsc
+
+# Build web
+RUN cd apps/web && npm run build
 
 # ── Production image ──
 FROM node:20-alpine
@@ -34,8 +43,11 @@ COPY --from=builder /app/packages/shared/package.json packages/shared/
 COPY --from=builder /app/packages/shared/dist packages/shared/dist/
 COPY --from=builder /app/packages/api/package.json packages/api/
 COPY --from=builder /app/packages/api/dist packages/api/dist/
+COPY --from=builder /app/packages/api/admin packages/api/admin/
+# index.ts looks for the web build at <cwd>/web
+COPY --from=builder /app/apps/web/dist packages/api/web/
 
-RUN npm install --workspaces --include-workspace-root --omit=dev
+RUN npm install --workspaces --include-workspace-root --omit=dev --legacy-peer-deps
 
 # Create data directory for tracked items
 RUN mkdir -p /app/packages/api/data

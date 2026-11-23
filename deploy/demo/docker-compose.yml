@@ -1,0 +1,74 @@
+# What's On TV public read-only demo (demo.whatsontv.net). See README.md.
+#
+#   caddy        TLS (Let's Encrypt) and the only thing listening on the internet.
+#   whatson-api  The What's On backend in WHATSON_DEMO mode, serving the web app,
+#                /api and /ws. Not published; reached only through caddy.
+#   jellyfin     The media server. Published on the VM's loopback only (for
+#                setup-jellyfin.sh and SSH tunnels), never on a public address.
+#
+# Secrets come from .env next to this file (copy .env.example).
+
+name: whatson-demo
+
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN:-demo.whatsontv.net}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./site:/srv/site:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - whatson-api
+
+  whatson-api:
+    build:
+      context: ../..
+      dockerfile: packages/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      WHATSON_DEMO: "1"
+      PORT: "3001"
+      DATA_DIR: /data
+      WHATSON_DATA_DIR: /data
+      # Belt and braces: demo mode already keeps these off.
+      AUTO_UPDATE: "false"
+      DOWNLOAD_MONITOR: "false"
+      REMOTE_ACCESS: "false"
+      # No ADMIN_PASSWORD_HASH: the apps connect without pairing, and
+      # WHATSON_DEMO is what keeps visitors read-only.
+      JELLYFIN_URL: http://jellyfin:8096
+      JELLYFIN_USERNAME: demo
+      JELLYFIN_PASSWORD: ${JELLYFIN_DEMO_PASSWORD:?set JELLYFIN_DEMO_PASSWORD in .env}
+      WHATSON_ALLOWED_ORIGINS: https://${DEMO_DOMAIN:-demo.whatsontv.net}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+    volumes:
+      - ./data:/data
+    depends_on:
+      - jellyfin
+
+  jellyfin:
+    image: jellyfin/jellyfin:10.10.7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8096:8096"
+    environment:
+      JELLYFIN_PublishedServerUrl: http://jellyfin:8096
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ${MEDIA_DIR:-/srv/media}:/media:ro
+
+volumes:
+  caddy-data:
+  caddy-config:
+  jellyfin-config:
+  jellyfin-cache:

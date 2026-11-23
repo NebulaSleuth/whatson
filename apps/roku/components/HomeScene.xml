@@ -445,6 +445,17 @@
                     buttonWidth="240"
                     translation="[80, 280]"
                     focusable="true" />
+                <!-- Shown instead of Edit URL while connected to the public
+                     read-only demo: forgets the server and returns to the
+                     pair view. -->
+                <TabButton
+                    id="leaveDemoButton"
+                    label="Leave demo"
+                    hideIcon="true"
+                    buttonWidth="240"
+                    translation="[80, 280]"
+                    visible="false"
+                    focusable="true" />
 
                 <!-- ─── Connection ─── -->
                 <Label
@@ -795,6 +806,9 @@
                 <TabButton id="pairEditUrlButton" label="Edit server URL" hideIcon="true" buttonWidth="300" focusable="true" />
                 <TabButton id="pairCloudButton" label="Sign in with Whats On" hideIcon="true" buttonWidth="380" focusable="true" />
                 <TabButton id="pairRetryButton" label="Retry connection" hideIcon="true" buttonWidth="300" visible="false" focusable="true" />
+                <!-- Public read-only demo server (DEMO_API_URL in
+                     packages/shared/src/constants.ts) — no pairing needed. -->
+                <TabButton id="pairDemoButton" label="Try the demo" hideIcon="true" buttonWidth="260" focusable="true" />
             </LayoutGroup>
 
             <Label
