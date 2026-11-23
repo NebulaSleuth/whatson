@@ -25,7 +25,7 @@ Tests: `npm test -w packages/api`.
 | `cloud-init.yaml` | First boot: Docker, ffmpeg, jq, unattended upgrades, clones the repo to `/srv/whatson`. |
 | `docker-compose.yml`, `Caddyfile` | Caddy (TLS) → backend in demo mode → Jellyfin. |
 | `.env.example` | Settings and secrets; copy to `.env` on the VM. |
-| `setup-jellyfin.sh` | One-time Jellyfin setup: admin account, restricted `demo` account, libraries, Continue Watching seed, the "Demo" profile. |
+| `setup-jellyfin.sh` | One-time Jellyfin setup: admin account, restricted `demo` account, libraries, Continue Watching seed, the "Demo" profile, sports teams, credits page. Safe to re-run; run it again after fetching new media. |
 | `content/` | Media manifest, `fetch.sh` (download, verify, transcode, credits page). |
 
 ## Bringing it up
@@ -44,7 +44,7 @@ Tests: `npm test -w packages/api`.
 3. **Fetch media** (takes a while; re-runnable):
    ```bash
    MEDIA_DIR=/srv/media bash content/fetch.sh
-   cp /srv/media/credits.html site/credits.html
+   # setup-jellyfin.sh (step 4) copies the generated credits page into site/
    ```
 4. **Start** and set up Jellyfin:
    ```bash

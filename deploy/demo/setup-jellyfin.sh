@@ -102,13 +102,17 @@ add_lib Movies movies Movies
 add_lib Shorts movies Shorts
 add_lib Shows tvshows Shows
 jf POST /Library/Refresh
-echo "   scanning; waiting for items to appear"
-for _ in $(seq 1 90); do
-  COUNT="$(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Limit=0" | jq -r '.TotalRecordCount')"
-  [ "$COUNT" -gt 0 ] && break
+echo "   scanning; waiting for the item count to settle"
+# The scan adds items over a minute or more, so wait until the count is
+# non-zero and unchanged for four checks in a row (20 s).
+COUNT=0; STABLE=0
+for _ in $(seq 1 120); do
   sleep 5
+  NOW="$(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Limit=0" | jq -r '.TotalRecordCount')"
+  if [ "$NOW" -gt 0 ] && [ "$NOW" = "$COUNT" ]; then STABLE=$((STABLE + 1)); else STABLE=0; fi
+  COUNT="$NOW"
+  [ "$STABLE" -ge 4 ] && break
 done
-sleep 20
 echo "   $COUNT playable items"
 
 # Jellyfin matches titles against TMDB by name, which can attach the wrong
@@ -120,25 +124,70 @@ declare -A PINNED_TMDB=(
 )
 echo "== Metadata matches"
 norm() { tr '[:upper:]' '[:lower:]' <<<"$1" | tr -cd '[:alnum:]'; }
+# Items no metadata provider knows (e.g. The Big Picture, a US Army series)
+# keep raw folder names, and their episodes all get the series name. For
+# those, write NFO files (Jellyfin's local metadata, read before any online
+# provider) next to the media, naming them from the files, then refresh.
+MEDIA_HOST="${MEDIA_DIR:-/srv/media}"
+xml() { sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<<"$1"; }
+poster_from_video() { # video out.jpg: a 2:3 frame two minutes in, as a stand-in poster
+  [ -f "$2" ] || [ -z "$1" ] && return 0
+  ffmpeg -nostdin -loglevel error -ss 120 -i "$1" -frames:v 1 \
+    -vf 'crop=min(iw\,ih*2/3):ih,scale=600:-2' -q:v 3 "$2" || echo "   (no poster frame for $1)"
+}
+write_nfos() { # id type /media/path title year
+  local host="$MEDIA_HOST${3#/media}"
+  if [ "$2" = Series ]; then
+    printf '<?xml version="1.0" encoding="utf-8"?>\n<tvshow><title>%s</title><year>%s</year></tvshow>\n' \
+      "$(xml "$4")" "$5" > "$host/tvshow.nfo"
+    local f base ep_title s e
+    while IFS= read -r f; do
+      base="$(basename "$f" .mp4)"; ep_title="${base#* - }"
+      s="$(sed -n 's/.* S\([0-9]\{2,\}\)E[0-9]\{2,\} - .*/\1/p' <<<"$base")"
+      e="$(sed -n 's/.* S[0-9]\{2,\}E\([0-9]\{2,\}\) - .*/\1/p' <<<"$base")"
+      printf '<?xml version="1.0" encoding="utf-8"?>\n<episodedetails><title>%s</title><showtitle>%s</showtitle><season>%d</season><episode>%d</episode><year>%s</year></episodedetails>\n' \
+        "$(xml "$ep_title")" "$(xml "$4")" "$((10#$s))" "$((10#$e))" "$5" > "${f%.mp4}.nfo"
+    done < <(find "$host" -name '*.mp4')
+    poster_from_video "$(find "$host" -name '*.mp4' | sort | head -1)" "$host/folder.jpg"
+  else
+    printf '<?xml version="1.0" encoding="utf-8"?>\n<movie><title>%s</title><year>%s</year></movie>\n' \
+      "$(xml "$4")" "$5" > "${host%.*}.nfo"
+    poster_from_video "$host" "$(dirname "$host")/folder.jpg"
+  fi
+  jf POST "/Items/$1/Refresh?Recursive=true&MetadataRefreshMode=FullRefresh&ImageRefreshMode=Default&ReplaceAllMetadata=true&ReplaceAllImages=false" >/dev/null
+}
 MISMATCH=0
 while read -r it; do
   [ -n "$it" ] || continue
   id="$(jq -r .id <<<"$it")"; type="$(jq -r .type <<<"$it")"; name="$(jq -r .name <<<"$it")"
   stem="$(jq -r .path <<<"$it" | sed 's#/*$##; s#.*/##; s#\.[A-Za-z0-9]*$##')"
-  want="${stem% (*}"; year="$(sed -n 's/.*(\([0-9]\{4\}\))$/\1/p' <<<"$stem")"
+  if [ "$type" = Episode ]; then want="${stem#* - }"; else want="${stem% (*}"; fi
+  year="$(sed -n 's/.*(\([0-9]\{4\}\))$/\1/p' <<<"$stem")"
   pin="${PINNED_TMDB[$stem]:-}"
   if [ -n "$pin" ] && [ "$(jq -r '.tmdb // ""' <<<"$it")" != "$pin" ]; then
     jf POST "/Items/RemoteSearch/Apply/$id?replaceAllImages=true" \
       "$(jq -n --arg n "$want" --arg t "$pin" --argjson y "${year:-0}" \
         '{Name:$n, ProductionYear:$y, ProviderIds:{Tmdb:$t}, SearchProviderName:"TheMovieDb"}')" >/dev/null
     echo "   $stem: pinned to TMDB $pin (was \"$name\")"
+  elif [ "$type" = Episode ]; then
+    : # named by the online match, or by its series' NFO files
+  elif [ "$(jq -r .matched <<<"$it")" != "true" ]; then
+    nfo="$MEDIA_HOST$(jq -r .path <<<"$it" | sed 's#^/media##')"
+    if [ "$type" = Series ]; then nfo="$nfo/tvshow.nfo"; else nfo="${nfo%.*}.nfo"; fi
+    if [ -f "$nfo" ]; then
+      echo "   $type \"$stem\": no online match; using its NFO metadata"
+    else
+      write_nfos "$id" "$type" "$(jq -r .path <<<"$it")" "$want" "$year"
+      echo "   $type \"$stem\": no online match; wrote NFO metadata from the file names"
+    fi
   elif [ "$(norm "$name")" != "$(norm "$want")" ]; then
     echo "   WARNING: $type \"$stem\" matched \"$name\". Pin its TMDB id in PINNED_TMDB."
     MISMATCH=1
   fi
-done < <(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Path,ProviderIds" \
-  | jq -c '.Items[] | {id: .Id, type: .Type, name: .Name, path: .Path, tmdb: .ProviderIds.Tmdb}')
-[ "$MISMATCH" = 0 ] && echo "   all titles match their files"
+done < <(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Series,Episode&Fields=Path,ProviderIds" \
+  | jq -c '.Items[] | {id: .Id, type: .Type, name: .Name, path: .Path, tmdb: .ProviderIds.Tmdb,
+      matched: ((.ProviderIds // {}) | length > 0)}')
+[ "$MISMATCH" = 0 ] && echo "   no wrong matches"
 
 echo "== Continue Watching seed"
 RESUMABLE="$(jf GET "/UserItems/Resume?userId=$DEMO_ID&Limit=1" | jq -r '.TotalRecordCount // 0')"
@@ -174,6 +223,13 @@ echo "== Sports"
 # Team ids are the backend's (GET /api/sports/teams?league=<key>).
 cp seed/sports.json data/sports.json
 jq -r '.leagues[] | "   \(.key): \(if .mode == "all" then "all events" else "\(.teamIds | length) teams" end)"' data/sports.json
+
+echo "== Credits page"
+if [ -f "${MEDIA_DIR:-/srv/media}/credits.html" ]; then
+  cp "${MEDIA_DIR:-/srv/media}/credits.html" site/credits.html && echo "   site/credits.html updated"
+else
+  echo "   ${MEDIA_DIR:-/srv/media}/credits.html not found; run content/fetch.sh first"
+fi
 
 docker compose restart whatson-api
 
