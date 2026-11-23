@@ -9,6 +9,7 @@ packages:
   - git
   - ffmpeg
   - jq
+  - unzip
   - unattended-upgrades
 runcmd:
   - systemctl enable --now docker

@@ -2,14 +2,17 @@
 # Creates the Azure resources for the What's On TV demo. Idempotent: re-running
 # skips anything that already exists. Needs the Azure CLI, signed in (az login).
 #
-# THIS CREATES BILLABLE RESOURCES: one Standard_B2s VM (~US$30/month) with a
-# 128 GB disk and a static public IP, plus outbound bandwidth beyond the free
+# THIS CREATES BILLABLE RESOURCES: one burstable 2-vCPU VM (~US$30/month) with
+# a 128 GB disk and a static public IP, plus outbound bandwidth beyond the free
 # allowance. Delete everything with:  az group delete -n "$RESOURCE_GROUP"
 #
 # Settings (environment variables):
 #   RESOURCE_GROUP   default whatson-demo
-#   LOCATION         default eastus
+#   LOCATION         default centralus (where the whatson cloud service runs)
 #   VM_NAME          default whatson-demo
+#   VM_SIZE          default Standard_B2s_v2 (2 vCPU, 8 GB). If Azure reports
+#                    SkuNotAvailable, check what the region offers with
+#                    az vm list-skus -l <region> --size Standard_B2 -o table
 #   SSH_PUBLIC_KEY   default ~/.ssh/id_ed25519.pub (falls back to id_rsa.pub)
 #   SSH_SOURCE       IP or CIDR allowed to SSH in; default: this machine's public IP
 #   DNS_ZONE         default whatsontv.net (A record "demo" is added if Azure hosts the zone)
@@ -18,8 +21,9 @@
 set -euo pipefail
 
 RESOURCE_GROUP="${RESOURCE_GROUP:-whatson-demo}"
-LOCATION="${LOCATION:-eastus}"
+LOCATION="${LOCATION:-centralus}"
 VM_NAME="${VM_NAME:-whatson-demo}"
+VM_SIZE="${VM_SIZE:-Standard_B2s_v2}"
 DNS_ZONE="${DNS_ZONE:-whatsontv.net}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -54,7 +58,7 @@ else
   echo "== VM $VM_NAME"
   az vm create -g "$RESOURCE_GROUP" -n "$VM_NAME" \
     --image Canonical:ubuntu-24_04-lts:server:latest \
-    --size Standard_B2s \
+    --size "$VM_SIZE" \
     --os-disk-size-gb 128 \
     --admin-username whatson \
     --ssh-key-values "$SSH_PUBLIC_KEY" \
@@ -85,12 +89,20 @@ fi
 if [ -n "${BUDGET_AMOUNT:-}" ]; then
   [ -n "${BUDGET_EMAIL:-}" ] || { echo "BUDGET_EMAIL is required with BUDGET_AMOUNT" >&2; exit 1; }
   echo "== Monthly budget $BUDGET_AMOUNT on $RESOURCE_GROUP (alert at 80%)"
-  START="$(date -u +%Y-%m-01)"
-  az consumption budget create -g "$RESOURCE_GROUP" --budget-name "$RESOURCE_GROUP-monthly" \
-    --amount "$BUDGET_AMOUNT" --category cost --time-grain monthly \
-    --start-date "$START" --end-date 2030-12-31 \
-    --notifications "{\"Actual_GreaterThan_80_Percent\":{\"enabled\":true,\"operator\":\"GreaterThan\",\"threshold\":80,\"contactEmails\":[\"$BUDGET_EMAIL\"]}}" \
-    -o none || echo "   (budget not created; add one in Cost Management instead)"
+  # `az consumption budget create` can't set alert notifications, so use the
+  # Consumption REST API directly (PUT is create-or-update, so re-runs are fine).
+  SUB="$(az account show --query id -o tsv)"
+  BODY="$(mktemp)"
+  cat > "$BODY" <<JSON
+{"properties":{"category":"Cost","amount":$BUDGET_AMOUNT,"timeGrain":"Monthly",
+ "timePeriod":{"startDate":"$(date -u +%Y-%m-01)T00:00:00Z","endDate":"2030-12-31T00:00:00Z"},
+ "notifications":{"Actual_GreaterThan_80_Percent":{"enabled":true,"operator":"GreaterThan",
+   "threshold":80,"thresholdType":"Actual","contactEmails":["$BUDGET_EMAIL"]}}}}
+JSON
+  MSYS_NO_PATHCONV=1 az rest --method put \
+    --url "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Consumption/budgets/$RESOURCE_GROUP-monthly?api-version=2023-05-01" \
+    --body "@$BODY" -o none || echo "   (budget not created; add one in Cost Management instead)"
+  rm -f "$BODY"
 fi
 
 cat <<EOF

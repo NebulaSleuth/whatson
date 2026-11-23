@@ -21,7 +21,7 @@ Tests: `npm test -w packages/api`.
 
 | File | Purpose |
 |---|---|
-| `provision.sh` | Azure resource group, B2s Ubuntu VM (128 GB disk, static IP), NSG, `demo` DNS record, optional budget alert. **Creates billable resources.** |
+| `provision.sh` | Azure resource group, burstable 2-vCPU Ubuntu VM (default `Standard_B2s_v2`, 128 GB disk, static IP), NSG, `demo` DNS record, optional budget alert. **Creates billable resources.** |
 | `cloud-init.yaml` | First boot: Docker, ffmpeg, jq, unattended upgrades, clones the repo to `/srv/whatson`. |
 | `docker-compose.yml`, `Caddyfile` | Caddy (TLS) → backend in demo mode → Jellyfin. |
 | `.env.example` | Settings and secrets; copy to `.env` on the VM. |

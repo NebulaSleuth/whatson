@@ -30,8 +30,11 @@ RUN cd packages/shared && npx tsc
 # Build api
 RUN cd packages/api && npx tsc
 
-# Build web
-RUN cd apps/web && npm run build
+# Build web. vite only: the image installs just these three workspaces, so the
+# root @types/react that apps/mobile normally brings is absent and react-router's
+# types degrade, which fails `tsc --noEmit`. Type-checking is CI's job (it
+# installs the full workspace); the image only needs the bundle.
+RUN cd apps/web && npx vite build
 
 # ── Production image ──
 FROM node:20-alpine
