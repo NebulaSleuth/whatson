@@ -1,0 +1,9 @@
+{
+  "leagues": [
+    { "key": "nfl", "mode": "teams", "teamIds": ["12", "21", "6", "25", "8"] },
+    { "key": "nba", "mode": "teams", "teamIds": ["2", "13", "9", "18", "25"] },
+    { "key": "nhl", "mode": "teams", "teamIds": ["1", "13", "21", "6"] },
+    { "key": "epl", "mode": "teams", "teamIds": ["359", "364", "382", "360"] },
+    { "key": "f1", "mode": "all", "teamIds": [] }
+  ]
+}
