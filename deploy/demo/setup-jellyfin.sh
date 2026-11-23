@@ -11,7 +11,9 @@
 #   3. Adds the Movies, Shorts and Shows libraries from /media and scans them.
 #   4. Marks a few items as part-watched so Continue Watching has something to
 #      show. Demo mode drops progress reports, so they stay that way.
-#   5. Writes the single "Demo" profile into ./data and restarts the backend.
+#   5. Writes the single "Demo" profile into ./data, installs the followed
+#      sports teams from seed/sports.json (visitors can't change them), and
+#      restarts the backend.
 #
 # Safe to re-run: the wizard step is skipped once complete, and existing
 # users/libraries are reused.
@@ -166,6 +168,13 @@ jq -n --arg jf "$DEMO_ID" '{
     mappings: { jellyfin: { userId: $jf, token: null, managed: false } }
   }]
 }' > data/whatsonUsers.json
+
+echo "== Sports"
+# A sample of followed teams so the Sports tab has scores and schedules.
+# Team ids are the backend's (GET /api/sports/teams?league=<key>).
+cp seed/sports.json data/sports.json
+jq -r '.leagues[] | "   \(.key): \(if .mode == "all" then "all events" else "\(.teamIds | length) teams" end)"' data/sports.json
+
 docker compose restart whatson-api
 
 echo "Done. Jellyfin admin: $ADMIN_USER / password in $PWFILE (UI via SSH tunnel only)."
