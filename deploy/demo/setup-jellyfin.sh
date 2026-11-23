@@ -109,16 +109,50 @@ done
 sleep 20
 echo "   $COUNT playable items"
 
+# Jellyfin matches titles against TMDB by name, which can attach the wrong
+# film's poster and summary (it matched Blender's "Spring" (2019) to "Spring
+# Breakers"). Titles TMDB can't tell apart are pinned here, keyed by file or
+# folder name; every other item is checked and any mismatch is reported.
+declare -A PINNED_TMDB=(
+  ["Spring (2019)"]=593048
+)
+echo "== Metadata matches"
+norm() { tr '[:upper:]' '[:lower:]' <<<"$1" | tr -cd '[:alnum:]'; }
+MISMATCH=0
+while read -r it; do
+  [ -n "$it" ] || continue
+  id="$(jq -r .id <<<"$it")"; type="$(jq -r .type <<<"$it")"; name="$(jq -r .name <<<"$it")"
+  stem="$(jq -r .path <<<"$it" | sed 's#/*$##; s#.*/##; s#\.[A-Za-z0-9]*$##')"
+  want="${stem% (*}"; year="$(sed -n 's/.*(\([0-9]\{4\}\))$/\1/p' <<<"$stem")"
+  pin="${PINNED_TMDB[$stem]:-}"
+  if [ -n "$pin" ] && [ "$(jq -r '.tmdb // ""' <<<"$it")" != "$pin" ]; then
+    jf POST "/Items/RemoteSearch/Apply/$id?replaceAllImages=true" \
+      "$(jq -n --arg n "$want" --arg t "$pin" --argjson y "${year:-0}" \
+        '{Name:$n, ProductionYear:$y, ProviderIds:{Tmdb:$t}, SearchProviderName:"TheMovieDb"}')" >/dev/null
+    echo "   $stem: pinned to TMDB $pin (was \"$name\")"
+  elif [ "$(norm "$name")" != "$(norm "$want")" ]; then
+    echo "   WARNING: $type \"$stem\" matched \"$name\". Pin its TMDB id in PINNED_TMDB."
+    MISMATCH=1
+  fi
+done < <(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=Path,ProviderIds" \
+  | jq -c '.Items[] | {id: .Id, type: .Type, name: .Name, path: .Path, tmdb: .ProviderIds.Tmdb}')
+[ "$MISMATCH" = 0 ] && echo "   all titles match their files"
+
 echo "== Continue Watching seed"
-SEED="$(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Episode&SortBy=Random&Limit=3&Fields=RunTimeTicks" \
-  | jq -c '.Items[] | {id: .Id, ticks: (.RunTimeTicks // 0)}')"
-while read -r item; do
-  [ -n "$item" ] || continue
-  id="$(jq -r .id <<<"$item")"; ticks="$(jq -r .ticks <<<"$item")"
-  pos=$(( ticks * 35 / 100 ))
-  jf POST "/UserItems/$id/UserData?userId=$DEMO_ID" \
-    "$(jq -n --argjson p "$pos" '{PlaybackPositionTicks: $p, Played: false}')" >/dev/null && echo "   $id at 35%"
-done <<<"$SEED"
+RESUMABLE="$(jf GET "/UserItems/Resume?userId=$DEMO_ID&Limit=1" | jq -r '.TotalRecordCount // 0')"
+if [ "$RESUMABLE" -gt 0 ]; then
+  echo "   already seeded"
+else
+  SEED="$(jf GET "/Items?Recursive=true&IncludeItemTypes=Movie,Episode&SortBy=Random&Limit=3&Fields=RunTimeTicks" \
+    | jq -c '.Items[] | {id: .Id, ticks: (.RunTimeTicks // 0)}')"
+  while read -r item; do
+    [ -n "$item" ] || continue
+    id="$(jq -r .id <<<"$item")"; ticks="$(jq -r .ticks <<<"$item")"
+    pos=$(( ticks * 35 / 100 ))
+    jf POST "/UserItems/$id/UserData?userId=$DEMO_ID" \
+      "$(jq -n --argjson p "$pos" '{PlaybackPositionTicks: $p, Played: false}')" >/dev/null && echo "   $id at 35%"
+  done <<<"$SEED"
+fi
 
 echo "== Demo profile"
 mkdir -p data
