@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
 import { setSavedUser, setStoredSessionToken } from '@/lib/storage';
 import { isTV } from '@/lib/tv';
+import { useIsDemo, forgetServer } from '@/lib/demo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 interface WhatsOnUserCard {
@@ -36,6 +37,7 @@ export default function SelectWhatsOnUserScreen() {
   const setSessionToken = useAppStore((s) => s.setSessionToken);
   const rememberUser = useAppStore((s) => s.rememberUser);
   const queryClient = useQueryClient();
+  const demo = useIsDemo();
 
   const { data: users, isLoading, error } = useQuery({
     queryKey: ['whatson-users'],
@@ -143,9 +145,15 @@ export default function SelectWhatsOnUserScreen() {
         <Text style={styles.errorText}>
           {error ? (error as Error).message : "You don't have a profile yet — set one up to start watching."}
         </Text>
-        <Pressable style={styles.retryButton} onPress={() => router.replace('/create-profile' as any)}>
-          <Text style={styles.retryText}>+ Create profile</Text>
-        </Pressable>
+        {demo ? (
+          <Pressable style={styles.retryButton} onPress={() => void forgetServer()}>
+            <Text style={styles.retryText}>Leave demo</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.retryButton} onPress={() => router.replace('/create-profile' as any)}>
+            <Text style={styles.retryText}>+ Create profile</Text>
+          </Pressable>
+        )}
       </View>
     );
   }
@@ -174,6 +182,7 @@ export default function SelectWhatsOnUserScreen() {
             </Pressable>
           );
         })}
+        {!demo && (
         <Pressable
           key="__new__"
           style={({ focused }) => [styles.userCard, isTV && focused && styles.userCardFocused]}
@@ -186,6 +195,7 @@ export default function SelectWhatsOnUserScreen() {
           </View>
           <Text style={styles.userName} numberOfLines={1}>New</Text>
         </Pressable>
+        )}
       </View>
 
       {selecting && (

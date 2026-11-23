@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { SportsLeagueSummary, SportsPrefs, SportsTeamSummary } from '@whatson/shared';
 import { api } from '@/lib/api';
+import { useIsDemo } from '@/lib/demo';
 import { colors, spacing, typography } from '@/constants/theme';
 
 /**
@@ -49,6 +50,8 @@ export default function SportsSettingsScreen() {
     }
   }, [leaguesQuery.data, prefsQuery.data, draft]);
 
+  // Read-only demo: follows can be browsed but not saved.
+  const demo = useIsDemo();
   const saveMutation = useMutation({
     mutationFn: (prefs: SportsPrefs) => api.putSportsPrefs(prefs),
     onSuccess: () => {
@@ -75,9 +78,9 @@ export default function SportsSettingsScreen() {
   }, []);
 
   const onSave = useCallback(() => {
-    if (!draft) return;
+    if (!draft || demo) return;
     saveMutation.mutate(draftToPrefs(draft));
-  }, [draft, saveMutation]);
+  }, [demo, draft, saveMutation]);
 
   const grouped = useMemo(() => {
     const by: Record<string, SportsLeagueSummary[]> = {};
@@ -94,9 +97,11 @@ export default function SportsSettingsScreen() {
       <View style={styles.headerBar}>
         <Pressable style={styles.hdrBtn} onPress={() => router.back()} focusable><Text style={styles.hdrBtnText}>Cancel</Text></Pressable>
         <Text style={styles.hdrTitle}>Sports Settings</Text>
+        {demo ? <View style={styles.hdrBtn} /> : (
         <Pressable style={[styles.hdrBtn, styles.hdrBtnPrimary]} onPress={onSave} focusable disabled={saveMutation.isPending}>
           <Text style={styles.hdrBtnTextPrimary}>{saveMutation.isPending ? 'Saving…' : 'Save'}</Text>
         </Pressable>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxl }}>

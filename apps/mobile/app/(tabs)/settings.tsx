@@ -20,6 +20,7 @@ import { TVPressable, TVTextInput } from '@/components/TVFocusable';
 import { useAppStore } from '@/lib/store';
 import { setStoredApiUrl, setAppConfigured, setRememberUser as saveRememberUser, setSavedUser, setAutoSkipIntro as saveAutoSkipIntro, setAutoSkipCredits as saveAutoSkipCredits, setDisableTouchSurface as saveDisableTouchSurface, setShowBecauseYouWatched as saveShowByw, setLiveTvChannels as saveLiveTvChannels, setStoredAuthKey, setStoredSessionToken, setStoredPlexConnectionType as savePlexConnectionType } from '@/lib/storage';
 import { useTVBackHandler } from '@/lib/useBackHandler';
+import { useIsDemo, forgetServer } from '@/lib/demo';
 import { isTV, isTVOS } from '@/lib/tv';
 import { useQuery } from '@tanstack/react-query';
 
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const apiInputRef = useRef<TextInput>(null);
   const { apiUrl, setApiUrl, setConfigured, currentUser, setCurrentUser, setSessionToken, rememberUser, setRememberUser, autoSkipIntro, setAutoSkipIntro, autoSkipCredits, setAutoSkipCredits, disableTouchSurface, setDisableTouchSurface, showBecauseYouWatched, setShowBecauseYouWatched, liveTvChannels, setLiveTvChannels, plexConnectionType, setPlexConnectionType } = useAppStore();
+  const demo = useIsDemo();
   const { data: availableChannels = [], isLoading: channelsLoading, error: channelsError, refetch: refetchChannels } = useQuery({
     queryKey: ['live', 'channels'],
     queryFn: () => api.getLiveChannels(),
@@ -152,7 +154,21 @@ export default function SettingsScreen() {
           <Text style={styles.headerTitle}>Settings</Text>
         </View>
 
+        {/* Public read-only demo server */}
+        {demo && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Demo server</Text>
+            <Text style={styles.sectionDescription}>
+              You're browsing the public read-only demo. Leave it to connect to your own Whats On server.
+            </Text>
+            <TVPressable style={styles.primaryButton} onPress={() => void forgetServer()}>
+              <Text style={styles.primaryButtonText}>Leave demo</Text>
+            </TVPressable>
+          </View>
+        )}
+
         {/* API URL */}
+        {!demo && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Backend API</Text>
           <Text style={styles.sectionDescription}>
@@ -173,6 +189,7 @@ export default function SettingsScreen() {
             <Text style={styles.primaryButtonText}>Save & Test</Text>
           </TVPressable>
         </View>
+        )}
 
         {/* Connection — which Plex connection the backend should use for
             this device (sent as X-Plex-Connection). Labels match Roku's
@@ -368,7 +385,8 @@ export default function SettingsScreen() {
           refetchChannels={refetchChannels}
         />
 
-        {/* Sports */}
+        {/* Sports (saving follows is a write — hidden on the read-only demo) */}
+        {!demo && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Sports</Text>
           <Text style={styles.sectionDescription}>
@@ -381,6 +399,7 @@ export default function SettingsScreen() {
             <Text style={styles.primaryButtonText}>Configure Sports Follows</Text>
           </TVPressable>
         </View>
+        )}
 
         {/* Apple TV Remote */}
         {isTVOS && (
@@ -439,8 +458,8 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        {/* Server Updates */}
-        <ServerUpdatesSection />
+        {/* Server Updates (admin-only; hidden on the read-only demo) */}
+        {!demo && <ServerUpdatesSection />}
 
         {/* Pairing */}
         <PairingSection />

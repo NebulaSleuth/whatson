@@ -4,6 +4,7 @@ import type { ContentItem, ContentSection } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
 import { DetailSheet } from '@/components/DetailSheet';
+import { useIsDemo } from '@/lib/demo';
 
 /**
  * The backend aggregator emits Ready-to-Watch shelves with fixed ids;
@@ -24,6 +25,7 @@ function annotateReadyToWatch(sections: ContentSection[]): ContentSection[] {
 
 export default function Home() {
   const [selected, setSelected] = useState<ContentItem | null>(null);
+  const demo = useIsDemo();
   const { data, isLoading, error } = useQuery({
     queryKey: ['home'],
     queryFn: () => api.getHome(),
@@ -62,13 +64,17 @@ export default function Home() {
     return (
       <div className="px-6 py-10 text-center text-text-muted">
         <p className="text-lg">Nothing to show yet.</p>
-        <p className="text-sm mt-2">
-          Configure your media servers from{' '}
-          <a className="text-primary underline" href="/setup">
-            /setup
-          </a>{' '}
-          to populate Home.
-        </p>
+        {demo ? (
+          <p className="text-sm mt-2">The demo library is loading. Try again in a moment.</p>
+        ) : (
+          <p className="text-sm mt-2">
+            Configure your media servers from{' '}
+            <a className="text-primary underline" href="/setup">
+              /setup
+            </a>{' '}
+            to populate Home.
+          </p>
+        )}
       </div>
     );
   }

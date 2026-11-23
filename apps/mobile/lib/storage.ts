@@ -37,6 +37,12 @@ export async function setStoredApiUrl(url: string): Promise<void> {
   } catch {}
 }
 
+export async function clearStoredApiUrl(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(KEYS.API_URL);
+  } catch {}
+}
+
 export async function isAppConfigured(): Promise<boolean> {
   try {
     const value = await SecureStore.getItemAsync(KEYS.CONFIGURED);
@@ -95,6 +101,12 @@ export async function getStoredCandidates(): Promise<unknown[] | null> {
 export async function setStoredCandidates(candidates: unknown[]): Promise<void> {
   try {
     await SecureStore.setItemAsync(KEYS.CANDIDATES, JSON.stringify(candidates));
+  } catch {}
+}
+
+export async function clearStoredCandidates(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(KEYS.CANDIDATES);
   } catch {}
 }
 

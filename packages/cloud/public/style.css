@@ -36,6 +36,8 @@ a:hover { text-decoration: underline; }
 .hero h1 { font-size: 44px; line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 16px; }
 .hero h1 .g { color: var(--gold); }
 .hero p { font-size: 18px; color: var(--muted); max-width: 620px; margin: 0 auto 28px; }
+.hero .cta-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.hero p.cta-note { font-size: 14px; margin: 14px auto 0; }
 
 .features { max-width: 900px; margin: 24px auto 0; padding: 0 24px 48px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }

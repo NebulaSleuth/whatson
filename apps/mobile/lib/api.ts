@@ -64,6 +64,19 @@ function getPlexConnectionType(): string {
   return useAppStore.getState().plexConnectionType;
 }
 
+/** Thrown when the public demo server answers a write with 403 `demo:true`. */
+export class DemoReadOnlyError extends Error {
+  readonly demo = true;
+  constructor(message = 'Read-only demo') {
+    super(message);
+    this.name = 'DemoReadOnlyError';
+  }
+}
+
+export function isDemoReadOnlyError(err: unknown): err is DemoReadOnlyError {
+  return err instanceof DemoReadOnlyError || (!!err && (err as { demo?: unknown }).demo === true);
+}
+
 type FetchApiOptions = RequestInit & { timeoutMs?: number };
 
 async function fetchApi<T>(path: string, options?: FetchApiOptions): Promise<T> {
@@ -109,8 +122,16 @@ async function fetchApi<T>(path: string, options?: FetchApiOptions): Promise<T> 
     let errorMsg = `HTTP ${response.status}`;
     try {
       const errorJson = JSON.parse(text);
+      if (response.status === 403 && errorJson?.demo === true) {
+        // Public read-only demo server refused a write. Remember we're on the
+        // demo (hides write actions) and throw a typed error callers can
+        // swallow quietly via isDemoReadOnlyError / alertError.
+        useAppStore.getState().setDemo(true);
+        throw new DemoReadOnlyError(errorJson.error || 'Read-only demo');
+      }
       errorMsg = errorJson.error || errorMsg;
-    } catch {
+    } catch (err) {
+      if (err instanceof DemoReadOnlyError) throw err;
       // Response was not JSON (likely HTML error page)
       errorMsg = `API unreachable (${response.status}). Check API URL in Settings.`;
     }
@@ -322,7 +343,7 @@ export const api = {
 
   // Auth / server providers
   getAuthProviders: () =>
-    fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean }>('/auth/providers'),
+    fetchApi<{ plex: boolean; jellyfin: boolean; emby: boolean; sonarr: boolean; radarr: boolean; demo?: boolean }>('/auth/providers'),
 
   // Connection candidates for this server (M7 owner self-access): LAN URLs +
   // the WAN hostname, so the app can reach the server from anywhere. Cached and

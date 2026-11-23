@@ -11,6 +11,10 @@ export const PLEX_PRODUCT = APP_NAME;
  */
 export const DEFAULT_CLOUD_URL = 'https://cloud.whatsontv.net';
 
+/** Public read-only demo server (Jellyfin with free content). Clients offer a
+ * "Try the demo" button that points at it; the server reports `demo: true`. */
+export const DEMO_API_URL = 'https://demo.whatsontv.net';
+
 export const DEFAULT_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 export const ARTWORK_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 

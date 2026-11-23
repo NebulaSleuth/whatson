@@ -54,6 +54,8 @@ import { startRemoteListener } from './server/remoteListener.js';
 import { startCloudRegistration } from './services/cloud/registration.js';
 import { startCertManager } from './services/cloud/certManager.js';
 import { ensureDefaultAdmin } from './services/userBootstrap.js';
+import { demoSetupGuard } from './middleware/demoGuard.js';
+import { demoRateLimit } from './security/rateLimit.js';
 
 const app = express();
 
@@ -62,6 +64,16 @@ const app = express();
 app.use(hostGuard);
 app.use(corsMiddleware);
 app.use(express.json());
+
+// Read-only demo: closes the admin UI, and trusts the TLS reverse proxy in
+// front of it (Caddy on the private Docker network) so req.protocol is https
+// when building proxied stream URLs. See middleware/demoGuard.ts.
+if (config.demo) {
+  app.set('trust proxy', 'loopback, uniquelocal');
+  app.use(demoRateLimit);
+  app.use('/setup', demoSetupGuard);
+  console.log('[Whats On API] DEMO MODE: read-only; admin routes and /setup are closed');
+}
 
 // Serve the admin UI — check multiple locations for the admin/ directory
 import { join as pathJoin, dirname as pathDirname } from 'path';
@@ -154,9 +166,12 @@ server.listen(config.port, () => {
   console.log(`[Sonarr] ${config.sonarr.url || 'Not configured'}`);
   console.log(`[Radarr] ${config.radarr.url || 'Not configured'}`);
   console.log(`[EPG] Provider: ${config.epg.provider}, Country: ${config.epg.country}`);
-  startUpdateScheduler();
-  // Opt-in Sonarr/Radarr bad-release sweeper (DOWNLOAD_MONITOR=true).
-  startDownloadMonitor();
+  // The public demo never updates itself or touches downloads, whatever the env says.
+  if (!config.demo) {
+    startUpdateScheduler();
+    // Opt-in Sonarr/Radarr bad-release sweeper (DOWNLOAD_MONITOR=true).
+    startDownloadMonitor();
+  }
   // Unified user model (always-on): create a default admin Whats On user mapped
   // to the server's own identities when there are none. Best-effort; on failure
   // the app stays in legacy Plex mode until a user is created.
@@ -173,11 +188,15 @@ server.listen(config.port, () => {
 // on in later milestones; today it leans on apiAuth, which is why an admin
 // password is a hard prerequisite (without it apiAuth would run open).
 // Runtime-toggleable via the /setup Remote Access panel; see remoteListener.ts.
-startRemoteListener();
-// Obtain/renew the per-server TLS cert and upgrade the listener to HTTPS
-// (M8/8b). Self-guards: no-op unless remote access + a cloud URL are set.
-startCertManager();
+// None of this runs in the public demo: it is served by its own TLS proxy and
+// must not register with the cloud or obtain certificates.
+if (!config.demo) {
+  startRemoteListener();
+  // Obtain/renew the per-server TLS cert and upgrade the listener to HTTPS
+  // (M8/8b). Self-guards: no-op unless remote access + a cloud URL are set.
+  startCertManager();
 
-// Cloud registration client (M4). Self-guards: no-op unless remote access is
-// enabled AND a CLOUD_URL is configured, so the fleet is unaffected by default.
-startCloudRegistration();
+  // Cloud registration client (M4). Self-guards: no-op unless remote access is
+  // enabled AND a CLOUD_URL is configured, so the fleet is unaffected by default.
+  startCloudRegistration();
+}

@@ -21,10 +21,40 @@ function proxiableBases(): string[] {
   return [config.jellyfin.url, config.emby.url].filter((u): u is string => Boolean(u));
 }
 
-/** True if `target` is an HTTP(S) URL under a configured Jellyfin/Emby base. */
+/**
+ * In the public demo, only media paths may be fetched through the proxy — not
+ * the rest of the Jellyfin API, even read-only. Jellyfin uses both /Videos/
+ * and /videos/ in its playlists.
+ */
+const DEMO_MEDIA_PATH = /^\/(videos|audio)\//i;
+
+/**
+ * True if `target` is an HTTP(S) URL under a configured Jellyfin/Emby base.
+ * Compares the parsed origin and path rather than a string prefix, so
+ * `http://jellyfin:8096.evil.example/` doesn't pass for base `http://jellyfin:8096`.
+ */
 export function isProxiableTarget(target: string): boolean {
   if (!/^https?:\/\//i.test(target)) return false;
-  return proxiableBases().some((base) => target.startsWith(base));
+  let t: URL;
+  try {
+    t = new URL(target);
+  } catch {
+    return false;
+  }
+  const underBase = proxiableBases().some((base) => {
+    let b: URL;
+    try {
+      b = new URL(base);
+    } catch {
+      return false;
+    }
+    if (t.origin !== b.origin) return false;
+    const basePath = b.pathname.replace(/\/+$/, '');
+    if (!(t.pathname === basePath || t.pathname.startsWith(`${basePath}/`))) return false;
+    if (config.demo && !DEMO_MEDIA_PATH.test(t.pathname.slice(basePath.length))) return false;
+    return true;
+  });
+  return underBase;
 }
 
 function b64urlEncode(s: string): string {

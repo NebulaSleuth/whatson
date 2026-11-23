@@ -1,0 +1,19 @@
+#cloud-config
+# First boot of the What's On TV demo VM (Ubuntu 24.04): Docker, unattended
+# security updates, and the folders the demo uses. See README.md.
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - ffmpeg
+  - jq
+  - unattended-upgrades
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker whatson
+  - mkdir -p /srv/media /srv/whatson
+  - chown -R whatson:whatson /srv/media /srv/whatson
+  - git clone https://github.com/NebulaSleuth/whatson.git /srv/whatson || true
+  - chown -R whatson:whatson /srv/whatson

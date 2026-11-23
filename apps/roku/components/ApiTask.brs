@@ -125,7 +125,11 @@ sub fetch()
     if statusCode < 200 or statusCode >= 300
         errMsg = "HTTP " + statusCode.toStr()
         if parsed <> invalid and parsed.error <> invalid then errMsg = parsed.error.toStr()
-        m.top.response = { success: false, error: errMsg, status: statusCode }
+        resp = { success: false, error: errMsg, status: statusCode }
+        ' Public read-only demo server refuses writes with 403 { demo: true }.
+        ' Pass the flag through so callers can treat it as a quiet no-op.
+        if parsed <> invalid and type(parsed) = "roAssociativeArray" and parsed.demo = true then resp.demo = true
+        m.top.response = resp
         return
     end if
 

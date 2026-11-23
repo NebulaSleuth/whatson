@@ -23,6 +23,13 @@ export interface AppConfig extends ServerConfig {
     url: string;
     publicKey: string;
   };
+  /**
+   * Public read-only demo (WHATSON_DEMO=1). Every write is refused, admin
+   * routes and /setup are closed, playback progress is accepted but discarded,
+   * and background jobs that write or reach out (updater, download monitor,
+   * remote listener, cloud registration) stay off. See middleware/demoGuard.ts.
+   */
+  demo: boolean;
 }
 
 function trimUrl(url: string | undefined): string {
@@ -45,6 +52,7 @@ let _config: AppConfig | null = null;
 function loadConfig(): AppConfig {
   return {
     port: parseInt(process.env.PORT || '3001', 10),
+    demo: ['1', 'true'].includes((process.env.WHATSON_DEMO || '').trim().toLowerCase()),
     remote: {
       enabled: (process.env.REMOTE_ACCESS || 'false').toLowerCase() === 'true',
       port: parseInt(process.env.REMOTE_PORT || '3002', 10),

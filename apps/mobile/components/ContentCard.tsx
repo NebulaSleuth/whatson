@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import type { ContentItem } from '@whatson/shared';
 import { SourceBadge } from './SourceBadge';
 import { isTV } from '@/lib/tv';
+import { useIsDemo, alertError } from '@/lib/demo';
 import { ProgressBar } from './ProgressBar';
 import { colors, spacing, cardDimensions, typography } from '@/constants/theme';
 import { api, resolveArtworkUrl } from '@/lib/api';
@@ -65,7 +66,11 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
 
   const isTvShow = item.type === 'episode' || item.type === 'show';
 
+  const demo = useIsDemo();
+
   const handleLongPress = useCallback(() => {
+    // Read-only demo: every long-press action is a write — show nothing.
+    if (demo) return;
     const buttons: any[] = [];
 
     if (isTrackedItem) {
@@ -80,7 +85,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
             onMarkWatched?.();
           } catch (error) {
             console.error('[Card] markWatched error:', (error as Error).message);
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       });
@@ -92,7 +97,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
             await api.removeTracked(parseInt(item.sourceId));
             onMarkWatched?.();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       });
@@ -108,7 +113,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
             }
             onMarkWatched?.();
           } catch (error) {
-            Alert.alert('Error', (error as Error).message);
+            alertError(error);
           }
         },
       });
@@ -126,7 +131,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
               );
               onMarkWatched?.();
             } catch (error) {
-              Alert.alert('Error', (error as Error).message);
+              alertError(error);
             }
           },
         });
@@ -135,7 +140,7 @@ export const ContentCard = React.memo(function ContentCard({ item, onPress, onMa
 
     buttons.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert(displayTitle, 'Choose an action', buttons);
-  }, [item, displayTitle, onMarkWatched, isTrackedItem, isTvShow]);
+  }, [demo, item, displayTitle, onMarkWatched, isTrackedItem, isTvShow]);
 
   const [focused, setFocused] = useState(false);
   const [selfNodeId, setSelfNodeId] = useState<number | undefined>(undefined);

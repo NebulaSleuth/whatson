@@ -28,6 +28,8 @@ authRouter.get('/auth/providers', (_req, res) => {
     emby: Boolean(config.emby.url && config.emby.username),
     sonarr: Boolean(config.sonarr.url && config.sonarr.apiKey),
     radarr: Boolean(config.radarr.url && config.radarr.apiKey),
+    // Read-only public demo: clients hide write actions and show a banner.
+    demo: config.demo,
   };
   const response: ApiResponse<typeof data> = { success: true, data };
   res.json(response);
