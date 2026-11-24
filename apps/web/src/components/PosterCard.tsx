@@ -81,7 +81,12 @@ export function PosterCard({ item, onClick }: Props) {
             <span className="text-[11px] font-bold text-cyan-400">Downloading</span>
           </div>
         )}
-        {item.status === 'coming_soon' && item.availability?.availableAt && (
+        {item.status === 'coming_soon' && item.isLate && (
+          <div className="absolute bottom-0 left-0 right-0 bg-red-700/90 py-1 text-center">
+            <span className="text-[11px] font-bold text-white tracking-wide">LATE</span>
+          </div>
+        )}
+        {item.status === 'coming_soon' && !item.isLate && item.availability?.availableAt && (
           <div className="absolute bottom-0 left-0 right-0 bg-black/75 py-1 text-center">
             <span className="text-[11px] font-bold text-primary">
               {formatAvailableDate(item.availability.availableAt)}

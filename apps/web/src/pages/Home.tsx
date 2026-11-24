@@ -4,6 +4,7 @@ import type { ContentItem, ContentSection } from '@whatson/shared';
 import { api } from '@/lib/api';
 import { Shelf } from '@/components/Shelf';
 import { DetailSheet } from '@/components/DetailSheet';
+import { SportsShelf } from '@/components/SportsShelf';
 import { useIsDemo } from '@/lib/demo';
 
 /**
@@ -29,6 +30,27 @@ export default function Home() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['home'],
     queryFn: () => api.getHome(),
+  });
+
+  // Sports shelves, as on mobile and Roku: only queried once the user follows
+  // at least one league, so a plain home load makes no ESPN calls.
+  const { data: sportsPrefs } = useQuery({
+    queryKey: ['sports', 'prefs'],
+    queryFn: api.getSportsPrefs,
+    staleTime: 60_000,
+  });
+  const followsSports = (sportsPrefs?.leagues.length ?? 0) > 0;
+  const { data: sportsNow } = useQuery({
+    queryKey: ['sports', 'now'],
+    queryFn: api.getSportsNow,
+    enabled: followsSports,
+    refetchInterval: followsSports ? 30_000 : false,
+  });
+  const { data: sportsLater } = useQuery({
+    queryKey: ['sports', 'later'],
+    queryFn: () => api.getSportsLater(168),
+    enabled: followsSports,
+    refetchInterval: followsSports ? 5 * 60_000 : false,
   });
 
   if (isLoading) {
@@ -84,6 +106,8 @@ export default function Home() {
       {annotateReadyToWatch(sections).map((s) => (
         <Shelf key={s.id} section={s} onItemClick={setSelected} />
       ))}
+      {followsSports && sportsNow && <SportsShelf title="Sports On Now" events={sportsNow} />}
+      {followsSports && sportsLater && <SportsShelf title="Sports On Later" events={sportsLater} />}
       {selected && <DetailSheet item={selected} onClose={() => setSelected(null)} />}
     </div>
   );

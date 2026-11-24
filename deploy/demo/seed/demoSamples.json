@@ -1,0 +1,37 @@
+{
+  "_comment": "Sample cards for the demo's Coming Soon shelves (demo mode only; see packages/api/src/services/demoSamples.ts). Nothing here is real: nothing downloads and nothing arrives. offsetHours is relative to each page load. setup-jellyfin.sh adds movie posters from TMDB and writes the result to data/demoSamples.json. Episode samples reuse their library series' artwork.",
+  "items": [
+    {
+      "kind": "episode", "state": "late", "offsetHours": -20,
+      "series": "Sherlock Holmes", "season": 1, "episode": 6, "title": "Episode 6", "year": 1954,
+      "network": "Syndicated",
+      "summary": "Sample card: an episode whose air date has passed but which hasn't arrived yet shows as LATE."
+    },
+    {
+      "kind": "episode", "state": "downloading", "offsetHours": -2,
+      "series": "The Big Picture", "season": 1, "episode": 6, "title": "Episode 6", "year": 1951,
+      "percentage": 64, "timeLeft": "12m",
+      "summary": "Sample card: an episode your downloader is fetching right now."
+    },
+    {
+      "kind": "movie", "state": "downloading", "offsetHours": -6,
+      "title": "Charge", "year": 2022, "percentage": 31, "timeLeft": "48m",
+      "summary": "Sample card: a Blender Studio short being downloaded."
+    },
+    {
+      "kind": "movie", "state": "late", "offsetHours": -30,
+      "title": "Charade", "year": 1963,
+      "summary": "Sample card: a film whose release date has passed but which hasn't arrived yet."
+    },
+    {
+      "kind": "movie", "state": "coming_soon", "offsetHours": 70,
+      "title": "Night of the Living Dead", "year": 1968,
+      "summary": "Sample card: a film on its way, shown with its expected date."
+    },
+    {
+      "kind": "movie", "state": "coming_soon", "offsetHours": 190,
+      "title": "Agent 327: Operation Barbershop", "year": 2017,
+      "summary": "Sample card: a Blender Studio short on its way."
+    }
+  ]
+}

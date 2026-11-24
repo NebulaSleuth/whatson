@@ -224,6 +224,27 @@ echo "== Sports"
 cp seed/sports.json data/sports.json
 jq -r '.leagues[] | "   \(.key): \(if .mode == "all" then "all events" else "\(.teamIds | length) teams" end)"' data/sports.json
 
+echo "== Sample Coming Soon / Late / Downloading cards"
+# Demo mode shows seed/demoSamples.json on the Coming Soon shelves. Movie
+# samples aren't in the library, so look their posters up on TMDB through
+# Jellyfin; a sample whose poster isn't found is left out by the backend.
+SAMPLES="$(cat seed/demoSamples.json)"
+while read -r idx; do
+  [ -n "$idx" ] || continue
+  t="$(jq -r ".items[$idx].title" <<<"$SAMPLES")"; y="$(jq -r ".items[$idx].year" <<<"$SAMPLES")"
+  poster="$(jf POST /Items/RemoteSearch/Movie \
+    "$(jq -n --arg n "$t" --argjson y "$y" '{SearchInfo:{Name:$n, Year:$y}, SearchProviderName:"TheMovieDb"}')" \
+    | jq -r --argjson y "$y" '[.[] | select(.ProductionYear == $y and .ImageUrl != null)][0].ImageUrl // empty' \
+    | sed 's#/t/p/original/#/t/p/w500/#')"
+  if [ -n "$poster" ]; then
+    SAMPLES="$(jq --argjson i "$idx" --arg p "$poster" '.items[$i].poster = $p' <<<"$SAMPLES")"
+    echo "   $t ($y): poster found"
+  else
+    echo "   $t ($y): no poster found; it won't be shown"
+  fi
+done < <(jq -r '.items | to_entries[] | select(.value.kind == "movie") | .key' <<<"$SAMPLES")
+jq . <<<"$SAMPLES" > data/demoSamples.json
+
 echo "== Credits page"
 if [ -f "${MEDIA_DIR:-/srv/media}/credits.html" ]; then
   cp "${MEDIA_DIR:-/srv/media}/credits.html" site/credits.html && echo "   site/credits.html updated"

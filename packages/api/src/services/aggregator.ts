@@ -8,6 +8,7 @@ import * as tvmaze from './tvmaze.js';
 import { config } from '../config.js';
 import { proxyArtwork } from '../utils.js';
 import { getConfiguredAdapters } from './adapters/registry.js';
+import { buildSampleItems, loadSampleEntries } from './demoSamples.js';
 
 // ── Watch State Merging ──
 
@@ -362,10 +363,17 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
   // TV: coming soon = Sonarr calendar + downloading queue + tracked TV upcoming episodes.
   // Filter out items that mergeWithPlexState upgraded to 'ready'/'watching' — those are in the library now.
   // Only show one card per show, sorted by availability date (soonest first).
+  // Public demo: no Sonarr/Radarr, so add the sample Late / Downloading /
+  // Coming Soon cards (services/demoSamples.ts). Never outside demo mode.
+  const samples = config.demo
+    ? buildSampleItems(loadSampleEntries(), allPlexItems)
+    : { tv: [], movies: [] };
+
   const tvComingSoon = sortByDate(oneEpisodePerShow(filterWatched(deduplicateById([
     ...sonarrQueue,
     ...enrichedSonarrUpcoming,
     ...trackedTvComingSoon,
+    ...samples.tv,
   ].filter((i) => i.status === 'coming_soon' || i.status === 'downloading')))));
 
   // Movies: ready to watch = library-server movies (not in Continue Watching)
@@ -386,7 +394,7 @@ export async function getHomeData(userToken?: string): Promise<HomeResponse> {
 
   // Movies: coming soon = Radarr calendar + downloading queue. Drop any item mergeWithPlexState upgraded.
   const moviesComingSoon = sortByDate(filterWatched(deduplicateById(
-    [...radarrQueue, ...enrichedRadarrUpcoming].filter((i) => i.status === 'coming_soon' || i.status === 'downloading'),
+    [...radarrQueue, ...enrichedRadarrUpcoming, ...samples.movies].filter((i) => i.status === 'coming_soon' || i.status === 'downloading'),
   )));
 
   const sections: ContentSection[] = [];
