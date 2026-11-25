@@ -3,6 +3,7 @@ import { APP_NAME, APP_VERSION, PLEX_CLIENT_IDENTIFIER } from '@whatson/shared';
 import type { ContentItem } from '@whatson/shared';
 import { getCached, setCached } from '../cache.js';
 import { trackAvailability } from './adapters/availability.js';
+import { decideStreamCopy, defaultAudioIndex, type CopySourceInfo } from './embyStreamCopy.js';
 import type {
   PlaybackInfo,
   PlaybackOpts,
@@ -575,6 +576,36 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
     // DirectPlay + DirectStream forces a fresh transcoder for every
     // session, which is what the user expects when they change a
     // subtitle / audio / quality setting.
+    //
+    // Exception: stream copy when the request changes nothing. With no
+    // burned-in sub, the default audio track, no bitrate / resolution
+    // cap below the source and no forceTranscode, a full encode buys
+    // nothing — the output would match the source — and on small boxes
+    // (the 2-core demo VM) it caps how many people can watch at once. So
+    // for those requests we allow Video/Audio stream copy and let the
+    // server remux into HLS (ffmpeg `-c:v copy`). DirectPlay and
+    // DirectStream stay *off* in both modes: turning DirectStream on
+    // makes Jellyfin answer with a progressive stream.mp4 instead of an
+    // HLS TranscodingUrl, which would bypass the master.m3u8 /
+    // /api/stream/proxy path every client and the demo proxy rely on.
+    // (Jellyfin still writes TranscodeReasons=DirectPlayError into the
+    // URL in copy mode — that's its placeholder for "compatible, but
+    // the request disabled direct play"; it doesn't block the copy.
+    // What blocks it is the `allowVideoStreamCopy=false` it appends
+    // when we send AllowVideoStreamCopy=false.)
+    // Any request that *does* change something keeps the forced
+    // transcode above, so sub / audio / quality switching is unchanged.
+    // Decision logic + tests: embyStreamCopy.ts / test/embyStreamCopy.test.ts.
+    const itemSource: CopySourceInfo | undefined =
+      (item as any)?.MediaSources?.[0] ??
+      ((item as any)?.MediaStreams ? { MediaStreams: (item as any).MediaStreams } : undefined);
+    const copyDecision = decideStreamCopy(playOpts, itemSource);
+    const allowCopy = copyDecision.allowCopy;
+    console.log(
+      `[${opts.label}.dbg] streamCopy=${allowCopy} (${copyDecision.reason}) ` +
+      `sourceBitrate=${itemSource?.Bitrate ?? '(unknown)'} ` +
+      `defaultAudio=${defaultAudioIndex(itemSource) ?? '(unknown)'}`,
+    );
     // Full DeviceProfile. The thin "just MaxStreamingBitrate" profile
     // we shipped before caused Jellyfin to respond with
     // SupportsTranscoding=false / TranscodingUrl=(none) for any source
@@ -590,8 +621,8 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       EnableDirectPlay: false,
       EnableDirectStream: false,
       EnableTranscoding: true,
-      AllowVideoStreamCopy: false,
-      AllowAudioStreamCopy: false,
+      AllowVideoStreamCopy: allowCopy,
+      AllowAudioStreamCopy: allowCopy,
       AutoOpenLiveStream: true,
       DeviceProfile: {
         MaxStreamingBitrate: maxBpsBody,
@@ -670,8 +701,8 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       EnableDirectPlay: false,
       EnableDirectStream: false,
       EnableTranscoding: true,
-      AllowVideoStreamCopy: false,
-      AllowAudioStreamCopy: false,
+      AllowVideoStreamCopy: allowCopy,
+      AllowAudioStreamCopy: allowCopy,
       AutoOpenLiveStream: true,
       // DO NOT set MediaSourceId=itemId here. Emby's MediaSource.Id
       // is prefixed (e.g. `mediasource_9` for item `9`), so passing
@@ -797,6 +828,14 @@ export function createEmbyLikeService(opts: EmbyLikeOptions): EmbyLikeService {
       streamParams.SubtitleMethod = 'External';
     }
     if (playOpts.audioStreamID != null) streamParams.AudioStreamIndex = String(playOpts.audioStreamID);
+    // Stream-copy mode (see the allowCopy comment above): say so on the
+    // hand-built Emby master.m3u8 URL too, since Emby's transcoder reads
+    // its settings from this URL, not from PlaybackInfo. The transcode
+    // path leaves the URL exactly as it was before stream copy existed.
+    if (allowCopy) {
+      streamParams.AllowVideoStreamCopy = 'true';
+      streamParams.AllowAudioStreamCopy = 'true';
+    }
 
     // URL selection by server:
     //
