@@ -3,14 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Your account · Whats On</title>
+  <title>Your account · What's On TV</title>
+  <meta name="theme-color" content="#16161b" />
+  <link rel="icon" href="/img/whatson-icon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="nav">
-    <div class="brand"><a href="/" style="color:inherit;text-decoration:none">Whats<span>On</span></a></div>
-    <div><a class="btn secondary" href="#" onclick="signOut();return false">Sign out</a></div>
-  </div>
+  <div class="backdrop" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div></div>
+
+  <header class="nav">
+    <a class="brand" href="/" aria-label="What's On TV home"><img src="/img/whatson-icon.png" alt="" width="38" height="38" /><span>What's On <b>TV</b></span></a>
+    <div class="nav-links"><a class="btn secondary" href="#" onclick="signOut();return false">Sign out</a></div>
+  </header>
+
+  <main id="main">
 
   <div class="container wide">
     <div class="card">
@@ -43,6 +52,17 @@
       </p>
     </div>
   </div>
+
+  </main>
+
+  <footer class="footer">
+    <span>&copy; 2026 Extrastrength Software LLC</span>
+    <nav aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="https://extrastrength.com/whats-on-tv.html">About</a>
+      <a href="https://extrastrength.com/whats-on-tv-privacy.html">Privacy</a>
+    </nav>
+  </footer>
 
   <script src="/app.js"></script>
   <script>

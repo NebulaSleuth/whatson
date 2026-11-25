@@ -3,50 +3,100 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Whats On — your library, anywhere</title>
-  <meta name="description" content="Watch your Plex, Jellyfin, Emby and live TV from anywhere — one Netflix-style app across phone, tablet, and TV." />
+  <title>What's On TV — your library, anywhere</title>
+  <meta name="description" content="Watch your Plex, Jellyfin, Emby and live TV from anywhere — one app across phone, tablet, TV and the web." />
+  <meta name="theme-color" content="#16161b" />
+  <link rel="icon" href="/img/whatson-icon.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="nav">
-    <div class="brand">Whats<span>On</span></div>
-    <div><a class="btn secondary" href="/login">Sign in</a></div>
-  </div>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="backdrop" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div></div>
 
-  <section class="hero">
-    <h1>Your whole library,<br /><span class="g">anywhere you are.</span></h1>
-    <p>
-      One beautiful, Netflix-style app that unifies your Plex, Jellyfin, Emby and live TV —
-      on your phone, tablet, and TV. Now with secure remote access, so home is never out of reach.
-    </p>
-    <div class="cta-row">
-      <a class="btn" href="/login">Get started</a>
-      <a class="btn secondary" href="https://demo.whatsontv.net" target="_blank" rel="noopener">Try the live preview</a>
-    </div>
-    <p class="cta-note">The preview is a read-only sample library of free films and shows. No sign-in needed.</p>
-  </section>
+  <header class="nav">
+    <a class="brand" href="/" aria-label="What's On TV home"><img src="/img/whatson-icon.png" alt="" width="38" height="38" /><span>What's On <b>TV</b></span></a>
+    <div class="nav-links"><a class="btn secondary" href="/login">Sign in</a></div>
+  </header>
 
-  <section class="features">
-    <div class="feature">
-      <h3>One home for everything</h3>
-      <p>Plex, Jellyfin, Emby and over-the-air live TV, blended into a single "what should I watch tonight" experience.</p>
-    </div>
-    <div class="feature">
-      <h3>Watch from anywhere</h3>
-      <p>Secure, encrypted remote access to your own server — your movies, shows and live channels on the road, over your own connection.</p>
-    </div>
-    <div class="feature">
-      <h3>Every screen</h3>
-      <p>Phone and tablet, Apple TV and Android TV, with a Roku channel in the works — the same app, the same library.</p>
-    </div>
-    <div class="feature">
-      <h3>Share with your people</h3>
-      <p>Invite family and friends to your server with their own profile — no fuss, no exposing your network.</p>
-    </div>
-  </section>
+  <main id="main">
+    <section class="hero">
+      <div class="wrap grid">
+        <div>
+          <p class="badge-alpha">Alpha</p>
+          <h1>Your whole library,<br /><span class="g">anywhere you are.</span></h1>
+          <p class="sub">
+            One app that unifies your Plex, Jellyfin, Emby and live TV — on your phone, tablet, TV and the web.
+            Now with secure remote access, so home is never out of reach.
+          </p>
+          <div class="cta-row">
+            <a class="btn" href="/login">Get started <span class="arrow">→</span></a>
+            <a class="btn ghost" href="https://demo.whatsontv.net" target="_blank" rel="noopener">Try the live preview <span class="arrow">↗</span></a>
+          </div>
+          <p class="cta-note">The preview is a read-only sample library of free films and shows. No sign-in needed.</p>
+        </div>
+        <div class="art"><img src="/img/whatson-icon.png" alt="What's On TV logo: a neon outline of a television with the letters TV" width="512" height="512" /></div>
+      </div>
+    </section>
 
-  <div class="footer">
-    &copy; Whats On · <a href="/login">Sign in</a> · <a href="https://extrastrength.com/whats-on-tv-privacy.html">Privacy</a>
-  </div>
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span>Continue Watching</span><span>Ready to Watch</span><span>Coming Soon</span><span>Live TV</span><span>Discover</span><span>Sports</span>
+        <span>Continue Watching</span><span>Ready to Watch</span><span>Coming Soon</span><span>Live TV</span><span>Discover</span><span>Sports</span>
+      </div>
+    </div>
+
+    <section class="block" id="features">
+      <div class="wrap">
+        <div class="sec-head">
+          <div>
+            <span class="kicker">Why What's On</span>
+            <h2>Stop browsing.<br /><em>Start watching.</em></h2>
+          </div>
+          <p>Your libraries live on different servers and your shows live on different services. What's On TV puts tonight's answer on one screen.</p>
+        </div>
+        <div class="features">
+          <div class="feature"><span class="ico">01</span><h3>One home for everything</h3><p>Plex, Jellyfin, Emby and over-the-air live TV, blended into a single "what should I watch tonight" experience.</p></div>
+          <div class="feature"><span class="ico">02</span><h3>Watch from anywhere</h3><p>Secure, encrypted remote access to your own server — your movies, shows and live channels on the road, over your own connection.</p></div>
+          <div class="feature"><span class="ico">03</span><h3>Every screen</h3><p>Phone and tablet, Apple TV and Android TV, the web, and a Roku channel in the works — the same app, the same library.</p></div>
+          <div class="feature"><span class="ico">04</span><h3>Share with your people</h3><p>Invite family and friends to your server with their own profile — no fuss, no exposing your network.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block alt">
+      <div class="wrap split">
+        <div>
+          <span class="kicker">Where it runs</span>
+          <h2>On the screen you're already holding.</h2>
+          <p>What's On TV pairs with a small self-hosted server that talks to your media servers and tuners, then serves every screen in the house — and, with remote access, every screen outside it.</p>
+          <div class="shelf">
+            <span class="ok">Android phone &amp; tablet</span><span class="ok">Android TV</span><span class="ok">iPhone &amp; iPad</span><span class="ok">Apple TV</span><span class="ok">Web</span><span class="ok">Roku (sideload)</span><span class="soon">Windows · planned</span>
+          </div>
+        </div>
+        <div>
+          <span class="kicker">Works with</span>
+          <div class="shelf" style="margin-top:24px">
+            <span style="border-color:#e5a00d;color:#e5a00d">Plex</span>
+            <span style="border-color:#aa5cc3;color:#c98be0">Jellyfin</span>
+            <span style="border-color:#4caf50;color:#7bd47e">Emby</span>
+            <span>Sonarr</span><span style="border-color:#ffc230;color:#ffc230">Radarr</span><span>HDHomeRun</span><span>TVmaze</span>
+          </div>
+          <figure class="banner"><img src="/img/whatson-banner.jpg" alt="What's On TV wordmark in neon lettering" width="1800" height="559" loading="lazy" /></figure>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>&copy; 2026 Extrastrength Software LLC</span>
+    <nav aria-label="Footer">
+      <a href="/login">Sign in</a>
+      <a href="https://extrastrength.com/whats-on-tv.html">About</a>
+      <a href="https://extrastrength.com/whats-on-tv-privacy.html">Privacy</a>
+    </nav>
+  </footer>
 </body>
 </html>
